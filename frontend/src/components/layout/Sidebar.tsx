@@ -1,0 +1,91 @@
+import { NavLink } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import {
+  LayoutDashboard,
+  Workflow,
+  ClipboardList,
+  FlaskConical,
+  FileBarChart,
+  History,
+  Mountain,
+} from 'lucide-react'
+import { classNames } from '../../utils'
+import { useAuth } from '../../store/AuthContext'
+import { ROLE_BADGE, ROLE_LABELS } from '../../constants'
+
+const navItems = [
+  { to: '/', label: 'داشبورد', icon: LayoutDashboard, end: true },
+  { to: '/lines', label: 'مدل‌سازی خط فرآوری', icon: Workflow, end: false },
+  { to: '/logs', label: 'گزارش عملکرد', icon: ClipboardList, end: false },
+  { to: '/analysis', label: 'آنالیز آنلاین', icon: FlaskConical, end: false },
+  { to: '/reports', label: 'گزارش‌ها و خروجی', icon: FileBarChart, end: false },
+]
+
+export default function Sidebar() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin' || user?.is_superuser
+
+  const items = isAdmin
+    ? [...navItems, { to: '/activity', label: 'لاگ فعالیت‌ها', icon: History, end: false }]
+    : navItems
+
+  return (
+    <aside className="flex h-full w-64 flex-col border-l border-ink-200 bg-ink-900 text-ink-100">
+      <div className="flex items-center gap-3 px-5 py-5">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-amber-500">
+          <Mountain className="h-5 w-5 text-white" />
+        </div>
+        <div className="leading-tight">
+          <div className="text-sm font-bold text-white">خط فرآوری معدن</div>
+          <div className="text-[11px] text-ink-400">سیستم مدل‌سازی و پایش</div>
+        </div>
+      </div>
+
+      <nav className="flex-1 space-y-1 px-3 py-2">
+        {items.map((item, i) => {
+          const Icon = item.icon
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                classNames(
+                  'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'text-white shadow-sm'
+                    : 'text-ink-300 hover:bg-ink-800 hover:text-white',
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.span
+                      layoutId="sidebar-active"
+                      className="absolute inset-0 rounded-xl bg-brand-500"
+                      transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                    />
+                  )}
+                  <Icon className="relative z-10 h-[18px] w-[18px]" />
+                  <span className="relative z-10">{item.label}</span>
+                </>
+              )}
+            </NavLink>
+          )
+        })}
+      </nav>
+
+      <div className="border-t border-ink-800 px-5 py-4">
+        {user && (
+          <span className={classNames('badge', ROLE_BADGE[user.role])}>
+            {ROLE_LABELS[user.role]}
+          </span>
+        )}
+        <div className="mt-1 text-[11px] leading-relaxed text-ink-500">
+          نسخه ۲.۰ · متصل به بک‌اند Django REST
+        </div>
+      </div>
+    </aside>
+  )
+}
