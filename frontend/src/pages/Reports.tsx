@@ -3,80 +3,44 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileSpreadsheet, Download, BarChart2, Activity as ActivityIcon,
   TrendingUp, Clock, ChevronDown, FileText, Building2, Calendar,
+  ArrowLeft, ArrowRight,
 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { fetchAllLogs } from '../api/logs'
 import { fetchAllAnalyses } from '../api/analysis'
 import { exportToExcel, exportToPdf } from '../utils'
-import type { DeviceLog, LogFilters, DeviceDailyAnalysis, AnalysisFilters } from '../types'
-import { Loading, EmptyState, ErrorBanner, CardSkeleton, TableSkeleton } from '../components/ui/States'
+import type { DeviceLog, DeviceDailyAnalysis } from '../types'
+import { Loading, EmptyState, ErrorBanner, CardSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
-import AnimatedNumber from '../components/ui/AnimatedNumber'
 import { formatDate, formatNumber, formatPercent, todayISO } from '../utils'
 
-const C = { brand: '#f97316', emerald: '#10b981', sky: '#0ea5e9', violet: '#8b5cf6', amber: '#f59e0b', rose: '#f43f5e', slate: '#94a3b8' }
-const PIE = ['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#ec4899']
-
 type DataType = 'logs' | 'analysis'
-type ReportPeriod = '1d' | '1w' | '1m' | '3m' | '6m' | '1y' | 'all' | 'custom'
 
-const PERIOD_LABELS: Record<ReportPeriod, string> = { '1d': '۱ روز', '1w': '۱ هفته', '1m': '۱ ماه', '3m': '۳ ماه', '6m': '۶ ماه', '1y': '۱ سال', 'all': 'همه', 'custom': 'سفارشی' }
+// Quick date presets
+const QUICK_DATES = [
+  { label: 'دیروز', days: 1 },
+  { label: '۳ روز', days: 3 },
+  { label: '۱ هفته', days: 7 },
+  { label: '۲ هفته', days: 14 },
+  { label: '۱ ماه', days: 30 },
+  { label: '۳ ماه', days: 90 },
+  { label: '۶ ماه', days: 180 },
+  { label: '۱ سال', days: 365 },
+  { label: 'همه', days: 3650 },
+] as const
 
-function getDateRange(p: ReportPeriod): { from: string; to: string } {
-  const to = todayISO()
-  const d = new Date()
-  const days = { '1d': 1, '1w': 7, '1m': 30, '3m': 90, '6m': 180, '1y': 365, 'all': 3650, 'custom': 30 }
-  d.setDate(d.getDate() - (days[p] || 30))
-  return { from: d.toISOString().split('T')[0], to }
-}
-
-function KpiCard({ icon, label, value, suffix, accentBg, delay }: { icon: React.ReactNode; label: string; value: string; suffix?: string; accentBg?: string; delay?: number }) {
+function KpiCard({ icon, label, value, suffix, accentBg }: { icon: React.ReactNode; label: string; value: string; suffix?: string; accentBg?: string }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: delay ?? 0, duration: 0.35 }}
-      className="relative overflow-hidden rounded-2xl border border-ink-100 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 hover:shadow-lg transition-shadow">
-      <div className={`absolute -left-4 -top-4 h-24 w-24 rounded-full ${accentBg || 'bg-brand-50'} opacity-30 blur-2xl`} />
-      <div className="relative">
-        <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${accentBg || 'bg-brand-50'}`}>{icon}</div>
-        <div className="text-xs font-medium text-ink-400 dark:text-slate-500">{label}</div>
-        <div className="mt-1 flex items-baseline gap-1.5">
-          <span className="text-2xl font-extrabold text-ink-900 dark:text-white">{value}</span>
-          {suffix && <span className="text-sm font-medium text-ink-500 dark:text-slate-400">{suffix}</span>}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-function ReportHeader({ factoryName, factoryAddress, dateFrom, dateTo, dataType, period }: { factoryName: string; factoryAddress?: string; dateFrom: string; dateTo: string; dataType: DataType; period: ReportPeriod }) {
-  return (
-    <div className="rounded-2xl border border-ink-100 bg-gradient-to-br from-brand-50 to-white p-6 dark:border-slate-700 dark:from-slate-900 dark:to-slate-900">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500 text-white shadow-lg">
-            <Building2 className="h-7 w-7" />
-          </div>
-          <div>
-            <h2 className="text-xl font-extrabold text-ink-900 dark:text-white">{factoryName}</h2>
-            {factoryAddress && <p className="mt-0.5 text-sm text-ink-500 dark:text-slate-400">{factoryAddress}</p>}
-            <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-ink-500 dark:text-slate-400">
-              <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> بازه: {formatDate(dateFrom)} تا {formatDate(dateTo)}</span>
-              <span className="flex items-center gap-1.5"><ActivityIcon className="h-3.5 w-3.5" /> {dataType === 'logs' ? 'گزارش عملکرد خطوط' : 'گزارش آنالیز دستگاه‌ها'}</span>
-              <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {PERIOD_LABELS[period]}</span>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl bg-white/80 px-4 py-2 text-left text-xs text-ink-400 shadow-sm dark:bg-slate-800/80 dark:text-slate-500">
-          <div>تاریخ خروجی: {new Date().toLocaleDateString('fa-IR')}</div>
-          <div>ساعت: {new Date().toLocaleTimeString('fa-IR')}</div>
-        </div>
+    <div className="card-glass overflow-hidden p-4 sm:p-5">
+      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${accentBg || 'bg-brand-50'}`}>{icon}</div>
+      <div className="text-xs font-medium text-ink-400">{label}</div>
+      <div className="mt-1 flex items-baseline gap-1.5">
+        <span className="text-xl sm:text-2xl font-extrabold text-ink-900 dark:text-white">{value}</span>
+        {suffix && <span className="text-sm font-medium text-ink-500">{suffix}</span>}
       </div>
     </div>
   )
-}
-
-function getRangeDays(p: ReportPeriod): number {
-  return { '1d': 1, '1w': 7, '1m': 30, '3m': 90, '6m': 180, '1y': 365, 'all': 3650, 'custom': 30 }[p] || 30
 }
 
 export default function Reports() {
@@ -87,34 +51,44 @@ export default function Reports() {
   const analyzerIds = useMemo(() => (selectedFactory?.lines ?? []).flatMap(l => l.devices).filter(d => d.is_analyzer).map(d => d.id), [selectedFactory])
 
   const [dataType, setDataType] = useState<DataType>('logs')
-  const [tab, setTab] = useState<'charts' | 'logs'>('charts')
-  const [period, setPeriod] = useState<ReportPeriod>('1m')
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+
+  // Date range — custom or preset
+  const todayStr = useMemo(() => todayISO(), [])
+  const [dateFrom, setDateFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0] })
+  const [dateTo, setDateTo] = useState(todayStr)
+  const [quickActive, setQuickActive] = useState<number | null>(30) // days
 
   const [logs, setLogs] = useState<DeviceLog[]>([])
   const [analyses, setAnalyses] = useState<DeviceDailyAnalysis[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   const [page, setPage] = useState(1)
   const pageSize = 50
 
+  const applyQuickDate = (days: number) => {
+    setQuickActive(days)
+    const d = new Date()
+    d.setDate(d.getDate() - days)
+    setDateFrom(d.toISOString().split('T')[0])
+    setDateTo(todayStr)
+    setPage(1)
+  }
+
   const loadLogs = useCallback(async () => {
-    const { from, to } = getDateRange(period)
-    const q: any = { date_from: from, date_to: to }
+    const q: any = { date_from: dateFrom, date_to: dateTo }
     if (lineIds.length) q.lines = lineIds.join(',')
     const data = await fetchAllLogs(q, 200)
     return data.filter((l: DeviceLog) => !lineIds.length || lineIds.includes(l.line.id))
-  }, [period, lineIds])
+  }, [dateFrom, dateTo, lineIds])
 
   const loadAnalyses = useCallback(async () => {
-    const { from, to } = getDateRange(period)
-    const q: any = { date_from: from, date_to: to }
+    const q: any = { date_from: dateFrom, date_to: dateTo }
     if (analyzerIds.length) q.devices = analyzerIds.join(',')
     const data = await fetchAllAnalyses(q, 200)
     return data.filter((a: DeviceDailyAnalysis) => !analyzerIds.length || analyzerIds.includes(a.device.id))
-  }, [period, analyzerIds])
+  }, [dateFrom, dateTo, analyzerIds])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -128,6 +102,7 @@ export default function Reports() {
 
   useEffect(() => { if (selectedFactory) load() }, [selectedFactory, load])
 
+  // Logs stats
   const logsStats = useMemo(() => {
     const totalFeed = logs.reduce((s, l) => s + (l.feed_tonnage || 0), 0)
     const totalProduct = logs.reduce((s, l) => s + (l.product_tonnage || 0), 0)
@@ -137,9 +112,7 @@ export default function Reports() {
 
     const byDate = logs.reduce((acc, l) => {
       if (!acc[l.date]) acc[l.date] = { name: l.date, feed: 0, product: 0, tailing: 0, effs: [] as number[] }
-      acc[l.date].feed += l.feed_tonnage
-      acc[l.date].product += l.product_tonnage
-      acc[l.date].tailing += l.tailing_tonnage
+      acc[l.date].feed += l.feed_tonnage; acc[l.date].product += l.product_tonnage; acc[l.date].tailing += l.tailing_tonnage
       if (l.efficiency != null) acc[l.date].effs.push(l.efficiency)
       return acc
     }, {} as Record<string, any>)
@@ -152,47 +125,24 @@ export default function Reports() {
       return acc
     }, {} as Record<string, { sum: number; count: number }>)
     const lineEff = Object.entries(byLine).map(([n, v]) => ({ name: n, value: Math.round(v.sum / v.count * 10) / 10 }))
-
-    const byShift = logs.reduce((acc, l) => { const s = l.shift?.name || 'بدون'; acc[s] = (acc[s] || 0) + 1; return acc }, {} as Record<string, number>)
-    const shiftData = Object.entries(byShift).map(([n, v]) => ({ name: n, value: v }))
-
-    const byFailure = logs.reduce((acc, l) => {
-      const c = l.failure_cause?.title; if (!c) return acc
-      if (!acc[c]) acc[c] = 0; acc[c] += l.downtime_hours; return acc
-    }, {} as Record<string, number>)
-    const failureData = Object.entries(byFailure).map(([n, v]) => ({ name: n, توقف: Math.round(v) })).sort((a, b) => b.توقف - a.توقف)
-
-    return { totalFeed, totalProduct, totalDowntime, avgEff, trend, lineEff, shiftData, failureData, count: logs.length }
+    return { totalFeed, totalProduct, totalDowntime, avgEff, trend, lineEff, count: logs.length }
   }, [logs])
 
+  // Analysis stats (simple)
   const anStats = useMemo(() => {
-    const byDate = analyses.reduce((acc, a) => {
-      if (!acc[a.date]) acc[a.date] = { name: a.date, feed: 0, tailing: 0, product: 0, count: 0 }
-      if (a.sample_point === 'feed') acc[a.date].feed += a.value_1 || 0
-      if (a.sample_point === 'tailing') acc[a.date].tailing += a.value_1 || 0
-      if (a.sample_point === 'product') acc[a.date].product += a.value_1 || 0
-      acc[a.date].count += 1
-      return acc
-    }, {} as Record<string, any>)
-    const trend = Object.values(byDate).sort((a: any, b: any) => a.name.localeCompare(b.name))
-
     const byDevice = analyses.reduce((acc, a) => {
-      const n = a.device?.name || 'بدون'; if (!acc[n]) acc[n] = { count: 0, avg1: 0, avg2: 0 }
-      acc[n].count += 1; acc[n].avg1 += a.value_1 || 0; acc[n].avg2 += a.value_2 || 0
+      const n = a.device?.name || 'بدون'; if (!acc[n]) acc[n] = { count: 0, avg1: 0 }
+      acc[n].count += 1; acc[n].avg1 += a.value_1 || 0
       return acc
-    }, {} as Record<string, { count: number; avg1: number; avg2: number }>)
+    }, {} as Record<string, { count: number; avg1: number }>)
     const deviceData = Object.entries(byDevice).map(([n, v]) => ({ name: n, value: Math.round(v.avg1 / v.count * 10) / 10 }))
 
     const byPoint = analyses.reduce((acc, a) => {
-      const p = a.sample_point || 'بدون'
-      if (!acc[p]) acc[p] = 0; acc[p] += 1; return acc
+      const p = a.sample_point || 'بدون'; if (!acc[p]) acc[p] = 0; acc[p] += 1; return acc
     }, {} as Record<string, number>)
     const pointData = Object.entries(byPoint).map(([n, v]) => ({ name: n === 'feed' ? 'خوراک' : n === 'tailing' ? 'باطله' : n === 'product' ? 'محصول' : n, value: v }))
-
-    return { trend, deviceData, pointData, count: analyses.length }
+    return { deviceData, pointData, count: analyses.length }
   }, [analyses])
-
-  const { from, to } = getDateRange(period)
 
   const pageItems = useMemo(() => {
     const items = dataType === 'logs' ? logs : analyses
@@ -207,26 +157,22 @@ export default function Reports() {
     setExporting(type); setExportOpen(false)
     try {
       const name = `${dataType === 'logs' ? 'گزارش_عملکرد' : 'گزارش_آنالیز'}_${selectedFactory?.name || ''}`
-      const title = `${selectedFactory?.name || ''} — ${dataType === 'logs' ? 'گزارش عملکرد خطوط' : 'گزارش آنالیز دستگاه‌ها'} — بازه ${formatDate(from)} تا ${formatDate(to)}`
+      const title = `${selectedFactory?.name || ''} — ${dataType === 'logs' ? 'گزارش عملکرد خطوط' : 'گزارش آنالیز دستگاه‌ها'} — بازه ${formatDate(dateFrom)} تا ${formatDate(dateTo)}`
 
       if (dataType === 'logs') {
         const rows: Record<string, string | number>[] = logs.map(l => ({
           'تاریخ': l.date, 'خط': l.line?.name || '—', 'شیفت': l.shift?.name || '—',
           'دستگاه': l.device?.name || '—', 'علت خرابی': l.failure_cause?.title || '—',
           'کارکرد': l.runtime_hours, 'توقف': l.downtime_hours,
-          'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage,
-          'راندمان': l.efficiency ?? 0,
+          'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage, 'راندمان': l.efficiency ?? 0,
         }))
-        if (type === 'excel') await exportToExcel(rows, name)
-        else await exportToPdf(rows, name, title)
+        if (type === 'excel') await exportToExcel(rows, name); else await exportToPdf(rows, name, title)
       } else {
         const rows: Record<string, string | number>[] = analyses.map(a => ({
           'تاریخ': a.date, 'دستگاه': a.device?.name || '—', 'شیفت': a.shift?.name || '—',
-          'نقطه نمونه': a.sample_point || '—', 'پارامتر ۱': a.value_1 ?? 0, 'پارامتر ۲': a.value_2 ?? 0,
-          'شرح': a.analysis_text || '—',
+          'نقطه نمونه': a.sample_point || '—', 'پارامتر ۱': a.value_1 ?? 0, 'پارامتر ۲': a.value_2 ?? 0, 'شرح': a.analysis_text || '—',
         }))
-        if (type === 'excel') await exportToExcel(rows, name)
-        else await exportToPdf(rows, name, title)
+        if (type === 'excel') await exportToExcel(rows, name); else await exportToPdf(rows, name, title)
       }
     } finally { setExporting(null) }
   }
@@ -235,237 +181,260 @@ export default function Reports() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      {/* Report Header */}
-      <ReportHeader factoryName={selectedFactory?.name || ''} factoryAddress={selectedFactory?.address} dateFrom={from} dateTo={to} dataType={dataType} period={period} />
-
-      {/* Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1.5 rounded-xl bg-ink-100 p-1 dark:bg-slate-800">
-          {(['logs', 'analysis'] as const).map(t => (
-            <button key={t} onClick={() => setDataType(t)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${dataType === t ? 'bg-white text-ink-900 shadow dark:bg-slate-700 dark:text-white' : 'text-ink-500 hover:text-ink-700 dark:text-slate-400 dark:hover:text-slate-200'}`}>
-              {t === 'logs' ? 'گزارش عملکرد' : 'گزارش آنالیز'}
+      {/* Header: Factory info + export */}
+      <div className="card-glass p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}>
+              <Building2 className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-extrabold text-ink-900 dark:text-white">{selectedFactory?.name}</h2>
+              {selectedFactory?.address && <p className="text-sm text-ink-500">{selectedFactory.address}</p>}
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-500">
+                <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> {formatDate(dateFrom)} تا {formatDate(dateTo)}</span>
+                <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {new Date().toLocaleDateString('fa-IR')}</span>
+              </div>
+            </div>
+          </div>
+          <div className="relative">
+            <button onClick={() => setExportOpen(o => !o)} disabled={exporting !== null || totalItems === 0}
+              className="btn-primary !py-2 !px-4 text-xs sm:text-sm">
+              {exporting ? <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> خروجی...</> : <><Download className="h-4 w-4" /> خروجی <ChevronDown className={`h-3.5 w-3.5 transition ${exportOpen ? 'rotate-180' : ''}`} /></>}
             </button>
-          ))}
-        </div>
-        <div className="flex gap-1.5 rounded-xl bg-ink-100 p-1 dark:bg-slate-800">
-          {(['charts', 'logs'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${tab === t ? 'bg-white text-ink-900 shadow dark:bg-slate-700 dark:text-white' : 'text-ink-500 hover:text-ink-700 dark:text-slate-400 dark:hover:text-slate-200'}`}>
-              {t === 'charts' ? 'نمودارها' : 'داده‌ها'}
-            </button>
-          ))}
+            <AnimatePresence>
+              {exportOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setExportOpen(false)} />
+                  <motion.div initial={{ opacity: 0, y: -8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                    className="absolute left-0 z-40 mt-2 w-44 overflow-hidden rounded-2xl border bg-white/90 p-1.5 shadow-xl backdrop-blur-xl dark:bg-slate-900/90">
+                    <button onClick={() => handleExport('excel')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-50 dark:text-slate-200 dark:hover:bg-slate-800">
+                      <FileSpreadsheet className="h-4 w-4 text-emerald-500" /> Excel
+                    </button>
+                    <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-50 dark:text-slate-200 dark:hover:bg-slate-800">
+                      <FileText className="h-4 w-4 text-rose-500" /> PDF
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
-      {/* Period selector */}
-      <div className="flex flex-wrap gap-1.5">
-        {(['1d', '1w', '1m', '3m', '6m', '1y', 'all'] as ReportPeriod[]).map(p => (
-          <button key={p} onClick={() => setPeriod(p)}
-            className={`rounded-xl px-3.5 py-1.5 text-xs font-medium transition ${period === p ? 'bg-brand-500 text-white shadow-sm' : 'bg-ink-100 text-ink-600 hover:bg-ink-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>
-            {PERIOD_LABELS[p]}
-          </button>
-        ))}
+      {/* Main controls: data type + date range */}
+      <div className="space-y-4">
+        {/* Data type */}
+        <div className="flex gap-1.5 rounded-xl p-1 w-fit" style={{ background: 'rgba(241,245,249,0.6)' }}>
+          {(['logs', 'analysis'] as const).map(t => (
+            <button key={t} onClick={() => setDataType(t)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${dataType === t ? 'bg-white text-ink-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-ink-500 hover:text-ink-700 dark:text-slate-400'}`}>
+              {t === 'logs' ? '📊 گزارش عملکرد خطوط' : '🧪 گزارش آنالیز دستگاه‌ها'}
+            </button>
+          ))}
+        </div>
+
+        {/* Date range — quick buttons + custom inputs */}
+        <div className="flex flex-wrap items-center gap-2">
+          {QUICK_DATES.map(q => (
+            <button key={q.days} onClick={() => applyQuickDate(q.days)}
+              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${quickActive === q.days ? 'bg-brand-500 text-white shadow-sm' : 'bg-ink-100/70 text-ink-600 hover:bg-ink-200/70 dark:bg-slate-800/70 dark:text-slate-300'}`}>
+              {q.label}
+            </button>
+          ))}
+          <span className="px-2 text-ink-300 dark:text-slate-600">|</span>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-ink-500">از</label>
+            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setQuickActive(null); setPage(1) }}
+              className="rounded-lg border px-2.5 py-1.5 text-xs outline-none transition" style={{ background: 'rgba(241,245,249,0.5)', borderColor: 'rgba(148,163,184,0.3)' }} />
+            <label className="text-xs text-ink-500">تا</label>
+            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setQuickActive(null); setPage(1) }}
+              className="rounded-lg border px-2.5 py-1.5 text-xs outline-none transition" style={{ background: 'rgba(241,245,249,0.5)', borderColor: 'rgba(148,163,184,0.3)' }} />
+          </div>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 
-      {/* Loading */}
+      {/* Content: KPI + Charts + Table */}
       {loading ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
       ) : dataType === 'logs' ? (
-        <AnimatePresence mode="wait">
-          <motion.div key="logs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            {tab === 'charts' ? (
-              <div className="space-y-6">
-                <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <KpiCard icon={<TrendingUp className="h-5 w-5 text-brand-600" />} label="مجموع تناژ ورودی" value={formatNumber(Math.round(logsStats.totalFeed / 1000)) + ' هزار'} suffix="تن" accentBg="bg-brand-50" delay={0} />
-                  <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="میانگین راندمان" value={formatPercent(logsStats.avgEff)} accentBg="bg-emerald-50" delay={0.05} />
-                  <KpiCard icon={<Clock className="h-5 w-5 text-rose-600" />} label="مجموع ساعات توقف" value={formatNumber(Math.round(logsStats.totalDowntime))} suffix="ساعت" accentBg="bg-rose-50" delay={0.1} />
-                  <KpiCard icon={<FileText className="h-5 w-5 text-sky-600" />} label="تعداد رکوردها" value={formatNumber(logsStats.count)} suffix="مورد" accentBg="bg-sky-50" delay={0.15} />
-                </motion.div>
-                {logsStats.count === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" description={`برای بازه ${PERIOD_LABELS[period]} داده‌ای ثبت نشده است.`} /> : (
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                      <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">روند راندمان</h4>
-                      {logsStats.trend.length === 0 ? <div className="py-10 text-center text-xs text-ink-400">داده نیست</div> : (
-                        <div className="space-y-2">
-                          {logsStats.trend.slice(-14).map((d: any) => (
-                            <div key={d.name} className="flex items-center gap-3 text-xs">
-                              <span className="w-20 shrink-0 text-ink-500">{formatDate(d.name)}</span>
-                              <div className="flex-1 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(d.efficiency || 0, 100)}%` }}
-                                  transition={{ duration: 0.5 }} className={`h-2.5 rounded-full ${(d.efficiency || 0) >= 75 ? 'bg-emerald-400' : (d.efficiency || 0) >= 50 ? 'bg-amber-400' : 'bg-rose-400'}`} />
-                              </div>
-                              <span className="w-12 text-right font-bold text-ink-700 dark:text-slate-300">{d.efficiency != null ? `${d.efficiency}٪` : '—'}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                      <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">راندمان خطوط</h4>
-                      {logsStats.lineEff.length === 0 ? <div className="py-10 text-center text-xs text-ink-400">داده نیست</div> : (
-                        <div className="space-y-3">
-                          {logsStats.lineEff.sort((a, b) => b.value - a.value).map((item, i) => (
-                            <div key={item.name}>
-                              <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600 dark:text-slate-400">{item.name}</span><span className="font-bold text-ink-800 dark:text-white">{item.value}٪</span></div>
-                              <div className="h-2.5 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(item.value, 100)}%` }} transition={{ delay: 0.2 + i * 0.05, duration: 0.5 }}
-                                  className={`h-full rounded-full ${item.value >= 75 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : item.value >= 50 ? 'bg-gradient-to-r from-amber-400 to-amber-500' : 'bg-gradient-to-r from-rose-400 to-rose-500'}`} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-2xl border border-ink-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  <span className="text-sm font-semibold text-ink-600 dark:text-slate-400">{formatNumber(totalItems)} رکورد</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleExport('excel')} disabled={exporting !== null || logs.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-600 disabled:opacity-50"><FileSpreadsheet className="h-4 w-4" /> Excel</button>
-                    <button onClick={() => handleExport('pdf')} disabled={exporting !== null || logs.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-rose-600 disabled:opacity-50"><FileText className="h-4 w-4" /> PDF</button>
-                  </div>
-                </div>
-                {totalItems === 0 ? <EmptyState title="گزارشی یافت نشد" /> : (
-                  <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead><tr className="border-b border-ink-100 bg-ink-50/80 text-right text-xs text-ink-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-400">
-                          <th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">خط</th><th className="px-4 py-3 font-semibold">شیفت</th>
-                          <th className="px-4 py-3 font-semibold">ورودی</th><th className="px-4 py-3 font-semibold">خروجی</th>
-                          <th className="px-4 py-3 font-semibold">کارکرد</th><th className="px-4 py-3 font-semibold">توقف</th><th className="px-4 py-3 font-semibold">راندمان</th>
-                        </tr></thead>
-                        <tbody className="divide-y divide-ink-100 dark:divide-slate-700/50">
-                          {(pageItems as DeviceLog[]).map(l => (
-                            <tr key={l.id} className={`transition hover:bg-ink-50/40 dark:hover:bg-slate-800/40 ${l.efficiency != null && l.efficiency < 40 ? 'bg-rose-50/30' : l.efficiency != null && l.efficiency > 80 ? 'bg-emerald-50/30' : ''}`}>
-                              <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(l.date)}</td>
-                              <td className="px-4 py-3 dark:text-slate-300">{l.line?.name}</td>
-                              <td className="px-4 py-3 dark:text-slate-400">{l.shift?.name}</td>
-                              <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.feed_tonnage)}</td>
-                              <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.product_tonnage)}</td>
-                              <td className="px-4 py-3">{formatNumber(l.runtime_hours)}</td>
-                              <td className="px-4 py-3">{l.downtime_hours > 0 ? <span className="font-semibold text-rose-600">{formatNumber(l.downtime_hours)}</span> : '—'}</td>
-                              <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${(l.efficiency || 0) >= 80 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40' : (l.efficiency || 0) >= 50 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40'}`}>{l.efficiency != null ? `${l.efficiency.toFixed(1)}٪` : '—'}</span></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {totalPages > 1 && <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3 dark:border-slate-700"><span className="text-xs text-ink-400">صفحه {page} از {totalPages}</span><Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} /></div>}
-                  </div>
-                )}
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-      ) : (
-        <AnimatePresence mode="wait">
-          <motion.div key="analysis" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            {tab === 'charts' ? (
-              <div className="space-y-6">
-                <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <KpiCard icon={<TrendingUp className="h-5 w-5 text-violet-600" />} label="مجموع آنالیزها" value={formatNumber(anStats.count)} suffix="مورد" accentBg="bg-violet-50" delay={0} />
-                  <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="دستگاه‌های آنالایزور" value={formatNumber(analyzerIds.length)} suffix="دستگاه" accentBg="bg-emerald-50" delay={0.05} />
-                  <KpiCard icon={<Clock className="h-5 w-5 text-sky-600" />} label="نقاط نمونه‌برداری" value={formatNumber(anStats.pointData.length)} suffix="نقطه" accentBg="bg-sky-50" delay={0.1} />
-                  <KpiCard icon={<Calendar className="h-5 w-5 text-brand-600" />} label="بازه زمانی" value={`${getRangeDays(period)} روز`} accentBg="bg-brand-50" delay={0.15} />
-                </motion.div>
-                {anStats.count === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" /> : (
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                      <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">میانگین پارامتر ۱ به تفکیک دستگاه</h4>
-                      {anStats.deviceData.length === 0 ? <EmptyState title="داده نیست" /> : (
-                        <div className="space-y-3">
-                          {anStats.deviceData.sort((a, b) => b.value - a.value).map((item, i) => (
-                            <div key={item.name}>
-                              <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600 dark:text-slate-400">{item.name}</span><span className="font-bold text-ink-800 dark:text-white">{item.value}</span></div>
-                              <div className="h-2.5 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(item.value * 10, 100)}%` }} transition={{ delay: 0.2 + i * 0.05, duration: 0.5 }}
-                                  className="h-full rounded-full bg-gradient-to-r from-violet-400 to-violet-500" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="rounded-2xl border border-ink-100 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                      <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">توزیع نقاط نمونه‌برداری</h4>
-                      {anStats.pointData.length === 0 ? <EmptyState title="داده نیست" /> : (
-                        <div className="space-y-3">
-                          {anStats.pointData.map((item, i) => (
-                            <div key={item.name}>
-                              <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600 dark:text-slate-400">{item.name}</span><span className="font-bold text-ink-800 dark:text-white">{item.value} مورد</span></div>
-                              <div className="h-3 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${(item.value / Math.max(...anStats.pointData.map(d => d.value))) * 100}%` }} transition={{ delay: 0.2 + i * 0.05, duration: 0.5 }}
-                                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-500" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-2xl border border-ink-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  <span className="text-sm font-semibold text-ink-600 dark:text-slate-400">{formatNumber(totalItems)} رکورد</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleExport('excel')} disabled={exporting !== null || analyses.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-600 disabled:opacity-50"><FileSpreadsheet className="h-4 w-4" /> Excel</button>
-                    <button onClick={() => handleExport('pdf')} disabled={exporting !== null || analyses.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-rose-600 disabled:opacity-50"><FileText className="h-4 w-4" /> PDF</button>
-                  </div>
-                </div>
-                {totalItems === 0 ? <EmptyState title="آنالیزی یافت نشد" /> : (
-                  <div className="overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead><tr className="border-b border-ink-100 bg-ink-50/80 text-right text-xs text-ink-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-400">
-                          <th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">دستگاه</th><th className="px-4 py-3 font-semibold">شیفت</th>
-                          <th className="px-4 py-3 font-semibold">نقطه</th><th className="px-4 py-3 font-semibold">پارامتر ۱</th><th className="px-4 py-3 font-semibold">پارامتر ۲</th><th className="px-4 py-3 font-semibold">شرح</th>
-                        </tr></thead>
-                        <tbody className="divide-y divide-ink-100 dark:divide-slate-700/50">
-                          {(pageItems as DeviceDailyAnalysis[]).map(a => (
-                            <tr key={a.id} className="transition hover:bg-ink-50/40 dark:hover:bg-slate-800/40">
-                              <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(a.date)}</td>
-                              <td className="px-4 py-3 dark:text-slate-300">{a.device?.name}</td>
-                              <td className="px-4 py-3 dark:text-slate-400">{a.shift?.name || '—'}</td>
-                              <td className="px-4 py-3"><span className={`badge ${a.sample_point === 'feed' ? 'bg-amber-100 text-amber-700' : a.sample_point === 'tailing' ? 'bg-rose-100 text-rose-700' : a.sample_point === 'product' ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-100 text-ink-500'}`}>{a.sample_point === 'feed' ? 'خوراک' : a.sample_point === 'tailing' ? 'باطله' : a.sample_point === 'product' ? 'محصول' : '—'}</span></td>
-                              <td className="px-4 py-3 dark:text-slate-300">{a.value_1 != null ? a.value_1 : '—'}</td>
-                              <td className="px-4 py-3 dark:text-slate-300">{a.value_2 != null ? a.value_2 : '—'}</td>
-                              <td className="max-w-[200px] truncate px-4 py-3 text-ink-500 dark:text-slate-400" title={a.analysis_text || ''}>{a.analysis_text || '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {totalPages > 1 && <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3 dark:border-slate-700"><span className="text-xs text-ink-400">صفحه {page} از {totalPages}</span><Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} /></div>}
-                  </div>
-                )}
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-      )}
+        <div className="space-y-6">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <KpiCard icon={<TrendingUp className="h-5 w-5 text-brand-600" />} label="تناژ ورودی" value={formatNumber(Math.round(logsStats.totalFeed / 1000)) + ' هزار'} suffix="تن" accentBg="bg-brand-50" />
+            <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="میانگین راندمان" value={formatPercent(logsStats.avgEff)} accentBg="bg-emerald-50" />
+            <KpiCard icon={<Clock className="h-5 w-5 text-rose-600" />} label="ساعات توقف" value={formatNumber(Math.round(logsStats.totalDowntime))} suffix="ساعت" accentBg="bg-rose-50" />
+            <KpiCard icon={<FileText className="h-5 w-5 text-sky-600" />} label="تعداد رکورد" value={formatNumber(logsStats.count)} suffix="مورد" accentBg="bg-sky-50" />
+          </div>
 
-      {/* Export Loading Overlay */}
-      <AnimatePresence>
-        {exporting && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/30 backdrop-blur-sm">
-            <div className="flex items-center gap-4 rounded-2xl bg-white px-8 py-6 shadow-2xl dark:bg-slate-900">
-              <svg className="h-6 w-6 animate-spin text-brand-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-              <div>
-                <div className="text-sm font-bold text-ink-800 dark:text-slate-200">در حال خروجی‌گیری...</div>
-                <div className="text-xs text-ink-500">{exporting === 'excel' ? 'فایل Excel در حال آماده‌سازی' : 'فایل PDF در حال آماده‌سازی'}</div>
+          {logsStats.count === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" description={`برای بازه انتخابی داده‌ای ثبت نشده است.`} /> : (
+            <>
+              {/* Efficiency trend + line comparison */}
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="card-glass p-4 sm:p-5">
+                  <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">روند راندمان روزانه</h4>
+                  <div className="space-y-1.5">
+                    {logsStats.trend.slice(-14).map((d: any) => (
+                      <div key={d.name} className="flex items-center gap-3 text-xs">
+                        <span className="w-16 shrink-0 text-ink-500">{formatDate(d.name)}</span>
+                        <div className="flex-1 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800" style={{ height: '10px' }}>
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(d.efficiency || 0, 100)}%`, background: (d.efficiency || 0) >= 75 ? 'linear-gradient(90deg, #10b981, #34d399)' : (d.efficiency || 0) >= 50 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #f43f5e, #fb7185)' }} />
+                        </div>
+                        <span className="w-10 text-right font-bold text-ink-700 dark:text-slate-300">{d.efficiency != null ? `${d.efficiency}٪` : '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="card-glass p-4 sm:p-5">
+                  <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">میانگین راندمان خطوط</h4>
+                  {logsStats.lineEff.length === 0 ? <div className="py-10 text-center text-xs text-ink-400">داده نیست</div> : (
+                    <div className="space-y-3">
+                      {logsStats.lineEff.sort((a, b) => b.value - a.value).map((item, i) => (
+                        <div key={item.name}>
+                          <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600">{item.name}</span><span className="font-bold text-ink-800 dark:text-white">{item.value}٪</span></div>
+                          <div className="h-2.5 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(item.value, 100)}%` }} transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
+                              className="h-full rounded-full" style={{ background: item.value >= 75 ? 'linear-gradient(90deg, #10b981, #34d399)' : item.value >= 50 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #f43f5e, #fb7185)' }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Data table */}
+              <div className="card-glass overflow-hidden">
+                <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
+                  <span className="text-xs font-semibold text-ink-500"><span className="text-ink-800 dark:text-white">{formatNumber(totalItems)}</span> رکورد یافت شد</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-right text-xs text-ink-500" style={{ background: 'rgba(241,245,249,0.4)' }}>
+                        <th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">خط</th><th className="px-4 py-3 font-semibold">شیفت</th>
+                        <th className="px-4 py-3 font-semibold">ورودی</th><th className="px-4 py-3 font-semibold">خروجی</th>
+                        <th className="px-4 py-3 font-semibold">کارکرد</th><th className="px-4 py-3 font-semibold">توقف</th><th className="px-4 py-3 font-semibold">راندمان</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: 'rgba(148,163,184,0.1)' }}>
+                      {(pageItems as DeviceLog[]).map(l => (
+                        <tr key={l.id} className="transition hover:bg-ink-50/40 dark:hover:bg-white/5"
+                          style={(l.efficiency != null && l.efficiency < 40) ? { background: 'rgba(244,63,94,0.04)' } : (l.efficiency != null && l.efficiency > 80) ? { background: 'rgba(16,185,129,0.04)' } : {}}>
+                          <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(l.date)}</td>
+                          <td className="px-4 py-3 dark:text-slate-300">{l.line?.name}</td>
+                          <td className="px-4 py-3 dark:text-slate-400">{l.shift?.name}</td>
+                          <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.feed_tonnage)}</td>
+                          <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.product_tonnage)}</td>
+                          <td className="px-4 py-3">{formatNumber(l.runtime_hours)}</td>
+                          <td className="px-4 py-3">{l.downtime_hours > 0 ? <span className="font-semibold text-rose-600">{formatNumber(l.downtime_hours)}</span> : '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${(l.efficiency || 0) >= 80 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : (l.efficiency || 0) >= 50 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'}`}>
+                              {l.efficiency != null ? `${l.efficiency.toFixed(1)}٪` : '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between border-t px-4 py-3" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
+                    <span className="text-xs text-ink-400">صفحه {page} از {totalPages}</span>
+                    <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        /* Analysis view */
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <KpiCard icon={<BarChart2 className="h-5 w-5 text-violet-600" />} label="کل آنالیزها" value={formatNumber(anStats.count)} suffix="مورد" accentBg="bg-violet-50" />
+            <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="دستگاه‌های آنالایزور" value={formatNumber(analyzerIds.length)} suffix="دستگاه" accentBg="bg-emerald-50" />
+            <KpiCard icon={<FileText className="h-5 w-5 text-sky-600" />} label="نقاط نمونه‌برداری" value={formatNumber(anStats.pointData.length)} suffix="نقطه" accentBg="bg-sky-50" />
+            <KpiCard icon={<Calendar className="h-5 w-5 text-brand-600" />} label="بازه" value={`${dateFrom} تا ${dateTo}`} accentBg="bg-brand-50" />
+          </div>
+
+          {anStats.count === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" /> : (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="card-glass p-5">
+                <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">میانگین پارامتر به تفکیک دستگاه</h4>
+                <div className="space-y-3">
+                  {anStats.deviceData.sort((a, b) => b.value - a.value).map((item, i) => (
+                    <div key={item.name}>
+                      <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600">{item.name}</span><span className="font-bold text-ink-800">{item.value}</span></div>
+                      <div className="h-2.5 rounded-full bg-ink-100 dark:bg-slate-800">
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(item.value * 10, 100)}%` }} transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
+                          className="h-full rounded-full" style={{ background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="card-glass p-5">
+                <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">توزیع نقاط نمونه‌برداری</h4>
+                <div className="space-y-3">
+                  {anStats.pointData.map((item, i) => (
+                    <div key={item.name}>
+                      <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600">{item.name}</span><span className="font-bold text-ink-800">{item.value} مورد</span></div>
+                      <div className="h-3 rounded-full bg-ink-100 dark:bg-slate-800">
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${(item.value / Math.max(...anStats.pointData.map(d => d.value))) * 100}%` }}
+                          transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
+                          className="h-full rounded-full" style={{ background: 'linear-gradient(90deg, #06b6d4, #22d3ee)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+
+          {/* Analysis data table */}
+          <div className="card-glass overflow-hidden">
+            <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
+              <span className="text-xs font-semibold text-ink-500"><span className="text-ink-800 dark:text-white">{formatNumber(totalItems)}</span> رکورد</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-right text-xs text-ink-500" style={{ background: 'rgba(241,245,249,0.4)' }}>
+                    <th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">دستگاه</th><th className="px-4 py-3 font-semibold">شیفت</th>
+                    <th className="px-4 py-3 font-semibold">نقطه</th><th className="px-4 py-3 font-semibold">پارامتر ۱</th><th className="px-4 py-3 font-semibold">پارامتر ۲</th><th className="px-4 py-3 font-semibold">شرح</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'rgba(148,163,184,0.1)' }}>
+                  {(pageItems as DeviceDailyAnalysis[]).map(a => (
+                    <tr key={a.id} className="transition hover:bg-ink-50/40 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(a.date)}</td>
+                      <td className="px-4 py-3 dark:text-slate-300">{a.device?.name}</td>
+                      <td className="px-4 py-3 dark:text-slate-400">{a.shift?.name || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`badge ${a.sample_point === 'feed' ? 'bg-amber-100 text-amber-700' : a.sample_point === 'tailing' ? 'bg-rose-100 text-rose-700' : a.sample_point === 'product' ? 'bg-emerald-100 text-emerald-700' : ''}`}>
+                          {a.sample_point === 'feed' ? 'خوراک' : a.sample_point === 'tailing' ? 'باطله' : a.sample_point === 'product' ? 'محصول' : '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 dark:text-slate-300">{a.value_1 != null ? a.value_1 : '—'}</td>
+                      <td className="px-4 py-3 dark:text-slate-300">{a.value_2 != null ? a.value_2 : '—'}</td>
+                      <td className="max-w-[200px] truncate px-4 py-3 text-ink-500 dark:text-slate-400" title={a.analysis_text || ''}>{a.analysis_text || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t px-4 py-3" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
+                <span className="text-xs text-ink-400">صفحه {page} از {totalPages}</span>
+                <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
