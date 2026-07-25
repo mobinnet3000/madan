@@ -78,19 +78,20 @@ export default function Analysis() {
   const [pageSize] = useState(30)
   const [totalCount, setTotalCount] = useState(0)
 
-  const analyzerIds = useMemo(() => analyzers.map((d) => d.id), [analyzers])
-
   const load = useCallback(() => {
     setLoading(true)
-    getAnalysesPage(filters, page, pageSize)
+    const deviceIds = analyzers.map((d) => d.id)
+    const merged = { ...filters }
+    if (deviceIds.length) merged.devices = deviceIds.join(',') as any
+    getAnalysesPage(merged, page, pageSize)
       .then((data) => {
-        setItems(analyzerIds.length ? data.results.filter((a) => analyzerIds.includes(a.device.id)) : data.results)
+        setItems(data.results)
         setTotalCount(data.count)
         setError(null)
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [filters, page, pageSize, analyzerIds])
+  }, [filters, page, pageSize, analyzers])
 
   useEffect(() => { if (selectedFactory && analyzers.length) load() }, [selectedFactory, load])
 

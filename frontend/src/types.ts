@@ -111,6 +111,7 @@ export interface LogFilters {
 
 export interface AnalysisFilters {
   device?: number
+  devices?: string
   shift?: number
   date?: string
   date_from?: string
