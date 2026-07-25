@@ -13,7 +13,8 @@ class DailyAnalysisFilter(django_filters.FilterSet):
 class DeviceLogFilter(django_filters.FilterSet):
     date_from = django_filters.DateFilter(field_name="date", lookup_expr='gte')
     date_to = django_filters.DateFilter(field_name="date", lookup_expr='lte')
+    lines = django_filters.BaseInFilter(field_name='line', lookup_expr='in')
 
     class Meta:
         model = DeviceLog
-        fields = ['line', 'shift', 'device', 'failure_cause', 'date']
+        fields = ['line', 'lines', 'shift', 'device', 'failure_cause', 'date']

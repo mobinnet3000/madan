@@ -114,9 +114,11 @@ export default function Logs() {
 
   const load = useCallback(() => {
     setLoading(true)
-    getLogsPage(filters, page, pageSize)
+    const merged = { ...filters } as any
+    if (lineIds.length) merged.lines = lineIds.join(',')
+    getLogsPage(merged, page, pageSize)
       .then((data) => {
-        setLogs(lineIds.length ? data.results.filter((l) => lineIds.includes(l.line.id)) : data.results)
+        setLogs(data.results)
         setTotalCount(data.count); setError(null)
       })
       .catch((e) => setError(e.message))

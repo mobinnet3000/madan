@@ -101,6 +101,7 @@ export interface DeviceDailyAnalysisPayload {
 
 export interface LogFilters {
   line?: number
+  lines?: string
   shift?: number
   device?: number
   failure_cause?: number
