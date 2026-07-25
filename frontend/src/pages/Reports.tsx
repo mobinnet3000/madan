@@ -1,200 +1,122 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  FileSpreadsheet, Download, BarChart2, Activity as ActivityIcon,
-  X, Filter,
-} from 'lucide-react'
+import { FileSpreadsheet, Download, BarChart2, Activity as ActivityIcon, TrendingUp, Clock } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { fetchAllLogs } from '../api/logs'
 import { exportToExcel } from '../utils'
 import type { DeviceLog, LogFilters } from '../types'
-import { Loading, EmptyState, ErrorBanner } from '../components/ui/States'
-import { formatNumber, rangeBounds, ReportRange } from '../utils'
+import { Loading, EmptyState, ErrorBanner, CardSkeleton, TableSkeleton } from '../components/ui/States'
+import Pagination from '../components/ui/Pagination'
+import { formatDate, formatNumber, formatPercent, rangeBounds, ReportRange } from '../utils'
 import {
-  Bar,
-  BarChart,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-  AreaChart,
-  Area,
+  Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, PieChart, Pie, Cell, AreaChart, Area, Legend,
 } from 'recharts'
 
-function ReportFilters({ onChange, initial }: { onChange: (f: LogFilters) => void; initial: LogFilters }) {
-  const { selectedFactory } = useFactory()
-  const [local, setLocal] = useState<LogFilters>(initial)
-  const [show, setShow] = useState(false)
+const COLORS = { brand: '#f97316', emerald: '#10b981', sky: '#0ea5e9', violet: '#8b5cf6', amber: '#f59e0b', rose: '#f43f5e', slate: '#94a3b8' }
+const PIE_COLORS = ['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#ec4899']
 
-  const apply = () => {
-    onChange(local)
-    setShow(false)
-  }
+const tooltipStyle = { fontFamily: 'Vazirmatn, sans-serif', borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12, background: '#fff' }
 
+function SummaryCard({ icon, label, value, sub, accent }: { icon: React.ReactNode; label: string; value: string; sub?: string; accent: string }) {
   return (
-    <div>
-      <button
-        onClick={() => setShow((s) => !s)}
-        className="btn-outline flex items-center gap-2"
-      >
-        <Filter className="h-4 w-4" /> فیلترها
-      </button>
-      <AnimatePresence>
-        {show && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="relative z-10 mt-3 rounded-2xl border border-ink-200 bg-white p-4 shadow-lg"
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
-              <div>
-                <label className="label">خط</label>
-                <select
-                  className="input"
-                  value={local.line ?? ''}
-                  onChange={(e) => setLocal({ ...local, line: e.target.value ? Number(e.target.value) : undefined })}
-                >
-                  <option value="">همه</option>
-                  {selectedFactory?.lines.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">شیفت</label>
-                <select
-                  className="input"
-                  value={local.shift ?? ''}
-                  onChange={(e) => setLocal({ ...local, shift: e.target.value ? Number(e.target.value) : undefined })}
-                >
-                  <option value="">همه</option>
-                  {selectedFactory?.shifts.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">از تاریخ</label>
-                <input type="date" className="input" value={local.date_from || ''} onChange={(e) => setLocal({ ...local, date_from: e.target.value || undefined })} />
-              </div>
-              <div>
-                <label className="label">تا تاریخ</label>
-                <input type="date" className="input" value={local.date_to || ''} onChange={(e) => setLocal({ ...local, date_to: e.target.value || undefined })} />
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => { setLocal({}); onChange({}); setShow(false); }}>
-                <X className="h-4 w-4" /> پاک کردن
-              </button>
-              <button className="btn-primary" onClick={apply}>
-                اعمال فیلترها
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="card flex items-center gap-4 p-4 transition hover:shadow-md">
+      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}>{icon}</div>
+      <div className="min-w-0">
+        <div className="text-xs font-medium text-ink-400">{label}</div>
+        <div className="truncate text-xl font-extrabold text-ink-800 dark:text-slate-100">{value}</div>
+        {sub && <div className="text-[11px] text-ink-400">{sub}</div>}
+      </div>
     </div>
   )
 }
 
-export function generateReportsData(logs: DeviceLog[]): Record<string, any>[] {
-  return logs.map((l) => {
-    const factory = l.line?.factory?.name || '—'
-    const line = l.line?.name || '—'
-    const shift = l.shift?.name || '—'
-    const device = l.device?.name || 'بدون دستگاه'
-    const cause = l.failure_cause?.title || 'بدون علت'
-    return {
-      'کارخانه': factory,
-      'خط': line,
-      'شیفت': shift,
-      'دستگاه': device,
-      'علت خرابی': cause,
-      'روز': l.date,
-      'ساعات کارکرد': l.runtime_hours,
-      'ساعات توقف': l.downtime_hours,
-      'تناژ ورودی': l.feed_tonnage,
-      'تناژ خروجی': l.product_tonnage,
-      'تناژ باطله': l.tailing_tonnage,
-      'راندمان': l.efficiency,
-      'آیا آنالیزور؟': l.device?.is_analyzer ? 'بله' : 'خیر',
-      'شرح خرابی': l.failure_description || '—',
-      'شرح اقدامات': l.repair_description || '—',
-    }
-  })
+function getGroupKey(date: string, range: ReportRange): string {
+  if (range === 'daily') return date
+  const d = new Date(date)
+  if (range === 'weekly') {
+    const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+    const day = tmp.getUTCDay() || 7
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - day)
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1))
+    const week = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+    return `${tmp.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function getLogRangeStats(logs: DeviceLog[]) {
-  // راندمان به تفکیک خط
+function getGroupLabel(key: string, range: ReportRange): string {
+  if (range === 'daily') return formatDate(key)
+  if (range === 'weekly') { const [, w] = key.split('-W'); return `هفته ${w}` }
+  const months = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
+  const [, m] = key.split('-')
+  return `${months[Number(m) - 1] || ''}`
+}
+
+function computeStats(logs: DeviceLog[], range: ReportRange) {
+  const totalFeed = logs.reduce((s, l) => s + (l.feed_tonnage || 0), 0)
+  const totalProduct = logs.reduce((s, l) => s + (l.product_tonnage || 0), 0)
+  const totalDowntime = logs.reduce((s, l) => s + (l.downtime_hours || 0), 0)
+  const effs = logs.filter(l => l.efficiency != null).map(l => l.efficiency!)
+  const avgEff = effs.length ? effs.reduce((a, b) => a + b, 0) / effs.length : null
+
+  const tonnageByDate = logs.reduce((acc, l) => {
+    const key = getGroupKey(l.date, range)
+    if (!acc[key]) acc[key] = { name: key, ورودی: 0, خروجی: 0, باطله: 0, راندمان: [] as number[] }
+    acc[key].ورودی += l.feed_tonnage
+    acc[key].خروجی += l.product_tonnage
+    acc[key].باطله += l.tailing_tonnage
+    if (l.efficiency != null) acc[key].راندمان.push(l.efficiency)
+    return acc
+  }, {} as Record<string, any>)
+
+  const tonnageData = Object.values(tonnageByDate)
+    .map((d: any) => ({ ...d, راندمان: d.راندمان.length ? Math.round((d.راندمان.reduce((a: number, b: number) => a + b, 0) / d.راندمان.length) * 10) / 10 : null }))
+    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+
   const efficiencyByLine = logs.reduce((acc, l) => {
-    if (!l.line?.name) return acc
-    if (!acc[l.line.name]) acc[l.line.name] = { product: 0, feed: 0, count: 0 }
-    if (l.efficiency != null) {
-      acc[l.line.name].product += l.efficiency
-      acc[l.line.name].feed += 1
-    }
+    if (!l.line?.name || l.efficiency == null) return acc
+    if (!acc[l.line.name]) acc[l.line.name] = { sum: 0, count: 0 }
+    acc[l.line.name].sum += l.efficiency
+    acc[l.line.name].count += 1
     return acc
-  }, {} as Record<string, { product: number; feed: number; count: number }>)
+  }, {} as Record<string, { sum: number; count: number }>)
 
-  const lineEfficiency = Object.entries(efficiencyByLine).map(([name, v]) => ({
-    name,
-    راندمان: v.feed ? (v.product / v.feed) * 100 : 0,
-  }))
+  const lineEfficiency = Object.entries(efficiencyByLine).map(([name, v]) => ({ name, راندمان: Math.round((v.sum / v.count) * 10) / 10 }))
 
-  // تناژ به تفکیک علت خرابی
-  const tonnageByFailure = logs.reduce((acc, l) => {
-    const cause = l.failure_cause?.title || 'بدون علت'
-    if (!acc[cause]) acc[cause] = { feed: 0, product: 0, downtime: 0 }
-    acc[cause].feed += l.feed_tonnage
-    acc[cause].product += l.product_tonnage
-    acc[cause].downtime += l.downtime_hours
-    return acc
-  }, {} as Record<string, { feed: number; product: number; downtime: number }>)
-
-  const failureTonnage = Object.entries(tonnageByFailure).map(([name, v]) => ({
-    name,
-    تناژ: v.feed,
-    ساعات_توقف: v.downtime,
-  }))
-
-  // تناژ در طول زمان
-  const dailyData = logs.reduce((acc, l) => {
-    if (!acc[l.date]) acc[l.date] = { روز: l.date, ورودی: 0, خروجی: 0, باطله: 0 }
-    acc[l.date].ورودی += l.feed_tonnage
-    acc[l.date].خروجی += l.product_tonnage
-    acc[l.date].باطله += l.tailing_tonnage
-    return acc
-  }, {} as Record<string, { روز: string; ورودی: number; خروجی: number; باطله: number }>)
-
-  const dailyChartData = Object.values(dailyData).sort((a, b) => a.روز.localeCompare(b.روز))
-
-  // توزیع شیفت
   const shiftCounts = logs.reduce((acc, l) => {
-    const shift = l.shift?.name || 'بدون شیفت'
-    acc[shift] = (acc[shift] || 0) + 1
-    return acc
+    const s = l.shift?.name || 'بدون شیفت'
+    acc[s] = (acc[s] || 0) + 1; return acc
   }, {} as Record<string, number>)
-
   const shiftPieData = Object.entries(shiftCounts).map(([name, value]) => ({ name, value }))
 
-  return {
-    lineEfficiency,
-    failureTonnage,
-    dailyChartData,
-    shiftPieData,
-  }
+  const failureStats = logs.reduce((acc, l) => {
+    const cause = l.failure_cause?.title || 'بدون خرابی'
+    if (!acc[cause]) acc[cause] = { name: cause, توقف: 0, تناژ_ازدست: 0 }
+    acc[cause].توقف += l.downtime_hours
+    acc[cause].تناژ_ازدست += l.downtime_hours > 0 ? (l.feed_tonnage * (l.downtime_hours / 8)) : 0
+    return acc
+  }, {} as Record<string, { name: string; توقف: number; تناژ_ازدست: number }>)
+  const failureData = Object.values(failureStats).sort((a, b) => b.توقف - a.توقف)
+
+  const downtimeByLine = logs.reduce((acc, l) => {
+    if (!l.line?.name) return acc
+    if (!acc[l.line.name]) acc[l.line.name] = { name: l.line.name, توقف: 0, کارکرد: 0 }
+    acc[l.line.name].توقف += l.downtime_hours
+    acc[l.line.name].کارکرد += l.runtime_hours
+    return acc
+  }, {} as Record<string, { name: string; توقف: number; کارکرد: number }>)
+  const lineUtilData = Object.values(downtimeByLine)
+
+  return { totalFeed, totalProduct, totalDowntime, avgEff, tonnageData, lineEfficiency, shiftPieData, failureData, lineUtilData, logCount: logs.length }
 }
 
 export default function Reports() {
   const { selectedFactory } = useFactory()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin' || user?.is_superuser
+  const lineIds = useMemo(() => (selectedFactory?.lines ?? []).map(l => l.id), [selectedFactory])
 
   const [tab, setTab] = useState<'charts' | 'logs'>('charts')
   const [logs, setLogs] = useState<DeviceLog[]>([])
@@ -203,247 +125,273 @@ export default function Reports() {
   const [filters, setFilters] = useState<LogFilters>({})
   const [exporting, setExporting] = useState(false)
   const [range, setRange] = useState<ReportRange>('daily')
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(50)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     const bounds = rangeBounds(range)
-    const query = tab === 'charts'
-      ? { ...filters, date_from: bounds.from, date_to: bounds.to }
-      : filters
-    try {
-      const data = await fetchAllLogs(query, tab === 'charts' ? 120 : 200, (chunk) => {
-        setLogs((prev) => {
-          const merged = [...prev, ...chunk]
-          return merged.filter((l, idx, arr) => idx === arr.findIndex((x) => x.id === l.id))
-        })
-      })
-      setLogs(data)
-      setError(null)
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
+    const merged: any = { ...filters, date_from: bounds.from, date_to: bounds.to }
+    if (lineIds.length) merged.lines = lineIds.join(',')
+
+    if (tab === 'logs') {
+      const q = { ...filters }
+      if (lineIds.length) (q as any).lines = lineIds.join(',')
+      try {
+        const data = await fetchAllLogs(q, 200)
+        setLogs(data.filter(l => !lineIds.length || lineIds.includes(l.line.id)))
+        setError(null)
+      } catch (e: any) { setError(e.message) }
+      finally { setLoading(false) }
+    } else {
+      try {
+        const data = await fetchAllLogs(merged, 120)
+        setLogs(data)
+        setError(null)
+      } catch (e: any) { setError(e.message) }
+      finally { setLoading(false) }
     }
-  }
+  }, [selectedFactory, filters, range, tab, lineIds])
 
-  useEffect(() => {
-    if (selectedFactory) load()
-  }, [selectedFactory, filters, range, tab])
+  useEffect(() => { if (selectedFactory) load() }, [load])
 
-  const filteredLogs = useMemo(() => logs, [logs])
-  const reportStats = useMemo(() => getLogRangeStats(filteredLogs), [filteredLogs])
+  const stats = useMemo(() => computeStats(logs, range), [logs, range])
+
+  const pageLogs = useMemo(() => {
+    const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date))
+    const start = (page - 1) * pageSize
+    return sorted.slice(start, start + pageSize)
+  }, [logs, page, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(logs.length / pageSize))
 
   const handleExport = async () => {
+    setExporting(true)
     try {
-      setExporting(true)
-      await exportToExcel(generateReportsData(filteredLogs), 'گزارشات_کارخانه')
-    } catch {
-    } finally {
-      setExporting(false)
-    }
+      const rows: Record<string, string | number>[] = logs.map(l => ({
+        'کارخانه': l.line?.factory?.name || '—',
+        'خط': l.line?.name || '—',
+        'شیفت': l.shift?.name || '—',
+        'دستگاه': l.device?.name || 'بدون',
+        'علت خرابی': l.failure_cause?.title || '—',
+        'تاریخ': l.date,
+        'کارکرد': l.runtime_hours,
+        'توقف': l.downtime_hours,
+        'ورودی': l.feed_tonnage,
+        'خروجی': l.product_tonnage,
+        'باطله': l.tailing_tonnage,
+        'راندمان': l.efficiency ?? 0,
+      }))
+      await exportToExcel(rows, `گزارشات_کارخانه_${selectedFactory?.name || ''}`)
+    } finally { setExporting(false) }
   }
 
   if (!isAdmin) {
-    return (
-      <EmptyState
-        icon={<ActivityIcon className="h-10 w-10" />}
-        title="دسترسی غیرمجاز"
-        description="شما به این بخش دسترسی ندارید. فقط ادمین‌ها می‌توانند گزارش‌ها را مشاهده کنند."
-      />
-    )
+    return <EmptyState icon={<ActivityIcon className="h-10 w-10" />} title="دسترسی غیرمجاز" description="فقط ادمین‌ها می‌توانند گزارش‌ها را مشاهده کنند." />
   }
 
   return (
-    <div className="animate-fade-in space-y-5">
+    <div className="animate-fade-in space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold text-ink-900">گزارش‌ها و تحلیل‌ها</h1>
-          <p className="text-sm text-ink-500">
-            خروجی‌های پویا، نمودارهای مجموع‌بندی‌شده و داده‌های خام Excel برای تمام کارخانه‌ها
-          </p>
+          <h1 className="text-xl font-extrabold text-ink-900 dark:text-slate-100">گزارش‌ها و تحلیل‌ها</h1>
+          <p className="text-sm text-ink-500">آمار تجمیعی، نمودارهای عملکرد و خروجی Excel برای {selectedFactory?.name}</p>
         </div>
         <div className="flex gap-2">
-          {(['charts', 'logs'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`btn-outline ${tab === t ? 'bg-brand-50 border-brand-500 text-brand-700' : ''}`}
-            >
-              {t === 'charts' ? 'نمودارها' : 'گزارش عملکرد'}
+          {(['charts', 'logs'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`btn-outline ${tab === t ? 'bg-brand-50 border-brand-500 text-brand-700 dark:bg-brand-950/30 dark:border-brand-600 dark:text-brand-400' : ''}`}>
+              {t === 'charts' ? 'نمودارها' : 'داده‌های خام'}
             </button>
           ))}
         </div>
       </div>
 
-      {error && <ErrorBanner message={error} />}
+      {error && <ErrorBanner message={error} onRetry={load} />}
+
+      {loading ? <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div> : (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <SummaryCard icon={<TrendingUp className="h-6 w-6 text-brand-600" />} label="تناژ ورودی" value={`${formatNumber(Math.round(stats.totalFeed / 1000))} هزار تن`} sub={formatNumber(stats.logCount) + ' رکورد'} accent="bg-brand-50 dark:bg-brand-950/30" />
+          <SummaryCard icon={<TrendingUp className="h-6 w-6 text-emerald-600" />} label="تناژ خروجی" value={`${formatNumber(Math.round(stats.totalProduct / 1000))} هزار تن`} sub={`${formatPercent(stats.totalProduct / (stats.totalFeed || 1) * 100)} بازدهی`} accent="bg-emerald-50 dark:bg-emerald-950/30" />
+          <SummaryCard icon={<ActivityIcon className="h-6 w-6 text-sky-600" />} label="میانگین راندمان" value={formatPercent(stats.avgEff)} sub={`از ${stats.logCount} گزارش`} accent="bg-sky-50 dark:bg-sky-950/30" />
+          <SummaryCard icon={<Clock className="h-6 w-6 text-rose-600" />} label="مجموع توقف" value={`${formatNumber(Math.round(stats.totalDowntime))} ساعت`} sub={stats.totalFeed ? `${formatPercent(stats.totalDowntime / (stats.totalFeed / 200))}٪ توقف` : '—'} accent="bg-rose-50 dark:bg-rose-950/30" />
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {tab === 'charts' ? (
-          <motion.div key="charts" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <div className="space-y-6">
-              <div className="card p-5">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-ink-900">نمودارهای عملکرد</h2>
-                    <p className="text-sm text-ink-500">روند تناژ و تولید بر اساس بازه زمانی انتخاب‌شده</p>
-                  </div>
-                  <div className="flex gap-2">
-                    {(['daily', 'weekly', 'monthly'] as const).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => setRange(r)}
-                        className={`btn-outline ${range === r ? 'bg-brand-50 border-brand-500 text-brand-700' : ''}`}
-                      >
-                        {r === 'daily' ? 'روزانه' : r === 'weekly' ? 'هفتگی' : 'ماهانه'}
-                      </button>
-                    ))}
-                  </div>
+          <motion.div key="charts" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+            <div className="card p-5">
+              <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+                <div>
+                  <h2 className="text-base font-bold text-ink-900 dark:text-slate-100">نمودارهای عملکرد</h2>
+                  <p className="text-xs text-ink-500">روند تناژ و راندمان بر اساس بازه زمانی</p>
                 </div>
-
-                {(() => {
-                  return (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <div className="rounded-xl bg-ink-50 p-4">
-                        <div className="text-xs text-ink-400">تناژ ورودی</div>
-                        <div className="text-xl font-bold text-ink-800">{(reportStats.dailyChartData.reduce((s, v) => s + v.ورودی, 0) / 1000).toFixed(1)} تن</div>
-                      </div>
-                      <div className="rounded-xl bg-ink-50 p-4">
-                        <div className="text-xs text-ink-400">تناژ خروجی</div>
-                        <div className="text-xl font-bold text-emerald-600">{(reportStats.dailyChartData.reduce((s, v) => s + v.خروجی, 0) / 1000).toFixed(1)} تن</div>
-                      </div>
-                      <div className="rounded-xl bg-ink-50 p-4">
-                        <div className="text-xs text-ink-400">تناژ باطله</div>
-                        <div className="text-xl font-bold text-amber-600">{(reportStats.dailyChartData.reduce((s, v) => s + v.باطله, 0) / 1000).toFixed(1)} تن</div>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                <div className="mt-6 h-72">
-                  {loading ? <Loading /> : filteredLogs.length === 0 ? (
-                    <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای برای نمایش وجود ندارد" description={`داده‌ای برای بازه ${range} وجود ندارد.`} />
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={(() => {
-                        const grouped = filteredLogs.reduce((acc, l) => {
-                          const key = range === 'daily' ? l.date : (range === 'weekly' ? l.date.substring(0, 7) : l.date.substring(0, 4) + '-' + l.date.substring(5, 7))
-                          if (!acc[key]) acc[key] = { name: key, ورودی: 0, خروجی: 0, باطله: 0, downtime: 0 }
-                          acc[key].ورودی += l.feed_tonnage
-                          acc[key].خروجی += l.product_tonnage
-                          acc[key].باطله += l.tailing_tonnage
-                          acc[key].downtime += l.downtime_hours
-                          return acc
-                        }, {} as Record<string, any>)
-                        return Object.values(grouped).sort((a, b) => a.name.localeCompare(b.name))
-                      })()} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
-                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                        <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                        <Tooltip contentStyle={{ fontFamily: 'Vazirmatn, sans-serif', borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                        <Bar dataKey="ورودی" stackId="a" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="خروجی" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="باطله" stackId="a" fill="#fb923c" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
+                <div className="flex gap-2">
+                  {(['daily', 'weekly', 'monthly'] as const).map(r => (
+                    <button key={r} onClick={() => { setRange(r); setPage(1) }}
+                      className={`btn-outline !py-1.5 !px-3 text-xs ${range === r ? 'bg-brand-50 border-brand-500 text-brand-700 dark:bg-brand-950/30 dark:border-brand-600 dark:text-brand-400' : ''}`}>
+                      {r === 'daily' ? '۳۰ روز' : r === 'weekly' ? '۱۲ هفته' : '۱۲ ماه'}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div className="card p-5">
-                  <h3 className="mb-4 text-sm font-bold text-ink-700">راندمان به تفکیک خط</h3>
-                  {loading ? <Loading /> : (() => {
-                    return reportStats.lineEfficiency.length === 0 ? (
-                      <EmptyState title="داده‌ای برای نمایش وجود ندارد" description="داده‌ای کافی برای نمایش راندمان خطوط وجود ندارد." />
-                    ) : (
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={reportStats.lineEfficiency} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
-                            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                            <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                            <Tooltip contentStyle={{ fontFamily: 'Vazirmatn, sans-serif', borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                            <Bar dataKey="راندمان" fill="#f97316" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )
-                  })()}
-                </div>
+              {stats.tonnageData.length === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" description={`برای بازه ${range === 'daily' ? '۳۰ روزه' : range === 'weekly' ? '۱۲ هفته' : '۱۲ ماهه'} داده‌ای ثبت نشده.`} /> : (
+                <>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.tonnageData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => getGroupLabel(v, range)} />
+                        <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <Tooltip contentStyle={tooltipStyle} labelFormatter={(v) => getGroupLabel(v, range)} formatter={(v: number, n) => [formatNumber(Math.round(v)) + ' تن', n]} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="ورودی" name="ورودی" fill={COLORS.slate} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="خروجی" name="خروجی" fill={COLORS.emerald} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="باطله" name="باطله" fill={COLORS.amber} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-5 h-56">
+                    <h4 className="mb-2 text-xs font-bold text-ink-600 dark:text-slate-400">روند راندمان</h4>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={stats.tonnageData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => getGroupLabel(v, range)} />
+                        <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} domain={[0, 100]} />
+                        <Tooltip contentStyle={tooltipStyle} labelFormatter={(v) => getGroupLabel(v, range)} formatter={(v: number) => [`${v}٪`, 'راندمان']} />
+                        <Area type="monotone" dataKey="راندمان" stroke={COLORS.brand} fill={COLORS.brand} fillOpacity={0.1} strokeWidth={2.5} dot={{ r: 3 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
+              )}
+            </div>
 
-                <div className="card p-5">
-                  <h3 className="mb-4 text-sm font-bold text-ink-700">توزیع شیفت</h3>
-                  {loading ? <Loading /> : (() => {
-                    return reportStats.shiftPieData.length === 0 ? (
-                      <EmptyState title="داده‌ای برای نمایش وجود ندارد" description="داده‌ای کافی برای نمایش توزیع شیفت وجود ندارد." />
-                    ) : (
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={reportStats.shiftPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
-                              {reportStats.shiftPieData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#ec4899'][index % 5]} />
-                              ))}
-                            </Pie>
-                            <Tooltip contentStyle={{ fontFamily: 'Vazirmatn, sans-serif', borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )
-                  })()}
-                </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="card p-5">
+                <h3 className="mb-4 text-sm font-bold text-ink-700 dark:text-slate-200">راندمان به تفکیک خط</h3>
+                {stats.lineEfficiency.length === 0 ? <EmptyState title="داده نیست" /> : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.lineEfficiency} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} domain={[0, 100]} />
+                        <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v}٪`, 'راندمان']} />
+                        <Bar dataKey="راندمان" fill={COLORS.brand} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              <div className="card p-5">
+                <h3 className="mb-4 text-sm font-bold text-ink-700 dark:text-slate-200">توزیع شیفت‌ها</h3>
+                {stats.shiftPieData.length === 0 ? <EmptyState title="داده نیست" /> : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={stats.shiftPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                          label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                          {stats.shiftPieData.map((_, i) => (<Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />))}
+                        </Pie>
+                        <Tooltip contentStyle={tooltipStyle} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              <div className="card p-5">
+                <h3 className="mb-4 text-sm font-bold text-ink-700 dark:text-slate-200">ساعات توقف به تفکیک علت</h3>
+                {stats.failureData.length === 0 ? <EmptyState title="داده نیست" /> : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.failureData} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                        <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} width={100} />
+                        <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${formatNumber(Math.round(v))} ساعت`, '']} />
+                        <Bar dataKey="توقف" fill={COLORS.rose} radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              <div className="card p-5">
+                <h3 className="mb-4 text-sm font-bold text-ink-700 dark:text-slate-200">کارکرد / توقف به تفکیک خط</h3>
+                {stats.lineUtilData.length === 0 ? <EmptyState title="داده نیست" /> : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.lineUtilData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${formatNumber(Math.round(v))} ساعت`, '']} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="کارکرد" name="کارکرد" stackId="a" fill={COLORS.emerald} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="توقف" name="توقف" stackId="a" fill={COLORS.rose} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
         ) : (
-          <motion.div key="logs" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <div className="space-y-4">
-              <div className="card flex flex-wrap items-end justify-between gap-3 p-4">
-                <ReportFilters onChange={(f) => { setFilters(f); load(); }} initial={filters} />
-                <button onClick={handleExport} className="btn-outline flex items-center gap-2" disabled={exporting || filteredLogs.length === 0}>
-                  <Download className="h-4 w-4" /> {exporting ? 'در حال خروجی‌سازی...' : 'خروجی Excel'}
+          <motion.div key="logs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+            <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-600"><FileSpreadsheet className="h-4 w-4" /> {formatNumber(stats.logCount)} رکورد</div>
+              <div className="flex gap-2">
+                <button onClick={handleExport} className="btn-outline" disabled={exporting || logs.length === 0}>
+                  <Download className="h-4 w-4" /> {exporting ? 'در حال خروجی...' : 'خروجی Excel'}
                 </button>
               </div>
-
-              {loading ? <Loading /> : filteredLogs.length === 0 ? (
-                <EmptyState icon={<FileSpreadsheet className="h-10 w-10" />} title="گزارشی یافت نشد" description="هیچ گزارشی با فیلترهای انتخاب‌شده موجود نیست." />
-              ) : (
-                <div className="card overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-ink-100 bg-ink-50/60 text-right text-xs text-ink-500">
-                          <th className="px-4 py-3 font-semibold">کارخانه</th>
-                          <th className="px-4 py-3 font-semibold">خط</th>
-                          <th className="px-4 py-3 font-semibold">شیفت</th>
-                          <th className="px-4 py-3 font-semibold">دستگاه</th>
-                          <th className="px-4 py-3 font-semibold">علت خرابی</th>
-                          <th className="px-4 py-3 font-semibold">تاریخ</th>
-                          <th className="px-4 py-3 font-semibold">ساعت کارکرد</th>
-                          <th className="px-4 py-3 font-semibold">ساعت توقف</th>
-                          <th className="px-4 py-3 font-semibold">راندمان</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-ink-100">
-                        {filteredLogs.map((l) => (
-                          <tr key={l.id} className="hover:bg-ink-50/50">
-                            <td className="px-4 py-3 font-medium text-ink-700">{l.line?.factory?.name}</td>
-                            <td className="px-4 py-3">{l.line?.name}</td>
-                            <td className="px-4 py-3">{l.shift?.name}</td>
-                            <td className="px-4 py-3">{l.device?.name || <span className="text-ink-400">—</span>}</td>
-                            <td className="px-4 py-3">{l.failure_cause?.title || <span className="text-ink-400">—</span>}</td>
-                            <td className="px-4 py-3">{l.date}</td>
-                            <td className="px-4 py-3">{l.runtime_hours}</td>
-                            <td className="px-4 py-3">{l.downtime_hours}</td>
-                            <td className="px-4 py-3 font-semibold text-emerald-600">{l.efficiency}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
             </div>
+
+            {loading ? <TableSkeleton columns={9} /> : logs.length === 0 ? (
+              <EmptyState icon={<FileSpreadsheet className="h-10 w-10" />} title="گزارشی یافت نشد" description="با فیلترهای فعلی رکوردی وجود ندارد." />
+            ) : (
+              <div className="card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-ink-100 bg-ink-50/60 text-right text-xs text-ink-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
+                        <th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">خط</th>
+                        <th className="px-4 py-3 font-semibold">شیفت</th><th className="px-4 py-3 font-semibold">ورودی</th>
+                        <th className="px-4 py-3 font-semibold">خروجی</th><th className="px-4 py-3 font-semibold">کارکرد</th>
+                        <th className="px-4 py-3 font-semibold">توقف</th><th className="px-4 py-3 font-semibold">راندمان</th>
+                        <th className="px-4 py-3 font-semibold">علت</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-ink-100 dark:divide-slate-700">
+                      {pageLogs.map(l => (
+                        <tr key={l.id} className={`transition hover:bg-ink-50/50 dark:hover:bg-slate-800/50 ${l.efficiency != null && l.efficiency < 40 ? 'bg-rose-50/40 dark:bg-rose-950/20' : l.efficiency != null && l.efficiency > 80 ? 'bg-emerald-50/40 dark:bg-emerald-950/20' : ''}`}>
+                          <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(l.date)}</td>
+                          <td className="px-4 py-3 dark:text-slate-300">{l.line?.name}</td>
+                          <td className="px-4 py-3 dark:text-slate-400">{l.shift?.name}</td>
+                          <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.feed_tonnage)}</td>
+                          <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.product_tonnage)}</td>
+                          <td className="px-4 py-3">{formatNumber(l.runtime_hours)}</td>
+                          <td className="px-4 py-3">{l.downtime_hours > 0 ? <span className="text-rose-600">{formatNumber(l.downtime_hours)}</span> : '—'}</td>
+                          <td className="px-4 py-3"><span className={`font-bold ${l.efficiency != null && l.efficiency < 40 ? 'text-rose-600' : l.efficiency != null && l.efficiency > 80 ? 'text-emerald-600' : 'text-ink-600 dark:text-slate-300'}`}>{formatPercent(l.efficiency)}</span></td>
+                          <td className="px-4 py-3 text-ink-500 dark:text-slate-400">{l.failure_cause?.title || <span className="text-ink-300">—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {logs.length > pageSize && (
+                  <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3 dark:border-slate-700">
+                    <span className="text-xs text-ink-400">نمایش {Math.min((page - 1) * pageSize + 1, logs.length)} تا {Math.min(page * pageSize, logs.length)} از {formatNumber(logs.length)} رکورد</span>
+                    <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
