@@ -3,7 +3,9 @@ from rest_framework import viewsets, permissions
 from .models import DeviceDailyAnalysis, DeviceLog, Factory
 from .serializers import (
     DeviceDailyAnalysisSerializer,
+    DeviceDailyAnalysisWriteSerializer,
     DeviceLogSerializer,
+    DeviceLogWriteSerializer,
     FactoryFullDetailSerializer,
 )
 from .filters import DailyAnalysisFilter, DeviceLogFilter
@@ -30,6 +32,11 @@ class DeviceLogViewSet(viewsets.ModelViewSet):
     filterset_class = DeviceLogFilter
     pagination_class = StandardPagination
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return DeviceLogWriteSerializer
+        return DeviceLogSerializer
 
     def get_queryset(self):
         qs = DeviceLog.objects.all().select_related('line__factory', 'shift', 'device', 'failure_cause')
@@ -62,6 +69,11 @@ class DeviceDailyAnalysisViewSet(viewsets.ModelViewSet):
     filterset_class = DailyAnalysisFilter
     pagination_class = StandardPagination
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return DeviceDailyAnalysisWriteSerializer
+        return DeviceDailyAnalysisSerializer
 
     def get_queryset(self):
         qs = DeviceDailyAnalysis.objects.all().select_related('device__line__factory', 'shift')

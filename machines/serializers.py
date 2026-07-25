@@ -47,18 +47,24 @@ class FactoryFullDetailSerializer(serializers.ModelSerializer):
         return FailureReasonSerializer(FailureReason.objects.all(), many=True).data
 
 class DeviceDailyAnalysisSerializer(serializers.ModelSerializer):
-    device_name = serializers.ReadOnlyField(source='device.name')
-    shift_name = serializers.ReadOnlyField(source='shift.name')
+    device = DeviceSerializer(read_only=True)
+    shift = ShiftSerializer(read_only=True)
     sample_point_display = serializers.SerializerMethodField()
 
     class Meta:
         model = DeviceDailyAnalysis
-        fields = ['id', 'device', 'device_name', 'sample_point', 'sample_point_display',
-                  'shift', 'shift_name', 'date', 'analysis_text', 'value_1', 'value_2', 'created_at']
+        fields = ['id', 'device', 'sample_point', 'sample_point_display',
+                  'shift', 'date', 'analysis_text', 'value_1', 'value_2', 'created_at']
         read_only_fields = ['created_at']
 
     def get_sample_point_display(self, obj):
         return obj.get_sample_point_display() if obj.sample_point else None
+
+
+class DeviceDailyAnalysisWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeviceDailyAnalysis
+        fields = ['device', 'sample_point', 'shift', 'date', 'analysis_text', 'value_1', 'value_2']
 
 
 class FactoryMinSerializer(serializers.ModelSerializer):
@@ -77,16 +83,15 @@ class ProductionLineMinSerializer(serializers.ModelSerializer):
 
 class DeviceLogSerializer(serializers.ModelSerializer):
     efficiency = serializers.ReadOnlyField()
-    line_detail = ProductionLineMinSerializer(source='line', read_only=True)
-    shift_detail = ShiftSerializer(source='shift', read_only=True)
-    device_detail = DeviceSerializer(source='device', read_only=True)
-    failure_cause_detail = FailureReasonSerializer(source='failure_cause', read_only=True)
+    line = ProductionLineMinSerializer(read_only=True)
+    shift = ShiftSerializer(read_only=True)
+    device = DeviceSerializer(read_only=True)
+    failure_cause = FailureReasonSerializer(read_only=True)
 
     class Meta:
         model = DeviceLog
         fields = [
-            'id', 'line', 'line_detail', 'shift', 'shift_detail',
-            'date', 'device', 'device_detail', 'failure_cause', 'failure_cause_detail',
+            'id', 'line', 'shift', 'date', 'device', 'failure_cause',
             'runtime_hours', 'downtime_hours', 'failure_description', 'repair_description',
             'feed_tonnage', 'product_tonnage', 'tailing_tonnage', 'efficiency', 'created_at',
         ]
