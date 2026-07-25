@@ -1,12 +1,13 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Pencil, Trash2, X, Filter, FlaskConical } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useToast } from '../components/ui/Toast'
-import { fetchAllAnalyses, createAnalysis, updateAnalysis, deleteAnalysis } from '../api/analysis'
+import { getAnalysesPage, createAnalysis, updateAnalysis, deleteAnalysis } from '../api/analysis'
 import type { DeviceDailyAnalysis, AnalysisFilters, DeviceDailyAnalysisPayload } from '../types'
 import type { SamplePoint } from '../types'
 import { Loading, EmptyState, ErrorBanner, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
+import Pagination from '../components/ui/Pagination'
 import { formatDate, formatNumber, todayISO } from '../utils'
 import { SAMPLE_POINT_LABELS, SAMPLE_POINT_STYLE } from '../constants'
 
@@ -73,25 +74,25 @@ export default function Analysis() {
   const [form, setForm] = useState<AnalysisFormState>(() => ({ device: '', shift: '', sample_point: '', date: todayISO(), value_1: null, value_2: null, analysis_text: '' }))
   const [saving, setSaving] = useState(false)
   const [confirmId, setConfirmId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize] = useState(30)
+  const [totalCount, setTotalCount] = useState(0)
 
   const analyzerIds = useMemo(() => analyzers.map((d) => d.id), [analyzers])
 
-  const load = async () => {
+  const load = useCallback(() => {
     setLoading(true)
-    try {
-      const data = await fetchAllAnalyses(filters, 120, (chunk, current, total) => {
-        setItems((prev) => {
-          const merged = current === chunk.length ? chunk : [...prev, ...chunk]
-          return merged.filter((a, idx, arr) => idx === arr.findIndex((x) => x.id === a.id))
-        })
+    getAnalysesPage(filters, page, pageSize)
+      .then((data) => {
+        setItems(analyzerIds.length ? data.results.filter((a) => analyzerIds.includes(a.device.id)) : data.results)
+        setTotalCount(data.count)
+        setError(null)
       })
-      setItems(data.filter((a) => analyzerIds.includes(a.device.id)))
-      setError(null)
-    } catch (e: any) { setError(e.message) }
-    finally { setLoading(false) }
-  }
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [filters, page, pageSize, analyzerIds])
 
-  useEffect(() => { if (selectedFactory && analyzers.length) load() }, [selectedFactory, filters, analyzerIds])
+  useEffect(() => { if (selectedFactory && analyzers.length) load() }, [selectedFactory, load])
 
   const openCreate = () => {
     if (analyzers.length === 0) { notify('هیچ آنالایزوری در این کارخانه وجود ندارد', 'error'); return }
@@ -120,8 +121,9 @@ export default function Analysis() {
     catch (e: any) { notify(e.message || 'خطا در حذف', 'error') }
   }
 
-  const setFilter = (k: keyof AnalysisFilters, v: string) => setFilters((prev) => ({ ...prev, [k]: v === '' ? undefined : (v as any) }))
+  const setFilter = (k: keyof AnalysisFilters, v: string) => { setPage(1); setFilters((prev) => ({ ...prev, [k]: v === '' ? undefined : (v as any) })) }
 
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date))
 
   return (
@@ -149,7 +151,7 @@ export default function Analysis() {
         </div>
         <div className="min-w-[130px]"><label className="label">از تاریخ</label><input type="date" className="input" value={filters.date_from ?? ''} onChange={(e) => setFilter('date_from', e.target.value)} /></div>
         <div className="min-w-[130px]"><label className="label">تا تاریخ</label><input type="date" className="input" value={filters.date_to ?? ''} onChange={(e) => setFilter('date_to', e.target.value)} /></div>
-        <button className="btn-ghost" onClick={() => setFilters({})}><X className="h-4 w-4" /> پاک کردن</button>
+        <button className="btn-ghost" onClick={() => { setFilters({}); setPage(1) }}><X className="h-4 w-4" /> پاک کردن</button>
       </div>
 
       {loading ? <TableSkeleton columns={8} /> : sorted.length === 0 ? (
@@ -186,6 +188,12 @@ export default function Analysis() {
               </tbody>
             </table>
           </div>
+          {!loading && totalCount > pageSize && (
+            <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3 dark:border-slate-700">
+              <span className="text-xs text-ink-400">نمایش {Math.min((page - 1) * pageSize + 1, totalCount)} تا {Math.min(page * pageSize, totalCount)} از {totalCount} رکورد</span>
+              <Pagination currentPage={page} totalPages={totalPages} onPageChange={(p) => { setPage(p); load() }} />
+            </div>
+          )}
         </div>
       )}
 
