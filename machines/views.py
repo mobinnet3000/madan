@@ -1,4 +1,9 @@
-from rest_framework import viewsets, permissions
+import io
+from django.http import FileResponse, Http404
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from .models import DeviceDailyAnalysis, DeviceLog, Factory
 from .serializers import (
@@ -9,6 +14,7 @@ from .serializers import (
     FactoryFullDetailSerializer,
 )
 from .filters import DailyAnalysisFilter, DeviceLogFilter
+from .reports import generate_performance_report, generate_analysis_report, get_date_range, RANGE_LABELS
 from accounts.services import get_user_factory, log_activity
 from core.pagination import StandardPagination
 
@@ -102,3 +108,104 @@ class DeviceDailyAnalysisViewSet(viewsets.ModelViewSet):
                      f"{instance.device.name} - {instance.date}", self.request,
                      factory=self._get_factory_for(instance))
         instance.delete()
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def report_ranges_view(request):
+    ranges = {k: v for k, v in RANGE_LABELS.items()}
+    return Response(ranges)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def performance_report_view(request):
+    factory_id = request.query_params.get('factory_id')
+    range_key = request.query_params.get('range', '30days')
+    date_from = request.query_params.get('date_from')
+    date_to = request.query_params.get('date_to')
+    fmt = request.query_params.get('format', 'pdf').lower()
+
+    factory = get_user_factory(request.user)
+    if factory and not factory_id:
+        factory_id = factory.id
+
+    if factory_id:
+        try:
+            fac_obj = Factory.objects.get(id=factory_id)
+        except Factory.DoesNotExist:
+            raise Http404
+    else:
+        fac_obj = None
+
+    date_from_o = None
+    date_to_o = None
+    if date_from:
+        try:
+            from datetime import datetime
+            date_from_o = datetime.strptime(date_from, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            from datetime import datetime
+            date_to_o = datetime.strptime(date_to, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    if fmt == 'excel':
+        buf, ext = generate_performance_report(factory_id, range_key, date_from_o, date_to_o, fmt='excel')
+        filename = f'performance_report_{factory_id or "all"}_{range_key}.xlsx'
+        return FileResponse(buf, as_attachment=True, filename=filename,
+                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    else:
+        buf, ext = generate_performance_report(factory_id, range_key, date_from_o, date_to_o, fmt='pdf')
+        filename = f'performance_report_{factory_id or "all"}_{range_key}.pdf'
+        return FileResponse(buf, as_attachment=True, filename=filename,
+                            content_type='application/pdf')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def analysis_report_view(request):
+    factory_id = request.query_params.get('factory_id')
+    range_key = request.query_params.get('range', '30days')
+    date_from = request.query_params.get('date_from')
+    date_to = request.query_params.get('date_to')
+    fmt = request.query_params.get('format', 'pdf').lower()
+
+    factory = get_user_factory(request.user)
+    if factory and not factory_id:
+        factory_id = factory.id
+
+    if factory_id:
+        try:
+            fac_obj = Factory.objects.get(id=factory_id)
+        except Factory.DoesNotExist:
+            raise Http404
+
+    date_from_o = None
+    date_to_o = None
+    if date_from:
+        try:
+            from datetime import datetime
+            date_from_o = datetime.strptime(date_from, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            from datetime import datetime
+            date_to_o = datetime.strptime(date_to, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    if fmt == 'excel':
+        buf, ext = generate_analysis_report(factory_id, range_key, date_from_o, date_to_o, fmt='excel')
+        filename = f'analysis_report_{factory_id or "all"}_{range_key}.xlsx'
+        return FileResponse(buf, as_attachment=True, filename=filename,
+                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    else:
+        buf, ext = generate_analysis_report(factory_id, range_key, date_from_o, date_to_o, fmt='pdf')
+        filename = f'analysis_report_{factory_id or "all"}_{range_key}.pdf'
+        return FileResponse(buf, as_attachment=True, filename=filename,
+                            content_type='application/pdf')
