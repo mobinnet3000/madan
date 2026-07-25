@@ -19,51 +19,38 @@ const navItems = [
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin' || user?.is_superuser
-  const items = isAdmin
-    ? [...navItems, { to: '/activity', label: 'لاگ فعالیت‌ها', icon: History, end: false }]
-    : navItems
+  const items = isAdmin ? [...navItems, { to: '/activity', label: 'لاگ فعالیت‌ها', icon: History, end: false }] : navItems
 
   const content = (
-    <aside className="flex h-full w-64 flex-col border-l border-ink-200/60 bg-gradient-to-b from-slate-900 to-slate-950 text-ink-100 dark:from-slate-950 dark:to-slate-950">
+    <aside className="flex h-full w-64 flex-col border-l border-white/5" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' }}>
       <div className="flex items-center justify-between px-5 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-amber-500 shadow-lg shadow-brand-500/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', boxShadow: '0 8px 20px rgba(249,115,22,0.3)' }}>
             <Mountain className="h-5 w-5 text-white" />
           </div>
           <div className="leading-tight">
             <div className="text-sm font-bold text-white">خط فرآوری معدن</div>
-            <div className="text-[11px] text-ink-400">سیستم مدل‌سازی و پایش</div>
+            <div className="text-[11px] text-slate-400">سیستم مدل‌سازی و پایش</div>
           </div>
         </div>
-        <button onClick={onClose} className="rounded-lg p-1.5 text-ink-400 hover:text-white lg:hidden">
-          <X className="h-5 w-5" />
-        </button>
+        <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:text-white lg:hidden"><X className="h-5 w-5" /></button>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
         {items.map((item) => {
           const Icon = item.icon
           return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              onClick={onClose}
-              className={({ isActive }) =>
-                classNames(
-                  'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive ? 'text-white' : 'text-ink-300 hover:bg-white/5 hover:text-white',
-                )
-              }
-            >
+            <NavLink key={item.to} to={item.to} end={item.end} onClick={onClose}
+              className={({ isActive }) => classNames(
+                'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200',
+                isActive ? 'text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white',
+              )}>
               {({ isActive }) => (
                 <>
                   {isActive && (
-                    <motion.span
-                      layoutId="sidebar-active"
-                      className="absolute inset-0 rounded-xl bg-gradient-to-r from-brand-500 to-amber-500 shadow-sm"
-                      transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-                    />
+                    <motion.span layoutId="sidebar-active"
+                      className="absolute inset-0 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.15))', boxShadow: 'inset 0 1px 0 rgba(249,115,22,0.2)' }}
+                      transition={{ type: 'spring', stiffness: 350, damping: 30 }} />
                   )}
                   <Icon className="relative z-10 h-[18px] w-[18px]" />
                   <span className="relative z-10">{item.label}</span>
@@ -74,9 +61,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         })}
       </nav>
 
-      <div className="border-t border-white/10 px-5 py-4">
+      <div className="border-t border-white/5 px-5 py-4">
         {user && <span className={classNames('badge', ROLE_BADGE[user.role])}>{ROLE_LABELS[user.role]}</span>}
-        <div className="mt-1 text-[11px] leading-relaxed text-ink-500">نسخه ۲.۰ · متصل به بک‌اند Django REST</div>
+        <div className="mt-1 text-[11px] leading-relaxed text-slate-500">نسخه ۲.۰ · متصل به بک‌اند Django REST</div>
       </div>
     </aside>
   )
@@ -88,7 +75,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         {open && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm" onClick={onClose} />
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
             <motion.div initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               className="absolute right-0 top-0 h-full">{content}</motion.div>
