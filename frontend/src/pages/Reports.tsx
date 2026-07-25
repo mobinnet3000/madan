@@ -1,25 +1,36 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
-  FileSpreadsheet, Download, BarChart2, Activity as ActivityIcon,
-  TrendingUp, Clock, ChevronDown, FileText, Building2, Calendar,
+  FileSpreadsheet, FileText, BarChart2, Activity as ActivityIcon,
+  TrendingUp, Clock, Building2, Calendar,
 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { fetchAllLogs } from '../api/logs'
 import { fetchAllAnalyses } from '../api/analysis'
-import {
-  downloadPerformanceReport,
-  downloadAnalysisReport,
-  fetchReportRanges,
-} from '../api/reports'
+import { downloadPerformanceReport, downloadAnalysisReport } from '../api/reports'
 import type { DeviceLog, DeviceDailyAnalysis } from '../types'
 import { Loading, EmptyState, ErrorBanner, CardSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
 import { formatDate, formatNumber, formatPercent, todayISO } from '../utils'
 
 type DataType = 'logs' | 'analysis'
-type ReportRange = { key: string; label: string }
+
+// ── بازه‌های زمانی مشخص ──
+const PRESETS = [
+  { label: 'امروز',           key: 'today' as const },
+  { label: 'دیروز',           key: 'yesterday' as const },
+  { label: 'این هفته',        key: 'this_week' as const },
+  { label: 'هفته قبل',        key: 'last_week' as const },
+  { label: 'این ماه',         key: 'this_month' as const },
+  { label: 'ماه قبل',         key: 'last_month' as const },
+  { label: 'امسال',           key: 'this_year' as const },
+  { label: '۷ روز',           key: '7days' as const },
+  { label: '۳۰ روز',          key: '30days' as const },
+  { label: '۹۰ روز',          key: '90days' as const },
+  { label: 'یک سال',          key: '365days' as const },
+  { label: 'همه',             key: 'all' as const },
+]
 
 function KpiCard({ icon, label, value, suffix, accentBg }: { icon: React.ReactNode; label: string; value: string; suffix?: string; accentBg?: string }) {
   return (
@@ -46,15 +57,11 @@ export default function Reports() {
 
   const [dataType, setDataType] = useState<DataType>('logs')
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
-  const [exportOpen, setExportOpen] = useState(false)
-  const [reportRanges, setReportRanges] = useState<ReportRange[]>([])
 
-  // Date range
   const todayStr = useMemo(() => todayISO(), [])
   const [dateFrom, setDateFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0] })
   const [dateTo, setDateTo] = useState(todayStr)
-  const [quickActive, setQuickActive] = useState<number | null>(30)
-  const [activeRangeKey, setActiveRangeKey] = useState<string>('30days')
+  const [activePreset, setActivePreset] = useState<string>('30days')
 
   const [logs, setLogs] = useState<DeviceLog[]>([])
   const [analyses, setAnalyses] = useState<DeviceDailyAnalysis[]>([])
@@ -63,23 +70,17 @@ export default function Reports() {
   const [page, setPage] = useState(1)
   const pageSize = 50
 
-  // Load report ranges on mount
-  useEffect(() => {
-    fetchReportRanges().then(setReportRanges).catch(() => {})
-  }, [])
-
-  const applyQuickDate = (days: number) => {
-    setQuickActive(days)
-    const d = new Date()
-    d.setDate(d.getDate() - days)
-    setDateFrom(d.toISOString().split('T')[0])
-    setDateTo(todayStr)
+  // ── انتخاب بازه ──
+  const applyPreset = (key: string) => {
+    setActivePreset(key)
     setPage(1)
+    // dateFrom/dateTo توسط بک‌اند بر اساس range key اعمال می‌شود
   }
 
-  const applyRange = (key: string) => {
-    setActiveRangeKey(key)
-    setQuickActive(null)
+  const applyCustomDate = (from: string, to: string) => {
+    setDateFrom(from)
+    setDateTo(to)
+    setActivePreset('custom')
     setPage(1)
   }
 
@@ -115,7 +116,6 @@ export default function Reports() {
     const totalDowntime = logs.reduce((s, l) => s + (l.downtime_hours || 0), 0)
     const effs = logs.filter(l => l.efficiency != null).map(l => l.efficiency!)
     const avgEff = effs.length ? effs.reduce((a, b) => a + b, 0) / effs.length : null
-
     const byDate = logs.reduce((acc, l) => {
       if (!acc[l.date]) acc[l.date] = { name: l.date, feed: 0, product: 0, tailing: 0, effs: [] as number[] }
       acc[l.date].feed += l.feed_tonnage; acc[l.date].product += l.product_tonnage; acc[l.date].tailing += l.tailing_tonnage
@@ -123,7 +123,6 @@ export default function Reports() {
       return acc
     }, {} as Record<string, any>)
     const trend = Object.values(byDate).map((d: any) => ({ ...d, efficiency: d.effs.length ? Math.round(d.effs.reduce((a: number, b: number) => a + b, 0) / d.effs.length * 10) / 10 : null })).sort((a: any, b: any) => a.name.localeCompare(b.name))
-
     const byLine = logs.reduce((acc, l) => {
       if (!l.line?.name || l.efficiency == null) return acc
       if (!acc[l.line.name]) acc[l.line.name] = { sum: 0, count: 0 }
@@ -141,7 +140,6 @@ export default function Reports() {
       return acc
     }, {} as Record<string, { count: number; avg1: number }>)
     const deviceData = Object.entries(byDevice).map(([n, v]) => ({ name: n, value: Math.round(v.avg1 / v.count * 10) / 10 }))
-
     const byPoint = analyses.reduce((acc, a) => {
       const p = a.sample_point || 'بدون'; if (!acc[p]) acc[p] = 0; acc[p] += 1; return acc
     }, {} as Record<string, number>)
@@ -159,23 +157,21 @@ export default function Reports() {
 
   const handleExport = async (type: 'excel' | 'pdf') => {
     setExporting(type)
-    setExportOpen(false)
     try {
       if (dataType === 'logs') {
-        await downloadPerformanceReport(factoryId, activeRangeKey, type, dateFrom, dateTo)
+        await downloadPerformanceReport(factoryId, activePreset, type, dateFrom, dateTo)
       } else {
-        await downloadAnalysisReport(factoryId, activeRangeKey, type, dateFrom, dateTo)
+        await downloadAnalysisReport(factoryId, activePreset, type, dateFrom, dateTo)
       }
-    } finally {
-      setExporting(null)
-    }
+    } finally { setExporting(null) }
   }
 
   if (!isAdmin) return <EmptyState icon={<ActivityIcon className="h-10 w-10" />} title="دسترسی غیرمجاز" description="فقط ادمین‌ها می‌توانند گزارش‌ها را مشاهده کنند." />
 
   return (
     <div className="animate-fade-in space-y-6">
-      {/* هدر کارخانه */}
+
+      {/* ── هدر ── */}
       <div className="card-glass p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3 sm:gap-4">
@@ -185,72 +181,73 @@ export default function Reports() {
             <div>
               <h2 className="text-lg sm:text-xl font-extrabold text-ink-900 dark:text-white">{factoryName || 'همه کارخانه‌ها'}</h2>
               {factoryAddr && <p className="text-sm text-ink-500">{factoryAddr}</p>}
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-500">
-                <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> {formatDate(dateFrom)} تا {formatDate(dateTo)}</span>
-                <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {new Date().toLocaleDateString('fa-IR')}</span>
-              </div>
             </div>
           </div>
-          <div className="relative">
-            <button onClick={() => setExportOpen(o => !o)} disabled={exporting !== null}
-              className="btn-primary !py-2 !px-4 text-xs sm:text-sm">
-              {exporting ? <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> خروجی...</> : <><Download className="h-4 w-4" /> خروجی <ChevronDown className={`h-3.5 w-3.5 transition ${exportOpen ? 'rotate-180' : ''}`} /></>}
+          {/* دکمه‌های مستقیم PDF / Excel */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => handleExport('pdf')} disabled={exporting !== null}
+              className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-600 disabled:opacity-50">
+              {exporting === 'pdf' ? <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : <FileText className="h-4 w-4" />}
+              PDF
             </button>
-            <AnimatePresence>
-              {exportOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setExportOpen(false)} />
-                  <motion.div initial={{ opacity: 0, y: -8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                    className="absolute left-0 z-40 mt-2 w-44 overflow-hidden rounded-2xl border bg-white/90 p-1.5 shadow-xl backdrop-blur-xl dark:bg-slate-900/90">
-                    <button onClick={() => handleExport('excel')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-50 dark:text-slate-200 dark:hover:bg-slate-800">
-                      <FileSpreadsheet className="h-4 w-4 text-emerald-500" /> Excel
-                    </button>
-                    <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-50 dark:text-slate-200 dark:hover:bg-slate-800">
-                      <FileText className="h-4 w-4 text-rose-500" /> PDF
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
+            <button onClick={() => handleExport('excel')} disabled={exporting !== null}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50">
+              {exporting === 'excel' ? <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : <FileSpreadsheet className="h-4 w-4" />}
+              Excel
+            </button>
           </div>
         </div>
       </div>
 
-      {/* کنترل‌ها */}
-      <div className="space-y-4">
+      {/* ── انتخاب نوع گزارش + بازه ── */}
+      <div className="card-glass p-5">
         {/* نوع داده */}
-        <div className="flex gap-1.5 rounded-xl p-1 w-fit" style={{ background: 'rgba(241,245,249,0.6)' }}>
+        <div className="flex gap-1.5 rounded-xl p-1 w-fit mb-5" style={{ background: 'rgba(241,245,249,0.6)' }}>
           {(['logs', 'analysis'] as const).map(t => (
             <button key={t} onClick={() => setDataType(t)}
               className={`rounded-lg px-4 py-2 text-sm font-medium transition ${dataType === t ? 'bg-white text-ink-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-ink-500 hover:text-ink-700 dark:text-slate-400'}`}>
-              {t === 'logs' ? '📊 گزارش عملکرد خطوط' : '🧪 گزارش آنالیز دستگاه‌ها'}
+              {t === 'logs' ? '📊 گزارش عملکرد' : '🧪 گزارش آنالیز'}
             </button>
           ))}
         </div>
 
-        {/* بازه‌های زمانی (از بک‌اند) + کاستوم */}
-        <div className="flex flex-wrap items-center gap-2">
-          {reportRanges.map(r => (
-            <button key={r.key} onClick={() => applyRange(r.key)}
-              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${activeRangeKey === r.key ? 'bg-brand-500 text-white shadow-sm' : 'bg-ink-100/70 text-ink-600 hover:bg-ink-200/70 dark:bg-slate-800/70 dark:text-slate-300'}`}>
-              {r.label}
+        {/* برچسب بازه */}
+        <div className="mb-3 flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-ink-400" />
+          <span className="text-sm font-bold text-ink-700 dark:text-slate-200">بازه گزارش:</span>
+          <span className="text-sm text-ink-500">
+            {activePreset === 'custom' ? `${formatDate(dateFrom)} تا ${formatDate(dateTo)}` : PRESETS.find(p => p.key === activePreset)?.label || dateFrom}
+          </span>
+        </div>
+
+        {/* دکمه‌های بازه */}
+        <div className="flex flex-wrap gap-1.5">
+          {PRESETS.map(p => (
+            <button key={p.key} onClick={() => applyPreset(p.key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${activePreset === p.key ? 'bg-brand-500 text-white shadow-sm' : 'bg-ink-100/70 text-ink-600 hover:bg-ink-200/70 dark:bg-slate-800/70 dark:text-slate-300'}`}>
+              {p.label}
             </button>
           ))}
-          <span className="px-2 text-ink-300 dark:text-slate-600">|</span>
+          {/* ورودی سفارشی */}
+          <span className="mx-1 self-center text-ink-300 dark:text-slate-600">|</span>
           <div className="flex items-center gap-1.5">
             <label className="text-xs text-ink-500">از</label>
-            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setQuickActive(null); setActiveRangeKey('custom'); setPage(1) }}
-              className="rounded-lg border px-2.5 py-1.5 text-xs outline-none transition" style={{ background: 'rgba(241,245,249,0.5)', borderColor: 'rgba(148,163,184,0.3)' }} />
+            <input type="date" value={dateFrom}
+              onChange={e => applyCustomDate(e.target.value, dateTo)}
+              className="rounded-lg border px-2 py-1.5 text-xs outline-none transition focus:border-brand-400"
+              style={{ background: 'rgba(241,245,249,0.5)', borderColor: activePreset === 'custom' ? '#f97316' : 'rgba(148,163,184,0.3)' }} />
             <label className="text-xs text-ink-500">تا</label>
-            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setQuickActive(null); setActiveRangeKey('custom'); setPage(1) }}
-              className="rounded-lg border px-2.5 py-1.5 text-xs outline-none transition" style={{ background: 'rgba(241,245,249,0.5)', borderColor: 'rgba(148,163,184,0.3)' }} />
+            <input type="date" value={dateTo}
+              onChange={e => applyCustomDate(dateFrom, e.target.value)}
+              className="rounded-lg border px-2 py-1.5 text-xs outline-none transition focus:border-brand-400"
+              style={{ background: 'rgba(241,245,249,0.5)', borderColor: activePreset === 'custom' ? '#f97316' : 'rgba(148,163,184,0.3)' }} />
           </div>
         </div>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 
-      {/* محتوا */}
+      {/* ── محتوای اصلی ── */}
       {loading ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
       ) : dataType === 'logs' ? (
@@ -272,7 +269,8 @@ export default function Reports() {
                       <div key={d.name} className="flex items-center gap-3 text-xs">
                         <span className="w-16 shrink-0 text-ink-500">{formatDate(d.name)}</span>
                         <div className="flex-1 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800" style={{ height: '10px' }}>
-                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(d.efficiency || 0, 100)}%`, background: (d.efficiency || 0) >= 75 ? 'linear-gradient(90deg, #10b981, #34d399)' : (d.efficiency || 0) >= 50 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #f43f5e, #fb7185)' }} />
+                          <div className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(d.efficiency || 0, 100)}%`, background: (d.efficiency || 0) >= 75 ? 'linear-gradient(90deg, #10b981, #34d399)' : (d.efficiency || 0) >= 50 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #f43f5e, #fb7185)' }} />
                         </div>
                         <span className="w-10 text-right font-bold text-ink-700 dark:text-slate-300">{d.efficiency != null ? `${d.efficiency}٪` : '—'}</span>
                       </div>
@@ -288,7 +286,8 @@ export default function Reports() {
                           <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600">{item.name}</span><span className="font-bold text-ink-800 dark:text-white">{item.value}٪</span></div>
                           <div className="h-2.5 overflow-hidden rounded-full bg-ink-100 dark:bg-slate-800">
                             <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(item.value, 100)}%` }} transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
-                              className="h-full rounded-full" style={{ background: item.value >= 75 ? 'linear-gradient(90deg, #10b981, #34d399)' : item.value >= 50 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #f43f5e, #fb7185)' }} />
+                              className="h-full rounded-full"
+                              style={{ background: item.value >= 75 ? 'linear-gradient(90deg, #10b981, #34d399)' : item.value >= 50 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #f43f5e, #fb7185)' }} />
                           </div>
                         </div>
                       ))}
@@ -299,7 +298,7 @@ export default function Reports() {
 
               <div className="card-glass overflow-hidden">
                 <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
-                  <span className="text-xs font-semibold text-ink-500"><span className="text-ink-800 dark:text-white">{formatNumber(totalItems)}</span> رکورد یافت شد</span>
+                  <span className="text-xs font-semibold text-ink-500"><span className="text-ink-800 dark:text-white">{formatNumber(totalItems)}</span> رکورد</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -347,7 +346,7 @@ export default function Reports() {
             <KpiCard icon={<BarChart2 className="h-5 w-5 text-violet-600" />} label="کل آنالیزها" value={formatNumber(anStats.count)} suffix="مورد" accentBg="bg-violet-50" />
             <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="دستگاه‌های آنالایزور" value={formatNumber(analyzerIds.length)} suffix="دستگاه" accentBg="bg-emerald-50" />
             <KpiCard icon={<FileText className="h-5 w-5 text-sky-600" />} label="نقاط نمونه‌برداری" value={formatNumber(anStats.pointData.length)} suffix="نقطه" accentBg="bg-sky-50" />
-            <KpiCard icon={<Calendar className="h-5 w-5 text-brand-600" />} label="بازه" value={`${dateFrom} تا ${dateTo}`} accentBg="bg-brand-50" />
+            <KpiCard icon={<Calendar className="h-5 w-5 text-brand-600" />} label="بازه" value={`${formatDate(dateFrom)} تا ${formatDate(dateTo)}`} accentBg="bg-brand-50" />
           </div>
 
           {anStats.count === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" /> : (
