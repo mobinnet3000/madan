@@ -3,32 +3,23 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileSpreadsheet, Download, BarChart2, Activity as ActivityIcon,
   TrendingUp, Clock, ChevronDown, FileText, Building2, Calendar,
-  ArrowLeft, ArrowRight,
 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { fetchAllLogs } from '../api/logs'
 import { fetchAllAnalyses } from '../api/analysis'
-import { exportToExcel, exportToPdf } from '../utils'
+import {
+  downloadPerformanceReport,
+  downloadAnalysisReport,
+  fetchReportRanges,
+} from '../api/reports'
 import type { DeviceLog, DeviceDailyAnalysis } from '../types'
 import { Loading, EmptyState, ErrorBanner, CardSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
 import { formatDate, formatNumber, formatPercent, todayISO } from '../utils'
 
 type DataType = 'logs' | 'analysis'
-
-// Quick date presets
-const QUICK_DATES = [
-  { label: 'دیروز', days: 1 },
-  { label: '۳ روز', days: 3 },
-  { label: '۱ هفته', days: 7 },
-  { label: '۲ هفته', days: 14 },
-  { label: '۱ ماه', days: 30 },
-  { label: '۳ ماه', days: 90 },
-  { label: '۶ ماه', days: 180 },
-  { label: '۱ سال', days: 365 },
-  { label: 'همه', days: 3650 },
-] as const
+type ReportRange = { key: string; label: string }
 
 function KpiCard({ icon, label, value, suffix, accentBg }: { icon: React.ReactNode; label: string; value: string; suffix?: string; accentBg?: string }) {
   return (
@@ -47,18 +38,23 @@ export default function Reports() {
   const { selectedFactory } = useFactory()
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin' || user?.is_superuser
+  const factoryId = selectedFactory?.id ?? null
+  const factoryName = selectedFactory?.name ?? ''
+  const factoryAddr = selectedFactory?.address ?? ''
   const lineIds = useMemo(() => (selectedFactory?.lines ?? []).map(l => l.id), [selectedFactory])
   const analyzerIds = useMemo(() => (selectedFactory?.lines ?? []).flatMap(l => l.devices).filter(d => d.is_analyzer).map(d => d.id), [selectedFactory])
 
   const [dataType, setDataType] = useState<DataType>('logs')
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+  const [reportRanges, setReportRanges] = useState<ReportRange[]>([])
 
-  // Date range — custom or preset
+  // Date range
   const todayStr = useMemo(() => todayISO(), [])
   const [dateFrom, setDateFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0] })
   const [dateTo, setDateTo] = useState(todayStr)
-  const [quickActive, setQuickActive] = useState<number | null>(30) // days
+  const [quickActive, setQuickActive] = useState<number | null>(30)
+  const [activeRangeKey, setActiveRangeKey] = useState<string>('30days')
 
   const [logs, setLogs] = useState<DeviceLog[]>([])
   const [analyses, setAnalyses] = useState<DeviceDailyAnalysis[]>([])
@@ -67,12 +63,23 @@ export default function Reports() {
   const [page, setPage] = useState(1)
   const pageSize = 50
 
+  // Load report ranges on mount
+  useEffect(() => {
+    fetchReportRanges().then(setReportRanges).catch(() => {})
+  }, [])
+
   const applyQuickDate = (days: number) => {
     setQuickActive(days)
     const d = new Date()
     d.setDate(d.getDate() - days)
     setDateFrom(d.toISOString().split('T')[0])
     setDateTo(todayStr)
+    setPage(1)
+  }
+
+  const applyRange = (key: string) => {
+    setActiveRangeKey(key)
+    setQuickActive(null)
     setPage(1)
   }
 
@@ -102,7 +109,6 @@ export default function Reports() {
 
   useEffect(() => { if (selectedFactory) load() }, [selectedFactory, load])
 
-  // Logs stats
   const logsStats = useMemo(() => {
     const totalFeed = logs.reduce((s, l) => s + (l.feed_tonnage || 0), 0)
     const totalProduct = logs.reduce((s, l) => s + (l.product_tonnage || 0), 0)
@@ -128,7 +134,6 @@ export default function Reports() {
     return { totalFeed, totalProduct, totalDowntime, avgEff, trend, lineEff, count: logs.length }
   }, [logs])
 
-  // Analysis stats (simple)
   const anStats = useMemo(() => {
     const byDevice = analyses.reduce((acc, a) => {
       const n = a.device?.name || 'بدون'; if (!acc[n]) acc[n] = { count: 0, avg1: 0 }
@@ -151,46 +156,35 @@ export default function Reports() {
   }, [dataType, logs, analyses, page, pageSize])
   const totalItems = dataType === 'logs' ? logs.length : analyses.length
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
-  const currentData = dataType === 'logs' ? logsStats : anStats
 
   const handleExport = async (type: 'excel' | 'pdf') => {
-    setExporting(type); setExportOpen(false)
+    setExporting(type)
+    setExportOpen(false)
     try {
-      const name = `${dataType === 'logs' ? 'گزارش_عملکرد' : 'گزارش_آنالیز'}_${selectedFactory?.name || ''}`
-      const title = `${selectedFactory?.name || ''} — ${dataType === 'logs' ? 'گزارش عملکرد خطوط' : 'گزارش آنالیز دستگاه‌ها'} — بازه ${formatDate(dateFrom)} تا ${formatDate(dateTo)}`
-
       if (dataType === 'logs') {
-        const rows: Record<string, string | number>[] = logs.map(l => ({
-          'تاریخ': l.date, 'خط': l.line?.name || '—', 'شیفت': l.shift?.name || '—',
-          'دستگاه': l.device?.name || '—', 'علت خرابی': l.failure_cause?.title || '—',
-          'کارکرد': l.runtime_hours, 'توقف': l.downtime_hours,
-          'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage, 'راندمان': l.efficiency ?? 0,
-        }))
-        if (type === 'excel') await exportToExcel(rows, name); else await exportToPdf(rows, name, title)
+        await downloadPerformanceReport(factoryId, activeRangeKey, type, dateFrom, dateTo)
       } else {
-        const rows: Record<string, string | number>[] = analyses.map(a => ({
-          'تاریخ': a.date, 'دستگاه': a.device?.name || '—', 'شیفت': a.shift?.name || '—',
-          'نقطه نمونه': a.sample_point || '—', 'پارامتر ۱': a.value_1 ?? 0, 'پارامتر ۲': a.value_2 ?? 0, 'شرح': a.analysis_text || '—',
-        }))
-        if (type === 'excel') await exportToExcel(rows, name); else await exportToPdf(rows, name, title)
+        await downloadAnalysisReport(factoryId, activeRangeKey, type, dateFrom, dateTo)
       }
-    } finally { setExporting(null) }
+    } finally {
+      setExporting(null)
+    }
   }
 
   if (!isAdmin) return <EmptyState icon={<ActivityIcon className="h-10 w-10" />} title="دسترسی غیرمجاز" description="فقط ادمین‌ها می‌توانند گزارش‌ها را مشاهده کنند." />
 
   return (
     <div className="animate-fade-in space-y-6">
-      {/* Header: Factory info + export */}
+      {/* هدر کارخانه */}
       <div className="card-glass p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3 sm:gap-4">
-            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}>
+            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2563eb)' }}>
               <Building2 className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
             </div>
             <div>
-              <h2 className="text-lg sm:text-xl font-extrabold text-ink-900 dark:text-white">{selectedFactory?.name}</h2>
-              {selectedFactory?.address && <p className="text-sm text-ink-500">{selectedFactory.address}</p>}
+              <h2 className="text-lg sm:text-xl font-extrabold text-ink-900 dark:text-white">{factoryName || 'همه کارخانه‌ها'}</h2>
+              {factoryAddr && <p className="text-sm text-ink-500">{factoryAddr}</p>}
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-500">
                 <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> {formatDate(dateFrom)} تا {formatDate(dateTo)}</span>
                 <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {new Date().toLocaleDateString('fa-IR')}</span>
@@ -198,7 +192,7 @@ export default function Reports() {
             </div>
           </div>
           <div className="relative">
-            <button onClick={() => setExportOpen(o => !o)} disabled={exporting !== null || totalItems === 0}
+            <button onClick={() => setExportOpen(o => !o)} disabled={exporting !== null}
               className="btn-primary !py-2 !px-4 text-xs sm:text-sm">
               {exporting ? <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> خروجی...</> : <><Download className="h-4 w-4" /> خروجی <ChevronDown className={`h-3.5 w-3.5 transition ${exportOpen ? 'rotate-180' : ''}`} /></>}
             </button>
@@ -222,9 +216,9 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* Main controls: data type + date range */}
+      {/* کنترل‌ها */}
       <div className="space-y-4">
-        {/* Data type */}
+        {/* نوع داده */}
         <div className="flex gap-1.5 rounded-xl p-1 w-fit" style={{ background: 'rgba(241,245,249,0.6)' }}>
           {(['logs', 'analysis'] as const).map(t => (
             <button key={t} onClick={() => setDataType(t)}
@@ -234,21 +228,21 @@ export default function Reports() {
           ))}
         </div>
 
-        {/* Date range — quick buttons + custom inputs */}
+        {/* بازه‌های زمانی (از بک‌اند) + کاستوم */}
         <div className="flex flex-wrap items-center gap-2">
-          {QUICK_DATES.map(q => (
-            <button key={q.days} onClick={() => applyQuickDate(q.days)}
-              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${quickActive === q.days ? 'bg-brand-500 text-white shadow-sm' : 'bg-ink-100/70 text-ink-600 hover:bg-ink-200/70 dark:bg-slate-800/70 dark:text-slate-300'}`}>
-              {q.label}
+          {reportRanges.map(r => (
+            <button key={r.key} onClick={() => applyRange(r.key)}
+              className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${activeRangeKey === r.key ? 'bg-brand-500 text-white shadow-sm' : 'bg-ink-100/70 text-ink-600 hover:bg-ink-200/70 dark:bg-slate-800/70 dark:text-slate-300'}`}>
+              {r.label}
             </button>
           ))}
           <span className="px-2 text-ink-300 dark:text-slate-600">|</span>
           <div className="flex items-center gap-1.5">
             <label className="text-xs text-ink-500">از</label>
-            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setQuickActive(null); setPage(1) }}
+            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setQuickActive(null); setActiveRangeKey('custom'); setPage(1) }}
               className="rounded-lg border px-2.5 py-1.5 text-xs outline-none transition" style={{ background: 'rgba(241,245,249,0.5)', borderColor: 'rgba(148,163,184,0.3)' }} />
             <label className="text-xs text-ink-500">تا</label>
-            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setQuickActive(null); setPage(1) }}
+            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setQuickActive(null); setActiveRangeKey('custom'); setPage(1) }}
               className="rounded-lg border px-2.5 py-1.5 text-xs outline-none transition" style={{ background: 'rgba(241,245,249,0.5)', borderColor: 'rgba(148,163,184,0.3)' }} />
           </div>
         </div>
@@ -256,12 +250,11 @@ export default function Reports() {
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 
-      {/* Content: KPI + Charts + Table */}
+      {/* محتوا */}
       {loading ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
       ) : dataType === 'logs' ? (
         <div className="space-y-6">
-          {/* KPIs */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <KpiCard icon={<TrendingUp className="h-5 w-5 text-brand-600" />} label="تناژ ورودی" value={formatNumber(Math.round(logsStats.totalFeed / 1000)) + ' هزار'} suffix="تن" accentBg="bg-brand-50" />
             <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="میانگین راندمان" value={formatPercent(logsStats.avgEff)} accentBg="bg-emerald-50" />
@@ -271,7 +264,6 @@ export default function Reports() {
 
           {logsStats.count === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" description={`برای بازه انتخابی داده‌ای ثبت نشده است.`} /> : (
             <>
-              {/* Efficiency trend + line comparison */}
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div className="card-glass p-4 sm:p-5">
                   <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">روند راندمان روزانه</h4>
@@ -305,7 +297,6 @@ export default function Reports() {
                 </div>
               </div>
 
-              {/* Data table */}
               <div className="card-glass overflow-hidden">
                 <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
                   <span className="text-xs font-semibold text-ink-500"><span className="text-ink-800 dark:text-white">{formatNumber(totalItems)}</span> رکورد یافت شد</span>
@@ -351,7 +342,6 @@ export default function Reports() {
           )}
         </div>
       ) : (
-        /* Analysis view */
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <KpiCard icon={<BarChart2 className="h-5 w-5 text-violet-600" />} label="کل آنالیزها" value={formatNumber(anStats.count)} suffix="مورد" accentBg="bg-violet-50" />
@@ -394,7 +384,6 @@ export default function Reports() {
             </div>
           )}
 
-          {/* Analysis data table */}
           <div className="card-glass overflow-hidden">
             <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
               <span className="text-xs font-semibold text-ink-500"><span className="text-ink-800 dark:text-white">{formatNumber(totalItems)}</span> رکورد</span>
