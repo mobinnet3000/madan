@@ -7,7 +7,7 @@ import {
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { fetchAllLogs } from '../api/logs'
-import { exportToExcel } from '../utils'
+import { exportToExcel, exportToPdf } from '../utils'
 import type { DeviceLog, LogFilters } from '../types'
 import { Loading, EmptyState, ErrorBanner, TableSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
@@ -157,7 +157,8 @@ export default function Reports() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters] = useState<LogFilters>({})
-  const [exporting, setExporting] = useState(false)
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
   const [range, setRange] = useState<ReportRange>('daily')
   const [page, setPage] = useState(1)
   const [pageSize] = useState(50)
@@ -184,8 +185,9 @@ export default function Reports() {
   }, [logs, page, pageSize])
   const totalPages = Math.max(1, Math.ceil(logs.length / pageSize))
 
-  const handleExport = async () => {
-    setExporting(true)
+  const handleExport = async (type: 'excel' | 'pdf') => {
+    setExporting(type)
+    setExportOpen(false)
     try {
       const rows: Record<string, string | number>[] = logs.map(l => ({
         'کارخانه': l.line?.factory?.name || '—', 'خط': l.line?.name || '—',
@@ -195,8 +197,15 @@ export default function Reports() {
         'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage,
         'راندمان': l.efficiency ?? 0,
       }))
-      await exportToExcel(rows, `گزارشات_کارخانه_${selectedFactory?.name || ''}`)
-    } finally { setExporting(false) }
+      const name = `گزارشات_کارخانه_${selectedFactory?.name || ''}`
+      if (type === 'excel') {
+        await exportToExcel(rows, name)
+      } else {
+        await exportToPdf(rows, name, `گزارش عملکرد ${selectedFactory?.name || ''}`)
+      }
+    } finally {
+      setExporting(null)
+    }
   }
 
   if (!isAdmin) return <EmptyState icon={<ActivityIcon className="h-10 w-10" />} title="دسترسی غیرمجاز" description="فقط ادمین‌ها می‌توانند گزارش‌ها را مشاهده کنند." />
@@ -209,11 +218,38 @@ export default function Reports() {
           <h1 className="text-2xl font-extrabold text-ink-900 dark:text-white">گزارش‌ها و تحلیل‌ها</h1>
           <p className="mt-0.5 text-sm text-ink-500 dark:text-slate-400">{selectedFactory?.name} — تمام آمار عملکرد</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleExport} disabled={exporting || logs.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 hover:shadow-md disabled:opacity-50 active:scale-[0.98]">
-            <Download className="h-4 w-4" /> {exporting ? 'در حال خروجی...' : 'خروجی Excel'}
-          </button>
+        <div className="relative flex items-center gap-2">
+          {exporting ? (
+            <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white opacity-70">
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              {exporting === 'excel' ? 'در حال خروجی Excel...' : 'در حال خروجی PDF...'}
+            </span>
+          ) : (
+            <div className="relative">
+              <button onClick={() => setExportOpen(o => !o)} disabled={logs.length === 0}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 hover:shadow-md disabled:opacity-50 active:scale-[0.98]">
+                <Download className="h-4 w-4" /> خروجی
+                <svg className={`h-3.5 w-3.5 transition-transform ${exportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <AnimatePresence>
+                {exportOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setExportOpen(false)} />
+                    <motion.div initial={{ opacity: 0, y: -8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                      transition={{ duration: 0.12 }} className="absolute left-0 z-40 mt-2 w-48 overflow-hidden rounded-2xl border border-ink-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                      <button onClick={() => handleExport('excel')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-50 dark:text-slate-200 dark:hover:bg-slate-800">
+                        <FileSpreadsheet className="h-4 w-4 text-emerald-500" /> خروجی Excel
+                      </button>
+                      <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-700 transition hover:bg-ink-50 dark:text-slate-200 dark:hover:bg-slate-800">
+                        <svg className="h-4 w-4 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
+                        خروجی PDF
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
 
@@ -457,10 +493,17 @@ export default function Reports() {
             <div className="rounded-2xl border border-ink-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-ink-600 dark:text-slate-400">{formatNumber(logs.length)} رکورد</span>
-                <button onClick={handleExport} disabled={exporting || logs.length === 0}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 hover:shadow-md disabled:opacity-50 active:scale-[0.98]">
-                  <Download className="h-4 w-4" /> خروجی Excel
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => handleExport('excel')} disabled={exporting !== null || logs.length === 0}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600 hover:shadow-md disabled:opacity-50 active:scale-[0.98]">
+                    <FileSpreadsheet className="h-4 w-4" /> Excel
+                  </button>
+                  <button onClick={() => handleExport('pdf')} disabled={exporting !== null || logs.length === 0}
+                    className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-600 hover:shadow-md disabled:opacity-50 active:scale-[0.98]">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
+                    PDF
+                  </button>
+                </div>
               </div>
             </div>
 
