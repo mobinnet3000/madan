@@ -1,10 +1,11 @@
-import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react'
+import { Component, lazy, Suspense, useState, type ErrorInfo, type ReactNode } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AuthProvider, useAuth } from './store/AuthContext'
 import { FactoryProvider } from './store/FactoryContext'
 import { ToastProvider } from './components/ui/Toast'
 import { ThemeProvider } from './components/ui/Theme'
+import { PageLoader } from './components/ui/States'
 import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
 import Login from './components/layout/Login'
@@ -22,30 +23,17 @@ function Page({ children }: { children: ReactNode }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
     >
       {children}
     </motion.div>
   )
 }
 
-function PageLoader() {
-  return (
-    <div className="flex min-h-[320px] items-center justify-center">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-ink-200 border-t-brand-500 dark:border-slate-700" />
-    </div>
-  )
-}
-
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }
-
-  static getDerivedStateFromError(error: Error) {
-    return { error }
-  }
-
+  static getDerivedStateFromError(error: Error) { return { error } }
   componentDidCatch(_error: Error, _info: ErrorInfo) {}
-
   render() {
     if (this.state.error) {
       return (
@@ -53,7 +41,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
           <div className="card max-w-md p-8 text-center dark:border-slate-700 dark:bg-slate-900">
             <h1 className="mb-3 text-xl font-bold text-rose-600">خطا در بارگذاری صفحه</h1>
             <p className="mb-6 text-sm text-ink-600 dark:text-slate-300">
-              مشکلی غیرمنتظره رخ داده است. اطلاعات شما حذف نشده؛ بارگذاری مجدد را امتحان کنید.
+              مشکلی غیرمنتظره رخ داده است. بارگذاری مجدد را امتحان کنید.
             </p>
             <button className="btn-primary" onClick={() => this.setState({ error: null })}>
               تلاش مجدد
@@ -62,7 +50,6 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
         </div>
       )
     }
-
     return this.props.children
   }
 }
@@ -70,19 +57,17 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 function AppInner() {
   const { user, loading } = useAuth()
   const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  if (loading) {
-    return <PageLoader />
-  }
-
+  if (loading) return <PageLoader />
   if (!user) return <Login />
 
   return (
     <FactoryProvider>
       <div className="flex h-screen overflow-hidden bg-ink-100 dark:bg-slate-950">
-        <Sidebar />
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
+          <Topbar onMenuClick={() => setSidebarOpen(true)} />
           <main className="flex-1 overflow-y-auto">
             <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-6">
               <AnimatePresence mode="wait">

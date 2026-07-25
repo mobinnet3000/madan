@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import { getFactories } from '../api/factory'
-import type { Factory, ProductionLine, Shift, Device, FailureReason } from '../types'
+import { useFactoryLookup } from '../hooks/useFactoryLookup'
+import type { Factory, Device, FailureReason } from '../types'
 
 interface FactoryContextValue {
   factories: Factory[]
@@ -10,13 +11,12 @@ interface FactoryContextValue {
   setSelectedFactoryId: (id: number) => void
   selectedFactory: Factory | null
   reload: () => void
-  // توابع کمکی برای تبدیل شناسه به نام
+  allDevices: Device[]
+  analyzers: Device[]
   lineName: (id: number) => string
   shiftName: (id: number) => string
   deviceName: (id: number) => string
   failureReasonTitle: (id: number) => string
-  allDevices: Device[]
-  analyzers: Device[]
 }
 
 const FactoryContext = createContext<FactoryContextValue | null>(null)
@@ -27,7 +27,7 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [selectedFactoryId, setSelectedFactoryId] = useState<number | null>(null)
 
-  const reload = () => {
+  const reload = useCallback(() => {
     setLoading(true)
     getFactories()
       .then((data) => {
@@ -35,33 +35,14 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
         setError(null)
         setSelectedFactoryId((prev) => prev ?? data[0]?.id ?? null)
       })
-      .catch((e) => setError(e.message))
+      .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const selectedFactory =
-    factories.find((f) => f.id === selectedFactoryId) ?? factories[0] ?? null
+  useEffect(() => { reload() }, [reload])
 
-  const allLines: ProductionLine[] = (selectedFactory?.lines ?? []).flatMap((l) => l)
-  const allDevices: Device[] = allLines.flatMap((l) => l.devices)
-  const analyzers: Device[] = allDevices.filter((d) => d.is_analyzer)
-
-  const lineName = (id: number) =>
-    allLines.find((l) => l.id === id)?.name ?? `خط ${id}`
-  const deviceName = (id: number) => allDevices.find((d) => d.id === id)?.name ?? `دستگاه ${id}`
-  const shiftName = (id: number) =>
-    selectedFactory?.shifts.find((s) => s.id === id)?.name ?? `شیفت ${id}`
-  const failureReasonTitle = (id: number) => {
-    const fr: FailureReason | undefined = selectedFactory?.failure_reasons.find(
-      (f) => f.id === id,
-    )
-    return fr?.title ?? `علت ${id}`
-  }
+  const { selectedFactory, allDevices, analyzers, lineName, shiftName, deviceName, failureReasonTitle } =
+    useFactoryLookup(factories, selectedFactoryId)
 
   const value: FactoryContextValue = {
     factories,
@@ -71,12 +52,12 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
     setSelectedFactoryId,
     selectedFactory,
     reload,
+    allDevices,
+    analyzers,
     lineName,
     shiftName,
     deviceName,
     failureReasonTitle,
-    allDevices,
-    analyzers,
   }
 
   return <FactoryContext.Provider value={value}>{children}</FactoryContext.Provider>

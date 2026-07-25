@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
   Workflow,
@@ -8,6 +8,7 @@ import {
   FileBarChart,
   History,
   Mountain,
+  X,
 } from 'lucide-react'
 import { classNames } from '../../utils'
 import { useAuth } from '../../store/AuthContext'
@@ -21,7 +22,7 @@ const navItems = [
   { to: '/reports', label: 'گزارش‌ها و خروجی', icon: FileBarChart, end: false },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin' || user?.is_superuser
 
@@ -29,32 +30,38 @@ export default function Sidebar() {
     ? [...navItems, { to: '/activity', label: 'لاگ فعالیت‌ها', icon: History, end: false }]
     : navItems
 
-  return (
-    <aside className="flex h-full w-64 flex-col border-l border-ink-200 bg-ink-900 text-ink-100">
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-amber-500">
-          <Mountain className="h-5 w-5 text-white" />
+  const content = (
+    <aside className="flex h-full w-64 flex-col border-l border-ink-200 bg-ink-900 text-ink-100 dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex items-center justify-between px-5 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-amber-500 shadow-lg">
+            <Mountain className="h-5 w-5 text-white" />
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-bold text-white">خط فرآوری معدن</div>
+            <div className="text-[11px] text-ink-400">سیستم مدل‌سازی و پایش</div>
+          </div>
         </div>
-        <div className="leading-tight">
-          <div className="text-sm font-bold text-white">خط فرآوری معدن</div>
-          <div className="text-[11px] text-ink-400">سیستم مدل‌سازی و پایش</div>
-        </div>
+        <button onClick={onClose} className="rounded-lg p-1.5 text-ink-400 hover:text-white lg:hidden">
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {items.map((item, i) => {
+        {items.map((item) => {
           const Icon = item.icon
           return (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
+              onClick={onClose}
               className={({ isActive }) =>
                 classNames(
                   'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
                   isActive
                     ? 'text-white shadow-sm'
-                    : 'text-ink-300 hover:bg-ink-800 hover:text-white',
+                    : 'text-ink-300 hover:bg-ink-800 hover:text-white dark:text-slate-400 dark:hover:bg-slate-800',
                 )
               }
             >
@@ -87,5 +94,36 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+  )
+
+  return (
+    <>
+      {/* دسکتاپ */}
+      <div className="hidden lg:flex">{content}</div>
+
+      {/* موبایل */}
+      <AnimatePresence>
+        {open && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm"
+              onClick={onClose}
+            />
+            <motion.div
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="absolute right-0 top-0 h-full"
+            >
+              {content}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   )
 }

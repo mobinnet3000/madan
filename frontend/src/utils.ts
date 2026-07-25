@@ -61,42 +61,6 @@ export function rangeBounds(
   }
 }
 
-// کلید گروه‌بندی بر اساس نوع بازه
-export function groupKey(
-  isoDate: string,
-  groupBy: 'day' | 'isoWeek' | 'month',
-): string {
-  const d = new Date(isoDate)
-  if (groupBy === 'month') {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  }
-  if (groupBy === 'isoWeek') {
-    const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
-    const day = tmp.getUTCDay() || 7
-    tmp.setUTCDate(tmp.getUTCDate() + 4 - day)
-    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1))
-    const week = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-    return `${tmp.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
-  }
-  return isoDate
-}
-
-export function groupLabel(key: string): string {
-  if (key.includes('-W')) {
-    const [y, w] = key.split('-W')
-    return `هفته ${w} (${y})`
-  }
-  if (/^\d{4}-\d{2}$/.test(key)) {
-    const [y, m] = key.split('-')
-    const persianMonths = [
-      'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
-      'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
-    ]
-    return `${persianMonths[Number(m) - 1]} ${y}`
-  }
-  return formatDate(key)
-}
-
 // خروجی اکسل
 export async function exportToExcel(
   rows: Record<string, string | number>[],

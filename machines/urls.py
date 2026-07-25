@@ -4,11 +4,9 @@ from .views import DeviceDailyAnalysisViewSet, DeviceLogViewSet, FactoryDetailVi
 
 router = DefaultRouter()
 router.register(r'factory-setup', FactoryDetailViewSet, basename='factory-setup')
-router.register(r'daily-analysis', DeviceDailyAnalysisViewSet, basename='daily-analysis'),
-router.register(r'device-logs', DeviceLogViewSet, basename='device-logs'),
-
+router.register(r'daily-analysis', DeviceDailyAnalysisViewSet, basename='daily-analysis')
+router.register(r'device-logs', DeviceLogViewSet, basename='device-logs')
 
 urlpatterns = [
     path('api/', include(router.urls)),
-
 ]

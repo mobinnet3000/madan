@@ -1,6 +1,5 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
-from .models import UserProfile, ActivityLog, ROLE_CHOICES
+from .models import UserProfile, ActivityLog
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

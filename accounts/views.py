@@ -4,9 +4,10 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 
-from .models import UserProfile, ActivityLog
+from .models import ActivityLog
 from .serializers import UserProfileSerializer, LoginSerializer, ActivityLogSerializer
-from .utils import log_activity
+from .services import log_activity, ensure_profile, get_user_factory
+from core.pagination import StandardPagination
 
 
 @api_view(['POST'])
@@ -22,16 +23,16 @@ def login_view(request):
         return Response({'detail': 'نام کاربری یا رمز عبور اشتباه است.'}, status=400)
 
     token, _ = Token.objects.get_or_create(user=user)
-    profile, _ = UserProfile.objects.get_or_create(user=user)
+    ensure_profile(user)
     log_activity(user, 'login', 'حساب کاربری', user.username, request)
-    return Response({'token': token.key, 'user': UserProfileSerializer(profile).data})
+    return Response({'token': token.key, 'user': UserProfileSerializer(user.profile).data})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me_view(request):
-    profile, _ = UserProfile.objects.get_or_create(user=request.user)
-    return Response(UserProfileSerializer(profile).data)
+    ensure_profile(request.user)
+    return Response(UserProfileSerializer(request.user.profile).data)
 
 
 @api_view(['POST'])
@@ -43,21 +44,24 @@ def logout_view(request):
     return Response({'detail': 'خروج با موفقیت انجام شد.'})
 
 
+class ActivityLogPagination(StandardPagination):
+    max_page_size = 200
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def activity_logs_view(request):
     qs = ActivityLog.objects.all().select_related('user', 'factory')
     user = request.user
-    profile = getattr(user, 'profile', None)
+    factory = get_user_factory(user)
 
-    # ادمین همه لاگ‌ها را می‌بیند؛ مدیر/اپراتور فقط لاگ کارخانه خودشان
-    if not (user.is_superuser or (profile and profile.role == 'admin')):
-        if profile and profile.factory:
-            qs = qs.filter(factory=profile.factory)
-        else:
+    if factory is None and not user.is_superuser:
+        profile = getattr(user, 'profile', None)
+        if profile and profile.role != 'admin':
             qs = qs.none()
+    elif factory is not None:
+        qs = qs.filter(factory=factory)
 
-    # فیلتر بر اساس مدل/عملیات
     model = request.query_params.get('model')
     action = request.query_params.get('action')
     if model:
@@ -65,5 +69,7 @@ def activity_logs_view(request):
     if action:
         qs = qs.filter(action=action)
 
-    qs = qs[:200]
-    return Response(ActivityLogSerializer(qs, many=True).data)
+    paginator = ActivityLogPagination()
+    page = paginator.paginate_queryset(qs, request)
+    serializer = ActivityLogSerializer(page, many=True)
+    return paginator.get_paginated_response(serializer.data)

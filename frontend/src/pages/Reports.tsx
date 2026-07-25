@@ -1,31 +1,16 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  FileSpreadsheet,
-  Download,
-  BarChart2,
-  Activity as ActivityIcon,
-  X,
-  Filter,
-  TrendingUp,
-  Calendar,
-  PieChart as PieChartIcon,
-  AreaChart as AreaChartIcon,
+  FileSpreadsheet, Download, BarChart2, Activity as ActivityIcon,
+  X, Filter,
 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
-import {
-  fetchAllLogs,
-  updateLog,
-  deleteLog,
-  createLog,
-} from '../api/logs'
+import { fetchAllLogs } from '../api/logs'
 import { exportToExcel } from '../utils'
-import type { DeviceLog } from '../types'
-import type { LogFilters } from '../types'
+import type { DeviceLog, LogFilters } from '../types'
 import { Loading, EmptyState, ErrorBanner } from '../components/ui/States'
-import Modal from '../components/ui/Modal'
-import { formatDate, formatNumber, rangeBounds, ReportRange } from '../utils'
+import { formatNumber, rangeBounds, ReportRange } from '../utils'
 import {
   Bar,
   BarChart,

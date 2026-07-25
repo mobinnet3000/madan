@@ -1,5 +1,3 @@
-// انواع داده بر اساس مدل‌های بک‌اند (Django REST Framework)
-
 export interface FailureReason {
   id: number
   title: string
@@ -44,7 +42,6 @@ export interface Factory {
   failure_reasons: FailureReason[]
 }
 
-// گزارش عملکرد روزانه خط (DeviceLog)
 export interface DeviceLog {
   id: number
   line: { id: number; name: string; factory: { id: number; name: string } }
@@ -78,7 +75,6 @@ export interface DeviceLogPayload {
   tailing_tonnage: number
 }
 
-// آنالیز روزانه آنالایزرها (DeviceDailyAnalysis)
 export type SamplePoint = 'feed' | 'tailing' | 'product'
 
 export interface DeviceDailyAnalysis {
@@ -103,13 +99,6 @@ export interface DeviceDailyAnalysisPayload {
   value_2?: number | null
 }
 
-export interface PaginatedResponse<T> {
-  count: number
-  next: number | null
-  previous: number | null
-  results: T[]
-}
-
 export interface LogFilters {
   line?: number
   shift?: number
@@ -128,7 +117,6 @@ export interface AnalysisFilters {
   date_to?: string
 }
 
-// کاربر و نقش‌ها
 export type Role = 'admin' | 'manager' | 'operator'
 
 export interface UserProfile {
@@ -155,11 +143,4 @@ export interface ActivityLogEntry {
   factory_name: string | null
   ip: string | null
   timestamp: string
-}
-
-export interface Paginated<T> {
-  count: number
-  next: string | null
-  previous: string | null
-  results: T[]
 }

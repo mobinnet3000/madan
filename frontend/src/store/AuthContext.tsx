@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useCallback,
   type ReactNode,
 } from 'react'
 import { login as apiLogin, fetchMe, logout as apiLogout, getToken } from '../api/auth'
@@ -12,7 +13,7 @@ interface AuthContextValue {
   user: UserProfile | null
   loading: boolean
   login: (username: string, password: string) => Promise<UserProfile>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -33,16 +34,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
-  const login = async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string) => {
     const res = await apiLogin(username, password)
     setUser(res.user)
     return res.user
-  }
+  }, [])
 
-  const logout = () => {
-    apiLogout()
-    setUser(null)
-  }
+  const logout = useCallback(async () => {
+    try {
+      await apiLogout()
+    } finally {
+      setUser(null)
+    }
+  }, [])
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>
