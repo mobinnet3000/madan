@@ -8,7 +8,6 @@ import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { fetchAllLogs } from '../api/logs'
 import { fetchAllAnalyses } from '../api/analysis'
-import { downloadPerformanceReport, downloadAnalysisReport } from '../api/reports'
 import type { DeviceLog, DeviceDailyAnalysis } from '../types'
 import { Loading, EmptyState, ErrorBanner, CardSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
@@ -177,10 +176,26 @@ export default function Reports() {
   const handleExport = async (type: 'excel' | 'pdf') => {
     setExporting(type)
     try {
+      const { exportToExcel, exportToPdf } = await import('../utils')
+      const name = `${dataType === 'logs' ? 'گزارش_عملکرد' : 'گزارش_آنالیز'}_${factoryName}`
+      const title = `${factoryName} — ${dataType === 'logs' ? 'گزارش عملکرد خطوط' : 'گزارش آنالیز دستگاه‌ها'} — بازه ${formatDate(dateFrom)} تا ${formatDate(dateTo)}`
+
       if (dataType === 'logs') {
-        await downloadPerformanceReport(factoryId, activePreset, type, dateFrom, dateTo)
+        const rows: Record<string, string | number>[] = logs.map(l => ({
+          'تاریخ': l.date, 'خط': l.line?.name || '—', 'شیفت': l.shift?.name || '—',
+          'دستگاه': l.device?.name || '—', 'علت خرابی': l.failure_cause?.title || '—',
+          'کارکرد': l.runtime_hours, 'توقف': l.downtime_hours,
+          'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage, 'راندمان': l.efficiency ?? 0,
+        }))
+        if (type === 'excel') await exportToExcel(rows, name)
+        else await exportToPdf(rows, name, title)
       } else {
-        await downloadAnalysisReport(factoryId, activePreset, type, dateFrom, dateTo)
+        const rows: Record<string, string | number>[] = analyses.map(a => ({
+          'تاریخ': a.date, 'دستگاه': a.device?.name || '—', 'شیفت': a.shift?.name || '—',
+          'نقطه نمونه': a.sample_point || '—', 'پارامتر ۱': a.value_1 ?? 0, 'پارامتر ۲': a.value_2 ?? 0, 'شرح': a.analysis_text || '—',
+        }))
+        if (type === 'excel') await exportToExcel(rows, name)
+        else await exportToPdf(rows, name, title)
       }
     } catch (e: any) {
       setError(e.message || 'خطا در دریافت گزارش')

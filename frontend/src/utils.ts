@@ -73,9 +73,9 @@ export async function exportToExcel(
     const addr = XLSX.utils.encode_cell({ r: 0, c })
     const cell = ws[addr]
     if (cell) {
-      cell.font = { bold: true, sz: 11, name: 'Vazirmatn' }
+      cell.font = { bold: true, sz: 11, name: 'B Nazanin' }
       cell.alignment = { horizontal: 'center', vertical: 'center' }
-      cell.fill = { fgColor: { rgb: 'F97316' }, patternType: 'solid' }
+      cell.fill = { fgColor: { rgb: '1E3A5F' }, patternType: 'solid' }
       cell.font.color = { rgb: 'FFFFFF' }
     }
   }
@@ -86,14 +86,54 @@ export async function exportToExcel(
       const cell = ws[addr]
       if (cell) {
         cell.alignment = { horizontal: 'center', vertical: 'center' }
-        cell.font = { sz: 10, name: 'Vazirmatn' }
+        cell.font = { sz: 10, name: 'B Nazanin' }
       }
     }
   }
 
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'گزارش عملکرد')
+  XLSX.utils.book_append_sheet(wb, ws, 'گزارش')
   XLSX.writeFile(wb, `${fileName}.xlsx`)
+}
+
+function htmlToPdf(
+  html: string,
+  fileName: string,
+): void {
+  // Create a hidden iframe
+  const iframe = document.createElement('iframe')
+  iframe.style.position = 'absolute'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = 'none'
+  document.body.appendChild(iframe)
+
+  // Write the HTML content
+  const iframeDoc = iframe.contentWindow?.document
+  if (!iframeDoc) {
+    // Fallback: open in new window
+    const win = window.open('', '_blank')
+    win?.document.write(html)
+    win?.document.close()
+    win?.focus()
+    win?.print()
+    return
+  }
+
+  iframeDoc.open()
+  iframeDoc.write(html)
+  iframeDoc.close()
+
+  // Wait for fonts to load, then print
+  setTimeout(() => {
+    iframe.contentWindow?.focus()
+    iframe.contentWindow?.print()
+
+    // Clean up after print dialog closes
+    setTimeout(() => {
+      document.body.removeChild(iframe)
+    }, 1000)
+  }, 500)
 }
 
 export async function exportToPdf(
@@ -101,54 +141,94 @@ export async function exportToPdf(
   fileName: string,
   title: string,
 ): Promise<void> {
-  const { default: jsPDF } = await import('jspdf')
-  const { default: autoTable } = await import('jspdf-autotable')
+  const headers = Object.keys(rows[0] || {}).map(k => k)
+  const today = new Date().toLocaleDateString('fa-IR')
+  const dateStr = `${today}`
 
-  const doc = new jsPDF('l', 'mm', 'a4')
-  const pageW = doc.internal.pageSize.getWidth()
+  function esc(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
 
-  doc.setFont('Helvetica', 'bold')
-  doc.setFontSize(16)
-  doc.setTextColor(249, 115, 22)
-  doc.text(title, pageW / 2, 18, { align: 'center' })
+  // Build HTML table
+  const headerRow = headers.map(h => `<th style="padding:6px 10px;background:#1e3a5f;color:#fff;font-weight:700;font-size:10px;text-align:center;border:1px solid #334155;">${esc(h)}</th>`).join('')
 
-  doc.setFontSize(8)
-  doc.setTextColor(100, 116, 139)
-  const dateStr = new Date().toLocaleDateString('fa-IR')
-  doc.text(`تاریخ خروجی: ${dateStr}`, pageW / 2, 25, { align: 'center' })
+  const bodyRows = rows.map(r =>
+    '<tr>' + headers.map(h => {
+      const v = r[h]
+      const val = v !== null && v !== undefined && v !== '' && v !== '\u2014' ? String(v) : ''
+      return `<td style="padding:4px 8px;font-size:9px;text-align:center;border:1px solid #cbd5e1;">${esc(val)}</td>`
+    }).join('') + '</tr>'
+  ).join('')
 
-  const headers = Object.keys(rows[0] || {}).map(k => k as string)
-  const data = rows.map(r => headers.map(h => {
-    const v = r[h]
-    return v !== null && v !== undefined && v !== '' && v !== '—' ? String(v) : ''
-  }))
+  const html = `<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="UTF-8">
+<title>${esc(title)}</title>
+<style>
+  @font-face {
+    font-family: 'Vazirmatn';
+    src: url('/fonts/Vazirmatn-FD-Regular.ttf') format('truetype');
+    font-weight: normal;
+  }
+  @font-face {
+    font-family: 'Vazirmatn';
+    src: url('/fonts/Vazirmatn-FD-Bold.ttf') format('truetype');
+    font-weight: bold;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Vazirmatn', Tahoma, sans-serif;
+    direction: rtl;
+    padding: 20px;
+    color: #1e293b;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #1e3a5f;
+  }
+  .header h1 { font-size: 18px; color: #1e3a5f; margin-bottom: 4px; }
+  .header .meta { font-size: 10px; color: #64748b; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+  }
+  th { background: #1e3a5f; color: #fff; font-weight: bold; font-size: 10px; }
+  td { font-size: 9px; }
+  tr:nth-child(even) { background: #f8fafc; }
+  tr:nth-child(odd) { background: #fff; }
+  .footer {
+    text-align: center;
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px solid #cbd5e1;
+    font-size: 8px;
+    color: #94a3b8;
+  }
+  @media print {
+    body { padding: 10px; }
+    .no-print { display: none; }
+    @page { margin: 15mm; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>${esc(title)}</h1>
+  <div class="meta">${esc(dateStr)}</div>
+</div>
+<table>
+<thead><tr>${headerRow}</tr></thead>
+<tbody>${bodyRows}</tbody>
+</table>
+<div class="footer">
+  ${esc(title)} — تاریخ چاپ: ${esc(dateStr)}
+</div>
+</body>
+</html>`
 
-  autoTable(doc, {
-    head: [headers],
-    body: data,
-    startY: 30,
-    styles: {
-      font: 'helvetica',
-      fontSize: 7,
-      cellPadding: 2,
-      halign: 'center',
-    },
-    headStyles: {
-      fillColor: [249, 115, 22],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8,
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252],
-    },
-    columnStyles: headers.reduce((acc, _, i) => {
-      acc[i] = { cellWidth: Math.max(20, pageW / headers.length - 4) }
-      return acc
-    }, {} as Record<number, { cellWidth: number }>),
-    margin: { top: 30, right: 8, bottom: 10, left: 8 },
-    tableWidth: 'auto',
-  })
-
-  doc.save(`${fileName}.pdf`)
+  htmlToPdf(html, fileName)
 }
