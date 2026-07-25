@@ -71,10 +71,29 @@ export default function Reports() {
   const pageSize = 50
 
   // ── انتخاب بازه ──
+  const presetBounds = (key: string): [string, string] => {
+    const today = new Date(); const to = todayISO()
+    if (key === 'today') return [to, to]
+    if (key === 'yesterday') { const d = new Date(); d.setDate(d.getDate() - 1); return [d.toISOString().split('T')[0], d.toISOString().split('T')[0]] }
+    if (key === 'this_week') { const d = new Date(today); d.setDate(d.getDate() - today.getDay()); return [d.toISOString().split('T')[0], to] }
+    if (key === 'last_week') { const end = new Date(today); end.setDate(end.getDate() - today.getDay() - 1); const start = new Date(end); start.setDate(start.getDate() - 6); return [start.toISOString().split('T')[0], end.toISOString().split('T')[0]] }
+    if (key === 'this_month') { const d = new Date(today.getFullYear(), today.getMonth(), 1); return [d.toISOString().split('T')[0], to] }
+    if (key === 'last_month') { const d = new Date(today.getFullYear(), today.getMonth(), 0); const s = new Date(d.getFullYear(), d.getMonth(), 1); return [s.toISOString().split('T')[0], d.toISOString().split('T')[0]] }
+    if (key === 'this_year') { const d = new Date(today.getFullYear(), 0, 1); return [d.toISOString().split('T')[0], to] }
+    if (key === 'last_year') { return [`${today.getFullYear() - 1}-01-01`, `${today.getFullYear() - 1}-12-31`] }
+    if (key === '7days') { const d = new Date(); d.setDate(d.getDate() - 7); return [d.toISOString().split('T')[0], to] }
+    if (key === '30days') { const d = new Date(); d.setDate(d.getDate() - 30); return [d.toISOString().split('T')[0], to] }
+    if (key === '90days') { const d = new Date(); d.setDate(d.getDate() - 90); return [d.toISOString().split('T')[0], to] }
+    if (key === '365days') { const d = new Date(); d.setDate(d.getDate() - 365); return [d.toISOString().split('T')[0], to] }
+    if (key === 'all') { return ['2020-01-01', to] }
+    const d = new Date(); d.setDate(d.getDate() - 30); return [d.toISOString().split('T')[0], to]
+  }
+
   const applyPreset = (key: string) => {
     setActivePreset(key)
+    const [f, t] = presetBounds(key)
+    setDateFrom(f); setDateTo(t)
     setPage(1)
-    // dateFrom/dateTo توسط بک‌اند بر اساس range key اعمال می‌شود
   }
 
   const applyCustomDate = (from: string, to: string) => {
@@ -163,6 +182,8 @@ export default function Reports() {
       } else {
         await downloadAnalysisReport(factoryId, activePreset, type, dateFrom, dateTo)
       }
+    } catch (e: any) {
+      setError(e.message || 'خطا در دریافت گزارش')
     } finally { setExporting(null) }
   }
 
