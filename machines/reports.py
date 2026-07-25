@@ -13,11 +13,15 @@ from reportlab.lib.units import mm, cm
 from reportlab.lib import colors
 from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle, Paragraph,
                                 Spacer, Image, PageBreak, KeepTogether)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 from .models import Factory, ProductionLine, Device, DeviceLog, DeviceDailyAnalysis
+
+# Arabic/Persian text reshaping for correct glyph rendering in Reportlab
+import arabic_reshaper
+from bidi.algorithm import get_display
 
 FONTS_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
 
@@ -41,43 +45,85 @@ RANGE_LABELS = {
     'custom': 'سفارشی',
 }
 
-# --- Persian font setup ---
+# ---------------------------------------------------------------------------
+#  Persian text pipeline
+# ---------------------------------------------------------------------------
+def _fa(text):
+    """Reshape + bidi for correct Persian rendering in Reportlab."""
+    if not text:
+        return ''
+    try:
+        reshaped = arabic_reshaper.reshape(str(text))
+        return get_display(reshaped)
+    except Exception:
+        return str(text)
+
+def _p(value, decimals=1):
+    """Format number to Persian digits."""
+    if value is None:
+        return '*۰*'
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    s = f'{v:,.{decimals}f}'.translate(str.maketrans('0123456789-,.', '۰۱۲۳۴۵۶۷۸۹-،.'))
+    return s
+
+def _factory_header(factory):
+    return [
+        f'شرکت: {factory.name if factory else ""}',
+        f'آدرس: {factory.address if factory and factory.address else ""}',
+    ]
+
+# ---------------------------------------------------------------------------
+#  Font registration (robust)
+# ---------------------------------------------------------------------------
 def _register_fonts():
-    bold_path = os.path.join(FONTS_DIR, 'Vazirmatn-FD-Bold.ttf')
-    regular_path = os.path.join(FONTS_DIR, 'Vazirmatn-FD-Regular.ttf')
-    medium_path = os.path.join(FONTS_DIR, 'Vazirmatn-FD-Medium.ttf')
-
-    bold = os.path.join(FONTS_DIR, 'Vazirmatn-Bold.ttf')
-    regular = os.path.join(FONTS_DIR, 'Vazirmatn-Regular.ttf')
-
-    for p in [bold_path, bold]:
-        if os.path.exists(p):
-            pdfmetrics.registerFont(TTFont('VazirBold', p))
-            break
-    for p in [regular_path, regular]:
-        if os.path.exists(p):
-            pdfmetrics.registerFont(TTFont('Vazir', p))
-            break
-    for p in [medium_path]:
-        if os.path.exists(p):
-            pdfmetrics.registerFont(TTFont('VazirMedium', p))
-            break
-
-    if 'Vazir' not in pdfmetrics._fonts:
-        pdfmetrics.registerFont(TTFont('Vazir', regular))
-    if 'VazirBold' not in pdfmetrics._fonts:
-        pdfmetrics.registerFont(TTFont('VazirBold', bold))
+    candidates = {
+        'VazirBold':   os.path.join(FONTS_DIR, 'Vazirmatn-FD-Bold.ttf'),
+        'Vazir':       os.path.join(FONTS_DIR, 'Vazirmatn-FD-Regular.ttf'),
+        'VazirMedium': os.path.join(FONTS_DIR, 'Vazirmatn-FD-Medium.ttf'),
+    }
+    for name, path in candidates.items():
+        if os.path.exists(path):
+            pdfmetrics.registerFont(TTFont(name, path))
 
 _register_fonts()
 
+# Base colours
+C_PRIMARY   = colors.HexColor('#1a365d')   # dark navy
+C_ACCENT    = colors.HexColor('#2563eb')    # blue
+C_HEADER_BG = colors.HexColor('#1e3a5f')
+C_ROW_EVEN  = colors.HexColor('#f1f5f9')
+C_ROW_ODD   = colors.white
+C_BORDER    = colors.HexColor('#cbd5e1')
+C_TEXT_DARK = colors.HexColor('#1e293b')
+C_TEXT_MUTED= colors.HexColor('#64748b')
+C_WHITE     = colors.white
+C_GOLD      = colors.HexColor('#f59e0b')
+C_TOTAL_BG  = colors.HexColor('#e2e8f0')
+
 STYLES = {
-    'title': ParagraphStyle('TitleFa', fontName='VazirBold', fontSize=18, alignment=1, spaceAfter=6),
-    'subtitle': ParagraphStyle('SubFa', fontName='Vazir', fontSize=10, alignment=1, textColor=colors.HexColor('#555'), spaceAfter=4),
-    'header': ParagraphStyle('HeaderFa', fontName='VazirBold', fontSize=10, alignment=0, textColor=colors.white),
-    'cell': ParagraphStyle('CellFa', fontName='Vazir', fontSize=8, alignment=0, leading=12),
-    'cell_center': ParagraphStyle('CellFaCenter', fontName='Vazir', fontSize=8, alignment=1, leading=12),
-    'section': ParagraphStyle('SectionFa', fontName='VazirBold', fontSize=12, alignment=0, textColor=colors.HexColor('#1a56db'), spaceAfter=8, spaceBefore=12),
-    'meta': ParagraphStyle('MetaFa', fontName='Vazir', fontSize=8, alignment=0, textColor=colors.HexColor('#666')),
+    'title': ParagraphStyle('TitleFa', fontName='VazirBold', fontSize=18, alignment=1,
+                            textColor=C_PRIMARY, spaceAfter=2),
+    'subtitle': ParagraphStyle('SubFa', fontName='VazirMedium', fontSize=10, alignment=1,
+                               textColor=C_TEXT_MUTED, spaceAfter=2),
+    'header_section': ParagraphStyle('HeadSec', fontName='VazirBold', fontSize=11,
+                                     textColor=C_PRIMARY, spaceAfter=4, spaceBefore=6),
+    'cell_left': ParagraphStyle('CellLt', fontName='Vazir', fontSize=8,
+                                leading=11, alignment=0, textColor=C_TEXT_DARK),
+    'cell_center': ParagraphStyle('CellCt', fontName='Vazir', fontSize=8,
+                                  leading=11, alignment=1, textColor=C_TEXT_DARK),
+    'cell_header': ParagraphStyle('CellHd', fontName='VazirBold', fontSize=9,
+                                  leading=12, alignment=1, textColor=C_WHITE),
+    'meta': ParagraphStyle('MetaFa', fontName='Vazir', fontSize=8,
+                           textColor=C_TEXT_MUTED, spaceAfter=2),
+    'total_label': ParagraphStyle('TotLb', fontName='VazirBold', fontSize=9,
+                                  alignment=1, textColor=C_PRIMARY),
+    'total_value': ParagraphStyle('TotVl', fontName='VazirBold', fontSize=9,
+                                  alignment=1, textColor=C_PRIMARY),
+    'analysis_title': ParagraphStyle('AnalTl', fontName='VazirBold', fontSize=16,
+                                     alignment=1, textColor=C_PRIMARY, spaceAfter=4),
 }
 
 # --- Date range helpers ---
@@ -256,132 +302,176 @@ def excel_analysis(factory, analyses_data, date_from, date_to, date_label):
 
 # ────────────────────────────────── PDF ──────────────────────────────────
 
+# ---------- helpers ----------
 def _pdf_header_footer(canvas, doc, title, factory=None, date_label=''):
     canvas.saveState()
     canvas.setFont('Vazir', 7)
-    canvas.setFillColor(colors.HexColor('#666'))
-    w, h = A4
-    canvas.drawCentredString(w / 2, 15, f'صفحه {doc.page}')
-    canvas.drawString(20, 15, f'تاریخ چاپ: {date.today().strftime("%Y-%m-%d")}')
+    canvas.setFillColor(C_TEXT_MUTED)
+    w, h = A4 if doc.pagesize == A4 else landscape(A4)
+    today_str = date.today().strftime('%Y-%m-%d')
+    canvas.drawRightString(w - 20, 15, _fa(f'صفحه {doc.page}'))
+    canvas.drawRightString(w - 20, 10, _fa(f'تاریخ چاپ: {today_str}'))
     if factory:
-        canvas.drawRightString(w - 20, 15, f'{factory.name} | {title}')
+        canvas.drawString(20, 10, _fa(f'{factory.name} | {title}'))
     canvas.restoreState()
 
-def _make_table(data, col_widths=None):
-    style = TableStyle([
+def _p_cell(text, style='cell_center'):
+    return Paragraph(_fa(str(text)), STYLES[style])
+
+def _make_table(data, col_widths=None, header_rows=1):
+    t = Table(data, colWidths=col_widths, repeatRows=header_rows)
+    cmds = [
+        ('FONTNAME', (0, 0), (-1, header_rows - 1), 'VazirBold'),
+        ('FONTNAME', (0, header_rows), (-1, -1), 'Vazir'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('FONTNAME', (0, 0), (-1, 0), 'VazirBold'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Vazir'),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a56db')),
+        ('BACKGROUND', (0, 0), (-1, header_rows - 1), C_HEADER_BG),
+        ('TEXTCOLOR', (0, 0), (-1, header_rows - 1), C_WHITE),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#ccc')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-    ])
-    t = Table(data, colWidths=col_widths, repeatRows=1)
-    t.setStyle(style)
+        ('GRID', (0, 0), (-1, -1), 0.5, C_BORDER),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+    ]
+    # Alternate row colours
+    nrows = len(data) - header_rows
+    for i in range(header_rows, len(data)):
+        bg = C_ROW_EVEN if (i - header_rows) % 2 == 0 else C_ROW_ODD
+        cmds.append(('BACKGROUND', (0, i), (-1, i), bg))
+    # Apply header row background
+    t.setStyle(TableStyle(cmds))
     return t
 
+# ---------- performance ----------
 def pdf_performance(factory, lines_data, date_from, date_to, date_label, factory_obj=None):
+    from reportlab.platypus import Table as T
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm,
-                            topMargin=20*mm, bottomMargin=20*mm)
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        rightMargin=14*mm, leftMargin=14*mm,
+        topMargin=18*mm, bottomMargin=18*mm,
+    )
 
     elements = []
-    elements.append(Paragraph('گزارش عملکرد خطوط تولید', STYLES['title']))
-    elements.append(Spacer(1, 4))
 
+    # ── title block ──
+    elements.append(Paragraph(_fa('گزارش عملکرد خطوط تولید'), STYLES['title']))
+    elements.append(Spacer(1, 3))
+
+    info_lines = []
     if factory:
-        elements.append(Paragraph(f'شرکت: {factory.name}', STYLES['subtitle']))
+        info_lines.append(Paragraph(_fa(f'شرکت: {factory.name}'), STYLES['subtitle']))
         if factory.address:
-            elements.append(Paragraph(f'آدرس: {factory.address}', STYLES['meta']))
+            info_lines.append(Paragraph(_fa(f'آدرس: {factory.address}'), STYLES['meta']))
+    info_lines.append(Paragraph(_fa(f'بازه گزارش: {date_label}'), STYLES['meta']))
+    for l in info_lines:
+        elements.append(l)
+    elements.append(Spacer(1, 8))
 
-    elements.append(Paragraph(f'بازه گزارش: {date_label}', STYLES['meta']))
-    elements.append(Spacer(1, 10))
-
-    header = ['ردیف', 'خط تولید', 'تعداد ثبت', 'ساعت کارکرد', 'ساعت توقف',
-              'خوراک (تن)', 'محصول (تن)', 'باطله (تن)', 'بازدهی (%)']
-
-    col_widths = [30, 90, 50, 55, 55, 55, 55, 55, 50]
-
-    rows = [header]
-    for i, (line_name, line_id, stats) in enumerate(lines_data, 1):
-        n = stats.get('count', 0)
-        run = stats.get('runtime', 0)
-        down = stats.get('downtime', 0)
-        feed = stats.get('feed', 0)
-        prod = stats.get('product', 0)
-        tail = stats.get('tailing', 0)
-        eff = stats.get('efficiency', 0)
-
+    # ── main table ──
+    hdr = [_fa('ردیف'), _fa('خط تولید'), _fa('تعداد'), _fa('کارکرد'),
+           _fa('توقف'), _fa('خوراک (تن)'), _fa('محصول (تن)'),
+           _fa('باطله (تن)'), _fa('بازدهی')]
+    cw = [28, 95, 42, 50, 45, 55, 55, 55, 48]
+    rows = [hdr]
+    for i, (ln, lid, st) in enumerate(lines_data, 1):
         rows.append([
-            str(i), line_name, _p(n, 0),
-            _p(run), _p(down), _p(feed),
-            _p(prod), _p(tail), f'{_p(eff)}%'
+            _p_cell(str(i)), _p_cell(ln),
+            _p_cell(_p(st.get('count', 0), 0)),
+            _p_cell(_p(st.get('runtime', 0))),
+            _p_cell(_p(st.get('downtime', 0))),
+            _p_cell(_p(st.get('feed', 0))),
+            _p_cell(_p(st.get('product', 0))),
+            _p_cell(_p(st.get('tailing', 0))),
+            _p_cell(f"{_p(st.get('efficiency', 0))}%"),
         ])
 
-    t = _make_table(rows, col_widths)
-    elements.append(t)
+    elements.append(_make_table(rows, col_widths=cw))
 
+    # ── summary row ──
     if len(lines_data) > 1:
-        elements.append(Spacer(1, 12))
-        total_runtime = sum(s.get('runtime', 0) for _, _, s in lines_data)
-        total_downtime = sum(s.get('downtime', 0) for _, _, s in lines_data)
-        total_feed = sum(s.get('feed', 0) for _, _, s in lines_data)
-        total_product = sum(s.get('product', 0) for _, _, s in lines_data)
-        total_tailing = sum(s.get('tailing', 0) for _, _, s in lines_data)
-        eff_all = (total_product / total_feed * 100) if total_feed else 0
+        elements.append(Spacer(1, 10))
+        tr = sum(s.get('runtime', 0) for _, _, s in lines_data)
+        td = sum(s.get('downtime', 0) for _, _, s in lines_data)
+        tf = sum(s.get('feed', 0) for _, _, s in lines_data)
+        tp = sum(s.get('product', 0) for _, _, s in lines_data)
+        tt = sum(s.get('tailing', 0) for _, _, s in lines_data)
+        ea = (tp / tf * 100) if tf else 0
 
-        summary = [
-            ['', '', 'جمع کل', _p(total_runtime), _p(total_downtime),
-             _p(total_feed), _p(total_product), _p(total_tailing), f'{_p(eff_all)}%']
+        srow = [
+            _p_cell(''), _p_cell(_fa('جمع کل'), 'total_label'),
+            _p_cell(_p(tp, 0), 'total_label'),
+            _p_cell(_p(tr), 'total_value'),
+            _p_cell(_p(td), 'total_value'),
+            _p_cell(_p(tf), 'total_value'),
+            _p_cell(_p(tp), 'total_value'),
+            _p_cell(_p(tt), 'total_value'),
+            _p_cell(f"{_p(ea)}%", 'total_value'),
         ]
-        st = _make_table(summary, col_widths)
+
+        st = Table([srow], colWidths=cw)
+        st.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), C_TOTAL_BG),
+            ('FONTNAME', (0, 0), (-1, -1), 'VazirBold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, C_BORDER),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
         elements.append(st)
 
-    doc.build(elements, onFirstPage=lambda c, d: _pdf_header_footer(c, d, 'گزارش عملکرد', factory, date_label),
-              onLaterPages=lambda c, d: _pdf_header_footer(c, d, 'گزارش عملکرد', factory, date_label))
+    doc.build(
+        elements,
+        onFirstPage=lambda c, d: _pdf_header_footer(c, d, 'گزارش عملکرد', factory, date_label),
+        onLaterPages=lambda c, d: _pdf_header_footer(c, d, 'گزارش عملکرد', factory, date_label),
+    )
     buf.seek(0)
     return buf
 
+
+# ---------- analysis report (landscape) ----------
 def pdf_analysis(factory, analyses_data, date_from, date_to, date_label, factory_obj=None):
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=12*mm, leftMargin=12*mm,
-                            topMargin=18*mm, bottomMargin=18*mm)
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4),
+        rightMargin=12*mm, leftMargin=12*mm,
+        topMargin=16*mm, bottomMargin=16*mm,
+    )
 
     elements = []
-    elements.append(Paragraph('گزارش آنالیز روزانه', STYLES['title']))
-    elements.append(Spacer(1, 4))
-
+    elements.append(Paragraph(_fa('گزارش آنالیز روزانه'), STYLES['analysis_title']))
+    elements.append(Spacer(1, 3))
     if factory:
-        elements.append(Paragraph(f'شرکت: {factory.name}', STYLES['subtitle']))
-    elements.append(Paragraph(f'بازه گزارش: {date_label}', STYLES['meta']))
-    elements.append(Spacer(1, 8))
+        elements.append(Paragraph(_fa(f'شرکت: {factory.name}'), STYLES['subtitle']))
+    elements.append(Paragraph(_fa(f'بازه گزارش: {date_label}'), STYLES['meta']))
+    elements.append(Spacer(1, 6))
 
-    header = ['ردیف', 'دستگاه', 'خط تولید', 'نقطه نمونه', 'تاریخ', 'پارامتر ۱', 'پارامتر ۲', 'شرح']
-    col_widths = [25, 80, 80, 60, 55, 55, 55, 120]
-
-    rows = [header]
+    hdr = [_fa('ردیف'), _fa('دستگاه'), _fa('خط تولید'), _fa('نقطه نمونه'),
+           _fa('تاریخ'), _fa('پارامتر ۱'), _fa('پارامتر ۲'), _fa('شرح')]
+    cw = [22, 75, 80, 60, 55, 55, 55, 130]
+    rows = [hdr]
     for i, item in enumerate(analyses_data, 1):
         rows.append([
-            str(i),
-            item.get('device_name', ''),
-            item.get('line_name', ''),
-            item.get('sample_point_display', ''),
-            str(item.get('date', '')),
-            _p(item.get('value_1')),
-            _p(item.get('value_2')),
-            item.get('analysis_text', '')[:60],
+            _p_cell(str(i)),
+            _p_cell(item.get('device_name', '')),
+            _p_cell(item.get('line_name', '')),
+            _p_cell(item.get('sample_point_display', '')),
+            _p_cell(str(item.get('date', ''))),
+            _p_cell(_p(item.get('value_1'))),
+            _p_cell(_p(item.get('value_2'))),
+            _p_cell(item.get('analysis_text', '')[:60]),
         ])
 
-    t = _make_table(rows, col_widths)
-    elements.append(t)
+    elements.append(_make_table(rows, col_widths=cw))
 
-    doc.build(elements, onFirstPage=lambda c, d: _pdf_header_footer(c, d, 'گزارش آنالیز', factory, date_label),
-              onLaterPages=lambda c, d: _pdf_header_footer(c, d, 'گزارش آنالیز', factory, date_label))
+    doc.build(
+        elements,
+        onFirstPage=lambda c, d: _pdf_header_footer(c, d, 'گزارش آنالیز', factory, date_label),
+        onLaterPages=lambda c, d: _pdf_header_footer(c, d, 'گزارش آنالیز', factory, date_label),
+    )
     buf.seek(0)
     return buf
 
