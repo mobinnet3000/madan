@@ -33,19 +33,14 @@ function Page({ children }: { children: ReactNode }) {
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }
   static getDerivedStateFromError(error: Error) { return { error } }
-  componentDidCatch(_error: Error, _info: ErrorInfo) {}
   render() {
     if (this.state.error) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-ink-100 p-4 dark:bg-slate-950">
-          <div className="card max-w-md p-8 text-center dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex min-h-screen items-center justify-center bg-grid p-4">
+          <div className="card-glass max-w-md p-8 text-center dark:border-slate-700 dark:bg-slate-900/80">
             <h1 className="mb-3 text-xl font-bold text-rose-600">خطا در بارگذاری صفحه</h1>
-            <p className="mb-6 text-sm text-ink-600 dark:text-slate-300">
-              مشکلی غیرمنتظره رخ داده است. بارگذاری مجدد را امتحان کنید.
-            </p>
-            <button className="btn-primary" onClick={() => this.setState({ error: null })}>
-              تلاش مجدد
-            </button>
+            <p className="mb-6 text-sm text-ink-600 dark:text-slate-300">مشکلی غیرمنتظره رخ داده است.</p>
+            <button className="btn-primary" onClick={() => this.setState({ error: null })}>تلاش مجدد</button>
           </div>
         </div>
       )
@@ -64,7 +59,7 @@ function AppInner() {
 
   return (
     <FactoryProvider>
-      <div className="flex h-screen overflow-hidden bg-ink-100 dark:bg-slate-950">
+      <div className="flex h-screen overflow-hidden bg-grid">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar onMenuClick={() => setSidebarOpen(true)} />
