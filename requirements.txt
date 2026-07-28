@@ -10,9 +10,8 @@ drf-spectacular==0.29.0
 # Admin UX
 django-jsonform==2.23.2
 
-# Production serving
+# Production serving (cPanel Passenger)
 whitenoise==6.12.0
-gunicorn==26.0.0
 
 # Configuration
 python-decouple==3.8
