@@ -1,10 +1,6 @@
-"""
-Passenger WSGI entry point for cPanel Python App.
-Place this in the backend root directory.
-"""
+"""Passenger WSGI entry point for cPanel."""
 import os, sys
 
-# Point to the project root
 sys.path.insert(0, os.path.dirname(__file__))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
