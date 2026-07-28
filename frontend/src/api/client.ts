@@ -2,9 +2,12 @@ import axios from 'axios'
 
 export const TOKEN_KEY = 'madan_token'
 
-// نمونه پایه axios - با پروکسی vite درخواست‌ها به بک‌اند ارسال می‌شوند
+// در حالت توسعه (Vite proxy) به /api هدایت می‌شه
+// در حالت production از متغیر محیطی VITE_API_BASE_URL استفاده کن
+const BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api'
+
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: BASE,
   headers: {
     'Content-Type': 'application/json',
   },
