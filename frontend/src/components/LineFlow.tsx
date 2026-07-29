@@ -1,16 +1,25 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Cpu, FlaskConical, ImageOff } from 'lucide-react'
 import type { ProductionLine, Device } from '../types'
 import { formatNumber } from '../utils'
 import { LINE_TYPE_STYLE, LINE_TYPE_LABELS } from '../constants'
 
+function imgUrl(path: string | null): string | null {
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  if (path.startsWith('/media/')) return path
+  if (path.startsWith('media/')) return '/' + path
+  return '/media/' + path
+}
+
 function DeviceImage({ device }: { device: Device }) {
   const [err, setErr] = useState(false)
-  if (device.image && !err) {
+  const src = useMemo(() => imgUrl(device.image), [device.image])
+  if (src && !err) {
     return (
       <img
-        src={device.image}
+        src={src}
         alt={device.name}
         onError={() => setErr(true)}
         className="h-16 w-full rounded-lg object-cover"
