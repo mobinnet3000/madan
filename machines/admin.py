@@ -10,7 +10,7 @@ from .models import (
 )
 
 
-def display_attributes_summary(obj):
+def display_attributes_summary(self, obj):
     if not obj.attributes_values:
         return "-"
     return ", ".join([f"{k}: {v}" for k, v in list(obj.attributes_values.items())[:3]])
