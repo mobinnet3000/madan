@@ -6,7 +6,7 @@ from django_jsonform.forms.fields import JSONFormField
 from .models import (
     DeviceDailyAnalysis, DeviceLog, Factory, FailureReason, ProductionLine,
     ProductionLineAttribute, ProductionLineTemplate, Attribute, DeviceTemplate,
-    Device, Shift
+    Device, Shift, ProductionReport
 )
 
 
@@ -83,7 +83,7 @@ class DeviceLogInline(admin.TabularInline):
 
 class DeviceInline(admin.TabularInline):
     model = Device
-    fields = ('order', 'name', 'template')
+    fields = ('order', 'code', 'name', 'template')
     extra = 0
     ordering = ('order',)
 
@@ -163,12 +163,12 @@ class DeviceTemplateAdmin(admin.ModelAdmin):
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
     form = DeviceForm
-    list_display = ('order', 'name', 'line', 'template', 'display_attributes')
+    list_display = ('order', 'code', 'name', 'line', 'template', 'display_attributes')
     display_attributes = display_attributes_summary
     list_editable = ('order',)
     list_display_links = ('name',)
     list_filter = ('line__factory', 'line', 'template')
-    search_fields = ('name', 'line__name')
+    search_fields = ('name', 'code', 'line__name')
 
     def get_inline_instances(self, request, obj=None):
         if obj and obj.is_analyzer:
@@ -177,8 +177,8 @@ class DeviceAdmin(admin.ModelAdmin):
 
     def get_fields(self, request, obj=None):
         if not obj:
-            return ('line', 'template', 'name', 'order', 'is_analyzer')
-        return ('line', 'template', 'name', 'order', 'is_analyzer', 'attributes_values')
+            return ('line', 'template', 'name', 'code', 'order', 'is_analyzer')
+        return ('line', 'template', 'name', 'code', 'order', 'is_analyzer', 'attributes_values')
 
     def response_add(self, request, obj, post_url_continue=None):
         return HttpResponseRedirect(reverse('admin:machines_device_change', args=(obj.pk,)))
@@ -213,7 +213,6 @@ class DeviceLogAdmin(admin.ModelAdmin):
         ("اطلاعات کلی", {"fields": ("line", "date", "shift")}),
         ("اطلاعات خرابی / توقف", {"fields": ("device", "failure_cause", "failure_description", "repair_description")}),
         ("ساعات عملکرد", {"fields": ("runtime_hours", "downtime_hours")}),
-        ("اطلاعات تولیدی خط", {"fields": ("feed_tonnage", "product_tonnage", "tailing_tonnage", "efficiency")}),
         ("متفرقه", {"fields": ("created_at",)}),
     )
 
@@ -225,3 +224,16 @@ class DeviceLogAdmin(admin.ModelAdmin):
         if db_field.name == "shift" and log_obj:
             kwargs["queryset"] = Shift.objects.filter(factory=log_obj.line.factory)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+@admin.register(ProductionReport)
+class ProductionReportAdmin(admin.ModelAdmin):
+    list_display = ('line', 'date_from', 'date_to', 'feed_tonnage', 'product_tonnage', 'tailing_tonnage', 'efficiency')
+    list_filter = ('line__factory', 'line')
+    search_fields = ('line__name', 'note')
+    readonly_fields = ('efficiency', 'created_at')
+    fieldsets = (
+        ("اطلاعات کلی", {"fields": ("line", "date_from", "date_to")}),
+        ("اطلاعات تولیدی", {"fields": ("feed_tonnage", "product_tonnage", "tailing_tonnage", "efficiency")}),
+        ("سایر", {"fields": ("note", "created_at")}),
+    )

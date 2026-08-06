@@ -1,16 +1,23 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Layers, Clock, AlertTriangle, ChevronDown, Info, Factory as FactoryIcon } from 'lucide-react'
+import { Layers, Clock, AlertTriangle, ChevronDown, Info, Factory as FactoryIcon, Settings2 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { Loading, EmptyState } from '../components/ui/States'
 import LineFlow from '../components/LineFlow'
+import AttributeEditor from '../components/AttributeEditor'
+import { saveLineAttributes, saveDeviceAttributes } from '../api/production'
+import { useToast } from '../components/ui/Toast'
 import { formatNumber } from '../utils'
 import { LINE_TYPE_LABELS, LINE_TYPE_STYLE } from '../constants'
-import type { LineType, ProductionLine } from '../types'
+import type { LineType, ProductionLine, Device } from '../types'
 
 export default function Lines() {
-  const { selectedFactory, loading } = useFactory()
+  const { selectedFactory, loading, reload } = useFactory()
+  const { notify } = useToast()
   const [openAttrs, setOpenAttrs] = useState<Record<number, boolean>>({})
+  const [editLine, setEditLine] = useState<ProductionLine | null>(null)
+  const [editDevice, setEditDevice] = useState<Device | null>(null)
+  const [saving, setSaving] = useState(false)
 
   if (loading) return <Loading />
   if (!selectedFactory)
@@ -145,6 +152,13 @@ export default function Lines() {
                               />
                             </button>
                           )}
+                          <button
+                            onClick={() => setEditLine(line)}
+                            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-ink-500 transition hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-slate-800"
+                            title="ویرایش مقادیر ویژگی‌ها"
+                          >
+                            <Settings2 className="h-3.5 w-3.5" /> ویرایش ویژگی‌ها
+                          </button>
                         </div>
 
                         {isOpen && attrs.length > 0 && (
@@ -153,19 +167,21 @@ export default function Lines() {
                             animate={{ height: 'auto', opacity: 1 }}
                             className="flex flex-wrap gap-2 border-b border-ink-100 bg-ink-50/60 px-4 py-3"
                           >
-                            {attrs.map(([k, v]) => (
-                              <span key={k} className="chip">
-                                <span className="text-ink-400">{k}:</span>
-                                <span className="font-semibold text-ink-700">
-                                  {formatNumber(v)}
+                            {attrs.map(([k, v]) => {
+                              const unit = line.attribute_defs.find((d) => d.name === k)?.unit || ''
+                              return (
+                                <span key={k} className="inline-flex items-center gap-1 chip">
+                                  <span className="text-ink-400">{k}:</span>
+                                  <span className="font-semibold text-ink-700">{formatNumber(v as number)}</span>
+                                  {unit && <span className="text-[10px] text-ink-400">{unit}</span>}
                                 </span>
-                              </span>
-                            ))}
+                              )
+                            })}
                           </motion.div>
                         )}
 
                         <div className="p-4">
-                          <LineFlow line={line} />
+                          <LineFlow line={line} onEditDevice={setEditDevice} />
                         </div>
                       </motion.div>
                     )
@@ -176,6 +192,46 @@ export default function Lines() {
           })}
         </div>
       )}
+
+      <AttributeEditor
+        open={editLine != null}
+        title={editLine?.name || ''}
+        defs={editLine?.attribute_defs ?? []}
+        values={editLine?.attributes_values ?? {}}
+        saving={saving}
+        onClose={() => setEditLine(null)}
+        onSave={async (vals) => {
+          if (!editLine) return
+          setSaving(true)
+          try {
+            await saveLineAttributes(editLine.id, vals)
+            notify('ویژگی‌های فنی خط ذخیره شد')
+            setEditLine(null)
+            reload()
+          } catch (e: any) { notify(e.message || 'خطا در ذخیره‌سازی', 'error') }
+          finally { setSaving(false) }
+        }}
+      />
+
+      <AttributeEditor
+        open={editDevice != null}
+        title={`${editDevice?.code ? editDevice.code + ' - ' : ''}${editDevice?.name || ''}`}
+        defs={editDevice?.attribute_defs ?? []}
+        values={editDevice?.attributes_values ?? {}}
+        saving={saving}
+        onClose={() => setEditDevice(null)}
+        onSave={async (vals) => {
+          if (!editDevice) return
+          setSaving(true)
+          try {
+            await saveDeviceAttributes(editDevice.id, vals)
+            notify('ویژگی‌های فنی دستگاه ذخیره شد')
+            setEditDevice(null)
+            reload()
+          } catch (e: any) { notify(e.message || 'خطا در ذخیره‌سازی', 'error') }
+          finally { setSaving(false) }
+        }}
+      />
     </div>
   )
 }

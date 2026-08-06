@@ -13,6 +13,7 @@ import Login from './components/layout/Login'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Lines = lazy(() => import('./pages/Lines'))
 const Logs = lazy(() => import('./pages/Logs'))
+const ProductionReports = lazy(() => import('./pages/ProductionReports'))
 const Analysis = lazy(() => import('./pages/Analysis'))
 const Reports = lazy(() => import('./pages/Reports'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
@@ -71,6 +72,7 @@ function AppInner() {
                     <Route path="/" element={<Page><Dashboard /></Page>} />
                     <Route path="/lines" element={<Page><Lines /></Page>} />
                     <Route path="/logs" element={<Page><Logs /></Page>} />
+                    <Route path="/production" element={<Page><ProductionReports /></Page>} />
                     <Route path="/analysis" element={<Page><Analysis /></Page>} />
                     <Route path="/reports" element={<Page><Reports /></Page>} />
                     <Route path="/activity" element={<Page><ActivityLog /></Page>} />

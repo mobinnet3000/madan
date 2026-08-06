@@ -8,7 +8,7 @@ import type { SamplePoint } from '../types'
 import { Loading, EmptyState, ErrorBanner, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
-import { formatDate, formatNumber, todayISO } from '../utils'
+import { formatDate, formatDateWithWeekday, formatNumber, todayISO } from '../utils'
 import { SAMPLE_POINT_LABELS, SAMPLE_POINT_STYLE } from '../constants'
 
 type AnalysisFormState = { device: string; shift: string; sample_point: SamplePoint | ''; date: string; value_1: number | null; value_2: number | null; analysis_text: string }
@@ -37,6 +37,9 @@ function AnalysisForm({ form, setForm, editing }: { form: AnalysisFormState; set
       <div>
         <label className="label">تاریخ *</label>
         <input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+        {form.date && (
+          <p className="mt-1 text-[11px] text-brand-600 dark:text-brand-400">{formatDateWithWeekday(form.date)}</p>
+        )}
       </div>
       <div>
         <label className="label">شیفت</label>
@@ -171,7 +174,10 @@ export default function Analysis() {
               <tbody className="divide-y divide-ink-100 dark:divide-slate-700">
                 {sorted.map((a) => (
                   <tr key={a.id} className="transition hover:bg-ink-50/50 dark:hover:bg-slate-800/50">
-                    <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(a.date)}</td>
+                    <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">
+                      <div>{formatDate(a.date)}</div>
+                      <div className="text-[10px] text-ink-400">{a.day_of_week || formatDate(a.date)}</div>
+                    </td>
                     <td className="px-4 py-3 dark:text-slate-300">{a.device?.name}</td>
                     <td className="px-4 py-3 text-ink-600 dark:text-slate-400">{a.shift?.name || <span className="text-ink-300 dark:text-slate-600">—</span>}</td>
                     <td className="px-4 py-3">{a.sample_point ? <span className={`badge ${SAMPLE_POINT_STYLE[a.sample_point]}`}>{SAMPLE_POINT_LABELS[a.sample_point]}</span> : <span className="text-ink-300 dark:text-slate-600">—</span>}</td>

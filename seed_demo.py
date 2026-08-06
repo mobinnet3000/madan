@@ -218,7 +218,7 @@ for fd in factories_data:
             icon = TEMPLATE_ICON.get(dtpl.name, 'gear')
             img = make_image('%s_%s.svg' % (slug(fac.name), slug(dname)), dname, icon)
             d = Device.objects.create(
-                name=dname, line=line, template=dtpl, order=order,
+                name=dname, code='L%d-D%02d' % (line.id, order), line=line, template=dtpl, order=order,
                 attributes_values=dattrs, is_analyzer=is_an, image=img,
             )
             if is_an:

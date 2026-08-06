@@ -11,12 +11,19 @@ export interface Shift {
   is_active: boolean
 }
 
+export interface AttributeDef {
+  name: string
+  unit: string
+}
+
 export interface Device {
   id: number
   name: string
+  code: string
   order: number
   template_name: string
   attributes_values: Record<string, number>
+  attribute_defs: AttributeDef[]
   is_analyzer: boolean
   image: string | null
 }
@@ -30,6 +37,7 @@ export interface ProductionLine {
   line_type: LineType
   template_name: string
   attributes_values: Record<string, number>
+  attribute_defs: AttributeDef[]
   devices: Device[]
 }
 
@@ -47,6 +55,8 @@ export interface DeviceLog {
   line: { id: number; name: string; factory: { id: number; name: string } }
   shift: Shift
   date: string
+  date_jalali?: string
+  day_of_week?: string
   device: Device | null
   failure_cause: FailureReason | null
   runtime_hours: number
@@ -70,9 +80,9 @@ export interface DeviceLogPayload {
   downtime_hours: number
   failure_description?: string
   repair_description?: string
-  feed_tonnage: number
-  product_tonnage: number
-  tailing_tonnage: number
+  feed_tonnage?: number
+  product_tonnage?: number
+  tailing_tonnage?: number
 }
 
 export type SamplePoint = 'feed' | 'tailing' | 'product'
@@ -82,6 +92,8 @@ export interface DeviceDailyAnalysis {
   device: Device
   shift: Shift | null
   date: string
+  date_jalali?: string
+  day_of_week?: string
   sample_point: SamplePoint | null
   analysis_text: string | null
   value_1: number | null
@@ -145,4 +157,34 @@ export interface ActivityLogEntry {
   factory_name: string | null
   ip: string | null
   timestamp: string
+  timestamp_jalali?: string
+}
+
+export interface ProductionReport {
+  id: number
+  line: { id: number; name: string; factory: { id: number; name: string } }
+  date_from: string
+  date_to: string
+  feed_tonnage: number
+  product_tonnage: number
+  tailing_tonnage: number
+  efficiency: number | null
+  note: string
+  created_at: string
+}
+
+export interface ProductionReportPayload {
+  line: number
+  date_from: string
+  date_to: string
+  feed_tonnage: number
+  product_tonnage: number
+  tailing_tonnage: number
+  note?: string
+}
+
+export interface ProductionReportFilters {
+  line?: number
+  date_from?: string
+  date_to?: string
 }

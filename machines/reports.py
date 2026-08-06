@@ -18,6 +18,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 from .models import Factory, ProductionLine, Device, DeviceLog, DeviceDailyAnalysis
+from .jalali import to_jalali, to_jalali_full, weekday_fa
 
 # Arabic/Persian text reshaping for correct glyph rendering in Reportlab
 import arabic_reshaper
@@ -281,11 +282,13 @@ def excel_analysis(factory, analyses_data, date_from, date_to, date_label):
 
     data_rows = [headers]
     for i, item in enumerate(analyses_data, 1):
+        dow = item.get('day_of_week', '')
+        date_cell = f"{item.get('date', '')} {dow}".strip()
         data_rows.append([
             i,
             item.get('device_name', ''),
             item.get('sample_point_display', ''),
-            item.get('date', ''),
+            date_cell,
             item.get('value_1', ''),
             item.get('value_2', ''),
             item.get('analysis_text', ''),
@@ -308,7 +311,7 @@ def _pdf_header_footer(canvas, doc, title, factory=None, date_label=''):
     canvas.setFont('Vazir', 7)
     canvas.setFillColor(C_TEXT_MUTED)
     w, h = A4 if doc.pagesize == A4 else landscape(A4)
-    today_str = date.today().strftime('%Y-%m-%d')
+    today_str = to_jalali(date.today())
     canvas.drawRightString(w - 20, 15, _fa(f'صفحه {doc.page}'))
     canvas.drawRightString(w - 20, 10, _fa(f'تاریخ چاپ: {today_str}'))
     if factory:
@@ -454,12 +457,14 @@ def pdf_analysis(factory, analyses_data, date_from, date_to, date_label, factory
     cw = [22, 75, 80, 60, 55, 55, 55, 130]
     rows = [hdr]
     for i, item in enumerate(analyses_data, 1):
+        dow = item.get('day_of_week', '')
+        date_cell = f"{item.get('date', '')} {dow}".strip()
         rows.append([
             _p_cell(str(i)),
             _p_cell(item.get('device_name', '')),
             _p_cell(item.get('line_name', '')),
             _p_cell(item.get('sample_point_display', '')),
-            _p_cell(str(item.get('date', ''))),
+            _p_cell(date_cell),
             _p_cell(_p(item.get('value_1'))),
             _p_cell(_p(item.get('value_2'))),
             _p_cell(item.get('analysis_text', '')[:60]),
@@ -533,7 +538,8 @@ def analysis_data(factory, date_from, date_to):
             'sample_point': a.sample_point or '',
             'sample_point_display': a.get_sample_point_display() or '',
             'shift_name': a.shift.name if a.shift else '',
-            'date': a.date.isoformat() if a.date else '',
+            'date': to_jalali(a.date) if a.date else '',
+            'day_of_week': weekday_fa(a.date) if a.date else '',
             'value_1': a.value_1,
             'value_2': a.value_2,
             'analysis_text': a.analysis_text or '',
@@ -543,20 +549,21 @@ def analysis_data(factory, date_from, date_to):
 
 # ─────────────────────────────── MAIN ───────────────────────────────
 
+def _date_label(range_key, d_from, d_to):
+    """ساخت برچسب بازه گزارش با تاریخ شمسی + روز هفته."""
+    if range_key == 'custom' and d_from and d_to:
+        return f'{to_jalali_full(d_from)} ({weekday_fa(d_from)}) تا {to_jalali_full(d_to)} ({weekday_fa(d_to)})'
+    if d_from and d_to:
+        if d_from == d_to:
+            return f'{to_jalali_full(d_from)} - {weekday_fa(d_from)}'
+        return f'{to_jalali_full(d_from)} ({weekday_fa(d_from)}) تا {to_jalali_full(d_to)} ({weekday_fa(d_to)})'
+    return 'همه موارد'
+
+
 def generate_performance_report(factory_id, range_key, date_from=None, date_to=None, fmt='excel'):
     factory = Factory.objects.filter(id=factory_id).first() if factory_id else None
     d_from, d_to = get_date_range(range_key, date_from, date_to)
-    date_label = RANGE_LABELS.get(range_key, 'سفارشی')
-
-    if range_key == 'custom' and date_from and date_to:
-        date_label = f'{date_from} تا {date_to}'
-    elif d_from and d_to:
-        if d_from == d_to:
-            date_label = d_from.isoformat()
-        else:
-            date_label = f'{d_from} تا {d_to}'
-    else:
-        date_label = 'همه موارد'
+    date_label = _date_label(range_key, d_from, d_to)
 
     lines_data = performance_data(factory, d_from, d_to)
 
@@ -570,17 +577,7 @@ def generate_performance_report(factory_id, range_key, date_from=None, date_to=N
 def generate_analysis_report(factory_id, range_key, date_from=None, date_to=None, fmt='excel'):
     factory = Factory.objects.filter(id=factory_id).first() if factory_id else None
     d_from, d_to = get_date_range(range_key, date_from, date_to)
-    date_label = RANGE_LABELS.get(range_key, 'سفارشی')
-
-    if range_key == 'custom' and date_from and date_to:
-        date_label = f'{date_from} تا {date_to}'
-    elif d_from and d_to:
-        if d_from == d_to:
-            date_label = d_from.isoformat()
-        else:
-            date_label = f'{d_from} تا {d_to}'
-    else:
-        date_label = 'همه موارد'
+    date_label = _date_label(range_key, d_from, d_to)
 
     analyses = analysis_data(factory, d_from, d_to)
 

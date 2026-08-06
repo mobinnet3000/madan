@@ -5,15 +5,23 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import DeviceDailyAnalysis, DeviceLog, Factory
+from django.http import FileResponse, Http404
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .models import DeviceDailyAnalysis, DeviceLog, Factory, Device, ProductionLine, ProductionReport
 from .serializers import (
     DeviceDailyAnalysisSerializer,
     DeviceDailyAnalysisWriteSerializer,
     DeviceLogSerializer,
     DeviceLogWriteSerializer,
     FactoryFullDetailSerializer,
+    ProductionReportSerializer,
+    ProductionReportWriteSerializer,
 )
-from .filters import DailyAnalysisFilter, DeviceLogFilter
+from .filters import DailyAnalysisFilter, DeviceLogFilter, ProductionReportFilter
 from .reports import generate_performance_report, generate_analysis_report, get_date_range, RANGE_LABELS
 from accounts.services import get_user_factory, log_activity
 from core.pagination import StandardPagination
@@ -108,6 +116,92 @@ class DeviceDailyAnalysisViewSet(viewsets.ModelViewSet):
                      f"{instance.device.name} - {instance.date}", self.request,
                      factory=self._get_factory_for(instance))
         instance.delete()
+
+
+class ProductionReportViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductionReportSerializer
+    filterset_class = ProductionReportFilter
+    pagination_class = StandardPagination
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return ProductionReportWriteSerializer
+        return ProductionReportSerializer
+
+    def get_queryset(self):
+        qs = ProductionReport.objects.all().select_related('line__factory')
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(line__factory=factory)
+        return qs
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        log_activity(self.request.user, 'create', 'گزارش تولید',
+                     f"{obj.line.name} - {obj.date_from} تا {obj.date_to}", self.request,
+                     factory=obj.line.factory)
+
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        log_activity(self.request.user, 'update', 'گزارش تولید',
+                     f"{obj.line.name} - {obj.date_from} تا {obj.date_to}", self.request,
+                     factory=obj.line.factory)
+
+    def perform_destroy(self, instance):
+        log_activity(self.request.user, 'delete', 'گزارش تولید',
+                     f"{instance.line.name} - {instance.date_from}", self.request,
+                     factory=instance.line.factory)
+        instance.delete()
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def line_attributes_view(request, uid):
+    try:
+        line = ProductionLine.objects.select_related('template').get(pk=uid)
+    except ProductionLine.DoesNotExist:
+        raise Http404
+    factory = get_user_factory(request.user)
+    if factory is not None and line.factory_id != factory.id:
+        raise Http404
+
+    if request.method == 'GET':
+        defs = [{'name': a.name, 'unit': a.unit or ''} for a in line.template.available_attributes.all()] if line.template_id else []
+        return Response({'id': line.id, 'attributes_values': line.attributes_values or {}, 'attribute_defs': defs})
+
+    values = request.data.get('attributes_values')
+    if not isinstance(values, dict):
+        return Response({'error': 'attributes_values باید یک شیء باشد.'}, status=status.HTTP_400_BAD_REQUEST)
+    line.attributes_values = values
+    line.save()
+    log_activity(request.user, 'update', 'خط تولید', line.name, request, 'ویرایش مقادیر ویژگی‌های فنی', factory=line.factory)
+    return Response({'ok': True, 'attributes_values': line.attributes_values})
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def device_attributes_view(request, uid):
+    try:
+        device = Device.objects.select_related('template', 'line').get(pk=uid)
+    except Device.DoesNotExist:
+        raise Http404
+    factory = get_user_factory(request.user)
+    if factory is not None and device.line.factory_id != factory.id:
+        raise Http404
+
+    if request.method == 'GET':
+        defs = [{'name': a.name, 'unit': a.unit or ''} for a in device.template.available_attributes.all()] if device.template_id else []
+        return Response({'id': device.id, 'name': device.name, 'code': device.code,
+                         'attributes_values': device.attributes_values or {}, 'attribute_defs': defs})
+
+    values = request.data.get('attributes_values')
+    if not isinstance(values, dict):
+        return Response({'error': 'attributes_values باید یک شیء باشد.'}, status=status.HTTP_400_BAD_REQUEST)
+    device.attributes_values = values
+    device.save()
+    log_activity(request.user, 'update', 'دستگاه', device.name, request, 'ویرایش مقادیر ویژگی‌های فنی', factory=device.line.factory)
+    return Response({'ok': True, 'attributes_values': device.attributes_values})
 
 
 @api_view(['GET'])

@@ -140,7 +140,8 @@ class DeviceTemplate(models.Model):
 
 
 class Device(models.Model):
-    name = models.CharField(max_length=255, verbose_name="نام/کد دستگاه")
+    name = models.CharField(max_length=255, verbose_name="نام دستگاه")
+    code = models.CharField(max_length=100, blank=True, verbose_name="کد دستگاه", help_text="کد/شماره فنی دستگاه (جدا از نام)")
     line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE, related_name='devices', verbose_name="خط تولید")
     order = models.PositiveIntegerField(default=0, verbose_name="ترتیب در خط")
     template = models.ForeignKey(DeviceTemplate, on_delete=models.PROTECT, verbose_name="الگوی مدل")
@@ -259,6 +260,45 @@ class DeviceLog(models.Model):
             raise ValidationError({'device': f"دستگاه '{self.device.name}' متعلق به این خط تولید نیست."})
         if self.shift_id and self.line_id and self.shift.factory_id != self.line.factory_id:
             raise ValidationError({'shift': "شیفت انتخاب‌شده متعلق به کارخانه این خط تولید نیست."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class ProductionReport(models.Model):
+    """گزارش تولیدی خط در یک بازه زمانی (جدای از گزارش عملکرد روزانه)."""
+    line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE, related_name="production_reports", verbose_name="خط تولید")
+    date_from = models.DateField(verbose_name="تاریخ شروع بازه")
+    date_to = models.DateField(verbose_name="تاریخ پایان بازه")
+    feed_tonnage = models.FloatField(default=0, verbose_name="تناژ ورودی (Feed)")
+    product_tonnage = models.FloatField(default=0, verbose_name="تناژ محصول/خروجی خط")
+    tailing_tonnage = models.FloatField(default=0, verbose_name="تناژ باطله")
+    note = models.TextField(blank=True, verbose_name="توضیحات / ملاحظات")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
+
+    class Meta:
+        verbose_name = "گزارش تولید"
+        verbose_name_plural = "گزارش‌های تولید"
+        ordering = ['-date_from', '-created_at']
+        indexes = [
+            models.Index(fields=['line', 'date_from']),
+            models.Index(fields=['line', 'date_to']),
+        ]
+
+    def __str__(self):
+        return f"گزارش تولید {self.line.name} - {self.date_from} تا {self.date_to}"
+
+    @property
+    def efficiency(self):
+        if self.feed_tonnage > 0:
+            return round((self.product_tonnage / self.feed_tonnage) * 100, 2)
+        return None
+
+    def clean(self):
+        super().clean()
+        if self.date_from and self.date_to and self.date_to < self.date_from:
+            raise ValidationError({"date_to": "تاریخ پایان بازه نمی‌تواند قبل از تاریخ شروع باشد."})
 
     def save(self, *args, **kwargs):
         self.full_clean()

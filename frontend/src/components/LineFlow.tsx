@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Cpu, FlaskConical, ImageOff } from 'lucide-react'
+import { Cpu, FlaskConical, ImageOff, Settings2 } from 'lucide-react'
 import type { ProductionLine, Device } from '../types'
 import { formatNumber } from '../utils'
 import { LINE_TYPE_STYLE, LINE_TYPE_LABELS } from '../constants'
@@ -42,7 +42,7 @@ function DeviceImage({ device }: { device: Device }) {
   )
 }
 
-function DeviceNode({ device, index }: { device: Device; index: number }) {
+function DeviceNode({ device, index, onEdit }: { device: Device; index: number; onEdit?: (d: Device) => void }) {
   const attrs = Object.entries(device.attributes_values || {})
   return (
     <motion.div
@@ -56,21 +56,34 @@ function DeviceNode({ device, index }: { device: Device; index: number }) {
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-ink-100 text-[11px] font-bold text-ink-500">
             {index + 1}
           </span>
-          {device.is_analyzer ? (
-            <span className="badge bg-violet-100 text-violet-700">
-              <FlaskConical className="h-3 w-3" /> آنالایزر
-            </span>
-          ) : (
-            <span className="badge bg-ink-100 text-ink-500">
-              <Cpu className="h-3 w-3" /> دستگاه
-            </span>
-          )}
+          <div className="flex items-center gap-1">
+            {device.is_analyzer ? (
+              <span className="badge bg-violet-100 text-violet-700">
+                <FlaskConical className="h-3 w-3" /> آنالایزر
+              </span>
+            ) : (
+              <span className="badge bg-ink-100 text-ink-500">
+                <Cpu className="h-3 w-3" /> دستگاه
+              </span>
+            )}
+            {onEdit && (
+              <button
+                onClick={() => onEdit(device)}
+                className="rounded-md p-1 text-ink-300 opacity-0 transition hover:bg-brand-50 hover:text-brand-600 group-hover:opacity-100"
+                title="ویرایش ویژگی‌های فنی"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="truncate text-sm font-bold text-ink-800" title={device.name}>
           {device.name}
         </div>
-        <div className="mb-2 truncate text-[11px] text-ink-400">{device.template_name}</div>
+        <div className="text-[11px] text-ink-400">
+          {device.code ? `${device.code} · ` : ''}{device.template_name}
+        </div>
 
         <div className="mt-auto space-y-1 border-t border-ink-100 pt-2">
           {attrs.length === 0 && (
@@ -91,7 +104,7 @@ function DeviceNode({ device, index }: { device: Device; index: number }) {
   )
 }
 
-export default function LineFlow({ line }: { line: ProductionLine }) {
+export default function LineFlow({ line, onEditDevice }: { line: ProductionLine; onEditDevice?: (d: Device) => void }) {
   const devices = [...line.devices].sort((a, b) => a.order - b.order)
   const style = LINE_TYPE_STYLE[line.line_type]
 
@@ -121,7 +134,7 @@ export default function LineFlow({ line }: { line: ProductionLine }) {
         <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
           {devices.map((d, i) => (
             <div key={d.id} className="flex items-center">
-              <DeviceNode device={d} index={i} />
+              <DeviceNode device={d} index={i} onEdit={onEditDevice} />
               {i < devices.length - 1 && (
                 <motion.div
                   initial={{ opacity: 0 }}

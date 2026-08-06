@@ -1,8 +1,83 @@
+// ── تبدیل تاریخ میلادی به شمسی (Jalali) ─────────────────────────────
+const div = (a: number, b: number) => Math.floor(a / b)
+const mod = (a: number, b: number) => a - Math.floor(a / b) * b
+
+export function gregorianToJalali(gy: number, gm: number, gd: number): [number, number, number] {
+  const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+  let gy2 = gm > 2 ? gy + 1 : gy
+  let days = 355666 + 365 * gy + div(gy2 + 2, 4) - div(gy2 + 99, 100) + div(gy2 + 399, 400) + gd + g_d_m[gm - 1]
+  let jy = -1595 + 33 * div(days, 12053)
+  days = mod(days, 12053)
+  jy += 4 * div(days, 1461)
+  days -= 1461 * div(days, 1461)
+  if (days > 0) { jy += div(days - 1, 365); days = mod(days - 1, 365) }
+  let jm: number, jd: number
+  if (days < 186) { jm = 1 + div(days, 31); jd = mod(days, 31) + 1 }
+  else { jm = 7 + div(days - 186, 30); jd = mod(days - 186, 30) + 1 }
+  return [jy, jm, jd]
+}
+
+export const PERSIAN_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
+
+// شاخص `new Date().getDay()` (۰=یکشنبه ... ۶=شنبه)
+export const PERSIAN_WEEKDAYS = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه']
+
+function parseISO(iso: string): { y: number; m: number; d: number } {
+  const [y, m, d] = iso.split('T')[0].split('-').map(Number)
+  return { y, m, d }
+}
+
+export function toJalali(iso: string): [number, number, number] | null {
+  if (!iso) return null
+  const { y, m, d } = parseISO(iso)
+  if (!y || !m || !d) return null
+  return gregorianToJalali(y, m, d)
+}
+
+export function weekdayFa(iso: string): string {
+  const { y, m, d } = parseISO(iso)
+  if (!y || !m || !d) return ''
+  return PERSIAN_WEEKDAYS[new Date(y, m - 1, d).getDay()]
+}
+
+const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`)
+
 export function formatDate(iso: string): string {
   if (!iso) return '-'
-  const [y, m, d] = iso.split('T')[0].split('-')
-  if (!y || !m || !d) return iso
-  return `${d}/${m}/${y}`
+  const j = toJalali(iso)
+  if (!j) return iso
+  return `${j[0]}/${pad(j[1])}/${pad(j[2])}`
+}
+
+export function formatDateFull(iso: string): string {
+  if (!iso) return '-'
+  const j = toJalali(iso)
+  if (!j) return iso
+  const { y, m, d } = parseISO(iso)
+  const wd = PERSIAN_WEEKDAYS[new Date(y, m - 1, d).getDay()]
+  return `${wd} ${j[2]} ${PERSIAN_MONTHS[j[1] - 1]} ${j[0]}`
+}
+
+export function formatDateWithWeekday(iso: string): string {
+  if (!iso) return '-'
+  const j = toJalali(iso)
+  if (!j) return iso
+  const { y, m, d } = parseISO(iso)
+  const wd = PERSIAN_WEEKDAYS[new Date(y, m - 1, d).getDay()]
+  return `${wd} · ${j[0]}/${pad(j[1])}/${pad(j[2])}`
+}
+
+// ساعت شیفت از ساعت‌های شروع و پایان (پشتیبانی از شیفت شبانه که پايان < شروع)
+export function shiftHours(hhmmStart: string | undefined, hhmmEnd: string | undefined): number {
+  if (!hhmmStart || !hhmmEnd) return 0
+  const toMin = (s: string) => {
+    const [h, m] = s.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  let mins = toMin(hhmmEnd) - toMin(hhmmStart)
+  if (mins < 0) mins += 24 * 60
+  return mins / 60
 }
 
 export function formatNumber(n: number | null | undefined): string {

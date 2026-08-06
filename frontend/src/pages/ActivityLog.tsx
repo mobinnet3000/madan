@@ -112,7 +112,7 @@ export default function ActivityLog() {
                     transition={{ delay: Math.min(i * 0.01, 0.2) }}
                     className="transition hover:bg-ink-50/50 dark:hover:bg-slate-800/50"
                   >
-                    <td className="px-4 py-3 font-mono text-[11px] text-ink-600">{new Date(l.timestamp).toLocaleString('fa-IR')}</td>
+                    <td className="px-4 py-3 text-[11px] text-ink-600 dark:text-slate-400">{l.timestamp_jalali || new Date(l.timestamp).toLocaleString('fa-IR')}</td>
                     <td className="px-4 py-3"><div className="font-medium text-ink-800 dark:text-slate-200">{l.username}</div></td>
                     <td className="px-4 py-3"><span className={`badge ${ROLE_BADGE[(l.role || 'operator') as keyof typeof ROLE_BADGE] || ROLE_BADGE.operator}`}>{l.role || 'اپراتور'}</span></td>
                     <td className="px-4 py-3"><span className={`badge ${ACTION_STYLE[l.action] || 'bg-ink-100 text-ink-600'}`}>{ACTION_LABELS[l.action] || l.action}</span></td>
