@@ -7,10 +7,18 @@ import { LINE_TYPE_STYLE, LINE_TYPE_LABELS } from '../constants'
 
 function imgUrl(path: string | null): string | null {
   if (!path) return null
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  if (path.startsWith('/media/')) return path
-  if (path.startsWith('media/')) return '/' + path
-  return '/media/' + path
+  // آدرس‌های مطلق را به مسیر نسبی تبدیل کن تا همیشه از هاست فعلی (لوکال/هاست) لود شوند
+  let p = path
+  if (/^https?:\/\//i.test(p)) {
+    try {
+      p = new URL(p).pathname
+    } catch {
+      /* keep original */
+    }
+  }
+  if (p.startsWith('/media/')) return p
+  if (p.startsWith('media/')) return '/' + p
+  return '/media/' + p
 }
 
 function DeviceImage({ device }: { device: Device }) {

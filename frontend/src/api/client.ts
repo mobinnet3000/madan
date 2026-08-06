@@ -2,9 +2,10 @@ import axios from 'axios'
 
 export const TOKEN_KEY = 'madan_token'
 
-// در حالت توسعه (Vite proxy) به /api هدایت می‌شه
-// در حالت production از متغیر محیطی VITE_API_BASE_URL استفاده کن
-const BASE = (import.meta as any).env?.VITE_API_BASE_URL || '/api'
+// در حالت توسعه همیشه به /api خودِ لوکال (Vite proxy) وصل شو
+// VITE_API_BASE_URL فقط در بیلد production اعمال می‌شود
+const env = (import.meta as any).env
+const BASE = env?.PROD && env?.VITE_API_BASE_URL ? env.VITE_API_BASE_URL : '/api'
 
 export const api = axios.create({
   baseURL: BASE,
