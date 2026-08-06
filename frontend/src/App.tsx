@@ -16,6 +16,7 @@ const Logs = lazy(() => import('./pages/Logs'))
 const ProductionReports = lazy(() => import('./pages/ProductionReports'))
 const Analysis = lazy(() => import('./pages/Analysis'))
 const Reports = lazy(() => import('./pages/Reports'))
+const UsersPage = lazy(() => import('./pages/UsersPage'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
 
 function Page({ children }: { children: ReactNode }) {
@@ -75,6 +76,7 @@ function AppInner() {
                     <Route path="/production" element={<Page><ProductionReports /></Page>} />
                     <Route path="/analysis" element={<Page><Analysis /></Page>} />
                     <Route path="/reports" element={<Page><Reports /></Page>} />
+                    <Route path="/users" element={<Page><UsersPage /></Page>} />
                     <Route path="/activity" element={<Page><ActivityLog /></Page>} />
                   </Routes>
                 </Suspense>

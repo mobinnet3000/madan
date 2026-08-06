@@ -8,7 +8,7 @@ const demoUsers = [
   { role: 'ادمین (دسترسی کامل)', username: 'admin' },
   { role: 'مدیر کارخانه ۱', username: 'manager1' },
   { role: 'اپراتور کارخانه ۱', username: 'operator1' },
-  { role: 'مدیر کارخانه ۲', username: 'manager2' },
+  { role: 'بیننده کارخانه ۱', username: 'viewer1' },
 ]
 
 export default function Login() {

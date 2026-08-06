@@ -24,12 +24,15 @@ from .serializers import (
 from .filters import DailyAnalysisFilter, DeviceLogFilter, ProductionReportFilter
 from .reports import generate_performance_report, generate_analysis_report, get_date_range, RANGE_LABELS
 from accounts.services import get_user_factory, log_activity
+from accounts.permissions import HasPermission, require_permission, user_has_permission
 from core.pagination import StandardPagination
 
 
 class FactoryDetailViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FactoryFullDetailSerializer
     pagination_class = None
+    required_permission = 'factory.view'
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
 
     def get_queryset(self):
         qs = Factory.objects.all().prefetch_related(
@@ -45,7 +48,14 @@ class DeviceLogViewSet(viewsets.ModelViewSet):
     serializer_class = DeviceLogSerializer
     filterset_class = DeviceLogFilter
     pagination_class = StandardPagination
-    permission_classes = [permissions.IsAuthenticated]
+    required_permission = 'logs.view'
+    action_permissions = {
+        'create': 'logs.create',
+        'update': 'logs.edit',
+        'partial_update': 'logs.edit',
+        'destroy': 'logs.delete',
+    }
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -82,7 +92,14 @@ class DeviceDailyAnalysisViewSet(viewsets.ModelViewSet):
     serializer_class = DeviceDailyAnalysisSerializer
     filterset_class = DailyAnalysisFilter
     pagination_class = StandardPagination
-    permission_classes = [permissions.IsAuthenticated]
+    required_permission = 'analysis.view'
+    action_permissions = {
+        'create': 'analysis.create',
+        'update': 'analysis.edit',
+        'partial_update': 'analysis.edit',
+        'destroy': 'analysis.delete',
+    }
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -122,7 +139,14 @@ class ProductionReportViewSet(viewsets.ModelViewSet):
     serializer_class = ProductionReportSerializer
     filterset_class = ProductionReportFilter
     pagination_class = StandardPagination
-    permission_classes = [permissions.IsAuthenticated]
+    required_permission = 'production.view'
+    action_permissions = {
+        'create': 'production.create',
+        'update': 'production.edit',
+        'partial_update': 'production.edit',
+        'destroy': 'production.delete',
+    }
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -157,7 +181,10 @@ class ProductionReportViewSet(viewsets.ModelViewSet):
 
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
+@require_permission('lines.view')
 def line_attributes_view(request, uid):
+    if request.method == 'PATCH' and not user_has_permission(request.user, 'lines.manage'):
+        return Response({'detail': 'شما اجازه‌ی ویرایش ویژگی‌ها را ندارید.'}, status=403)
     try:
         line = ProductionLine.objects.select_related('template').get(pk=uid)
     except ProductionLine.DoesNotExist:
@@ -181,7 +208,10 @@ def line_attributes_view(request, uid):
 
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
+@require_permission('devices.view')
 def device_attributes_view(request, uid):
+    if request.method == 'PATCH' and not user_has_permission(request.user, 'devices.manage'):
+        return Response({'detail': 'شما اجازه‌ی ویرایش ویژگی‌ها را ندارید.'}, status=403)
     try:
         device = Device.objects.select_related('template', 'line').get(pk=uid)
     except Device.DoesNotExist:
@@ -206,6 +236,7 @@ def device_attributes_view(request, uid):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@require_permission('reports.view')
 def report_ranges_view(request):
     ranges = {k: v for k, v in RANGE_LABELS.items()}
     return Response(ranges)
@@ -213,6 +244,7 @@ def report_ranges_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@require_permission('reports.view')
 def performance_report_view(request):
     # Bypass everything - just generate and return
     from machines.reports import generate_performance_report as gen_report
@@ -253,6 +285,7 @@ def performance_report_view(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@require_permission('reports.view')
 def analysis_report_view(request):
     from machines.reports import generate_analysis_report as gen_report
     range_key = request.query_params.get('range', '30days')

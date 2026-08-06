@@ -2,25 +2,27 @@ import { NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Workflow, ClipboardList, FlaskConical,
-  FileBarChart, History, Mountain, X, Factory,
+  FileBarChart, History, Mountain, X, Factory, Users,
 } from 'lucide-react'
 import { classNames } from '../../utils'
 import { useAuth } from '../../store/AuthContext'
-import { ROLE_BADGE, ROLE_LABELS } from '../../constants'
+import { ROLE_BADGE, ROLE_LABELS, hasPerm } from '../../constants'
 
-const navItems = [
-  { to: '/', label: 'داشبورد', icon: LayoutDashboard, end: true },
-  { to: '/lines', label: 'مدل‌سازی خط فرآوری', icon: Workflow, end: false },
-  { to: '/logs', label: 'گزارش عملکرد', icon: ClipboardList, end: false },
-  { to: '/production', label: 'گزارش‌های تولید', icon: Factory, end: false },
-  { to: '/analysis', label: 'آنالیز آنلاین', icon: FlaskConical, end: false },
-  { to: '/reports', label: 'گزارش‌ها و خروجی', icon: FileBarChart, end: false },
+const navItems: { to: string; label: string; icon: any; end: boolean; perm?: string }[] = [
+  { to: '/', label: 'داشبورد', icon: LayoutDashboard, end: true, perm: 'dashboard.view' },
+  { to: '/lines', label: 'مدل‌سازی خط فرآوری', icon: Workflow, end: false, perm: 'lines.view' },
+  { to: '/logs', label: 'گزارش عملکرد', icon: ClipboardList, end: false, perm: 'logs.view' },
+  { to: '/production', label: 'گزارش‌های تولید', icon: Factory, end: false, perm: 'production.view' },
+  { to: '/analysis', label: 'آنالیز آنلاین', icon: FlaskConical, end: false, perm: 'analysis.view' },
+  { to: '/reports', label: 'گزارش‌ها و خروجی', icon: FileBarChart, end: false, perm: 'reports.view' },
+  { to: '/users', label: 'مدیریت کاربران و دسترسی‌ها', icon: Users, end: false, perm: 'users.view' },
+  { to: '/activity', label: 'لاگ فعالیت‌ها', icon: History, end: false, perm: 'activity.view' },
 ]
 
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth()
-  const isAdmin = user?.role === 'admin' || user?.is_superuser
-  const items = isAdmin ? [...navItems, { to: '/activity', label: 'لاگ فعالیت‌ها', icon: History, end: false }] : navItems
+  const perms = user?.permissions
+  const items = navItems.filter((it) => !it.perm || hasPerm(perms, it.perm))
 
   const content = (
     <aside className="flex h-full w-64 flex-col border-l border-white/5" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' }}>

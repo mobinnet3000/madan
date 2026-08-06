@@ -304,6 +304,8 @@ for fac, shifts, failures, analyzers in factories:
     UserProfile.objects.create(user=mu, role='manager', factory=fac)
     ou = User.objects.create_user('operator%d' % idx, 'operator%d@madan.ir' % idx, 'Madan@1404', first_name='اپراتور', last_name='خط %d' % idx)
     UserProfile.objects.create(user=ou, role='operator', factory=fac)
+    vu = User.objects.create_user('viewer%d' % idx, 'viewer%d@madan.ir' % idx, 'Madan@1404', first_name='بیننده', last_name='کارخانه %d' % idx)
+    UserProfile.objects.create(user=vu, role='viewer', factory=fac)
 
 print('OK - seed done')
 print('Factories:', Factory.objects.count())

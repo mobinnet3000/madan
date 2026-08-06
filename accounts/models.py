@@ -2,9 +2,10 @@ from django.db import models
 from django.contrib.auth.models import User
 
 ROLE_CHOICES = [
-    ('admin', 'ادمین'),
+    ('admin', 'مدیر سیستم (ادمین)'),
     ('manager', 'مدیر کارخانه'),
     ('operator', 'اپراتور'),
+    ('viewer', 'بیننده (فقط مشاهده)'),
 ]
 
 
@@ -31,6 +32,8 @@ class UserProfile(models.Model):
         max_length=20, choices=ROLE_CHOICES, default='operator', verbose_name='نقش'
     )
     phone = models.CharField(max_length=20, blank=True, verbose_name='شماره تماس')
+    permissions = models.JSONField(default=dict, blank=True, verbose_name='دسترسی‌های سفارشی',
+        help_text='مثلاً {"granted": ["logs.delete"], "denied": []}')
 
     class Meta:
         verbose_name = 'پروفایل کاربر'
@@ -38,6 +41,23 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.get_role_display()}"
+
+
+class RolePermissionConfig(models.Model):
+    """تعریف دسترسی‌های هر نقش (ماتریس نقش × دسترسی)."""
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, verbose_name='نقش')
+    permission = models.CharField(max_length=40, verbose_name='کد دسترسی')
+    enabled = models.BooleanField(default=True, verbose_name='فعال')
+
+    class Meta:
+        verbose_name = 'دسترسی نقش'
+        verbose_name_plural = 'دسترسی‌های نقش‌ها'
+        constraints = [
+            models.UniqueConstraint(fields=['role', 'permission'], name='uniq_role_permission'),
+        ]
+
+    def __str__(self):
+        return f"{self.get_role_display()} - {self.permission}: {'فعال' if self.enabled else 'غیرفعال'}"
 
 
 class ActivityLog(models.Model):

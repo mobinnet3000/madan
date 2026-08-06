@@ -1,15 +1,21 @@
 import type { LineType, Role, SamplePoint } from './types'
 
 export const ROLE_LABELS: Record<Role, string> = {
-  admin: 'ادمین',
+  admin: 'مدیر سیستم',
   manager: 'مدیر کارخانه',
   operator: 'اپراتور',
+  viewer: 'بیننده',
 }
 
 export const ROLE_BADGE: Record<Role, string> = {
   admin: 'bg-rose-100 text-rose-700',
   manager: 'bg-sky-100 text-sky-700',
   operator: 'bg-emerald-100 text-emerald-700',
+  viewer: 'bg-slate-100 text-slate-600',
+}
+
+export function hasPerm(permissions: string[] | undefined, code: string): boolean {
+  return Array.isArray(permissions) && permissions.includes(code)
 }
 
 export const LINE_TYPE_LABELS: Record<LineType, string> = {

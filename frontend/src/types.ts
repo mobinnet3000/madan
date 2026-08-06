@@ -131,7 +131,7 @@ export interface AnalysisFilters {
   date_to?: string
 }
 
-export type Role = 'admin' | 'manager' | 'operator'
+export type Role = 'admin' | 'manager' | 'operator' | 'viewer'
 
 export interface UserProfile {
   id: number
@@ -144,6 +144,35 @@ export interface UserProfile {
   factory_name: string | null
   phone: string
   is_superuser: boolean
+  permissions: string[]
+}
+
+export interface ManagedUser {
+  id: number
+  username: string
+  first_name: string
+  last_name: string
+  email: string
+  is_active: boolean
+  is_superuser: boolean
+  role: Role
+  factory: number | null
+  factory_name: string | null
+  phone: string
+  permissions: { granted: string[]; denied: string[] }
+  permissions_resolved: string[]
+}
+
+export interface PermissionDef {
+  code: string
+  label: string
+  group: string
+}
+
+export interface RoleMatrixData {
+  roles: { value: Role; label: string }[]
+  permissions: PermissionDef[]
+  matrix: Record<Role, Record<string, boolean>>
 }
 
 export interface ActivityLogEntry {
