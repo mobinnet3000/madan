@@ -346,8 +346,8 @@ class DeviceLogWriteSerializer(serializers.ModelSerializer):
 
 
 class ProductionReportSerializer(serializers.ModelSerializer):
-    efficiency = serializers.ReadOnlyField()
     line = ProductionLineMinSerializer(read_only=True)
+    contractor = ContractorSerializer(read_only=True)
     date_from_jalali = serializers.SerializerMethodField()
     date_to_jalali = serializers.SerializerMethodField()
 
@@ -356,14 +356,17 @@ class ProductionReportSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "line",
+            "contractor",
             "date_from",
             "date_to",
             "date_from_jalali",
             "date_to_jalali",
-            "feed_tonnage",
-            "product_tonnage",
-            "tailing_tonnage",
-            "efficiency",
+            "batala_avalieh",
+            "darsad_batale",
+            "darsad_dane_dorosht",
+            "darsad_rotobat",
+            "darsad_takhfif",
+            "darsad_jerime",
             "note",
             "created_at",
         ]
@@ -381,11 +384,15 @@ class ProductionReportWriteSerializer(serializers.ModelSerializer):
         model = ProductionReport
         fields = [
             "line",
+            "contractor",
             "date_from",
             "date_to",
-            "feed_tonnage",
-            "product_tonnage",
-            "tailing_tonnage",
+            "batala_avalieh",
+            "darsad_batale",
+            "darsad_dane_dorosht",
+            "darsad_rotobat",
+            "darsad_takhfif",
+            "darsad_jerime",
             "note",
         ]
 

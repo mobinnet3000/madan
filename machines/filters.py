@@ -29,7 +29,7 @@ class ProductionReportFilter(django_filters.FilterSet):
 
     class Meta:
         model = ProductionReport
-        fields = ["line", "lines"]
+        fields = ["line", "lines", "contractor"]
 
 
 class ActualAnalysisFilter(django_filters.FilterSet):

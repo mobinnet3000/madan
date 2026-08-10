@@ -381,7 +381,7 @@ class ProductionReport(models.Model):
         verbose_name="خط تولید",
     )
     contractor = models.ForeignKey(
-        Contractor,
+        "Contractor",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

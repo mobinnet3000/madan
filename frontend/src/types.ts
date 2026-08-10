@@ -193,28 +193,36 @@ export interface ActivityLogEntry {
 export interface ProductionReport {
   id: number
   line: { id: number; name: string; factory: { id: number; name: string } }
+  contractor: ContractorOpt | null
   date_from: string
   date_to: string
-  feed_tonnage: number
-  product_tonnage: number
-  tailing_tonnage: number
-  efficiency: number | null
+  batala_avalieh: number
+  darsad_batale: number
+  darsad_dane_dorosht: number
+  darsad_rotobat: number
+  darsad_takhfif: number
+  darsad_jerime: number
   note: string
   created_at: string
 }
 
 export interface ProductionReportPayload {
   line: number
+  contractor?: number | null
   date_from: string
   date_to: string
-  feed_tonnage: number
-  product_tonnage: number
-  tailing_tonnage: number
+  batala_avalieh?: number
+  darsad_batale?: number
+  darsad_dane_dorosht?: number
+  darsad_rotobat?: number
+  darsad_takhfif?: number
+  darsad_jerime?: number
   note?: string
 }
 
 export interface ProductionReportFilters {
   line?: number
+  contractor?: number
   date_from?: string
   date_to?: string
 }

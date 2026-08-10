@@ -346,26 +346,31 @@ class DeviceLogAdmin(admin.ModelAdmin):
 class ProductionReportAdmin(admin.ModelAdmin):
     list_display = (
         "line",
+        "contractor",
         "date_from",
         "date_to",
-        "feed_tonnage",
-        "product_tonnage",
-        "tailing_tonnage",
-        "efficiency",
+        "batala_avalieh",
+        "darsad_batale",
+        "darsad_dane_dorosht",
     )
-    list_filter = ("line__factory", "line")
+    list_filter = ("line__factory", "line", "contractor")
     search_fields = ("line__name", "note")
-    readonly_fields = ("efficiency", "created_at")
+    readonly_fields = ("created_at",)
     fieldsets = (
-        ("اطلاعات کلی", {"fields": ("line", "date_from", "date_to")}),
         (
-            "اطلاعات تولیدی",
+            "اطلاعات کلی",
+            {"fields": ("line", "contractor", "date_from", "date_to")},
+        ),
+        (
+            "آنالیز خطوط تولید",
             {
                 "fields": (
-                    "feed_tonnage",
-                    "product_tonnage",
-                    "tailing_tonnage",
-                    "efficiency",
+                    "batala_avalieh",
+                    "darsad_batale",
+                    "darsad_dane_dorosht",
+                    "darsad_rotobat",
+                    "darsad_takhfif",
+                    "darsad_jerime",
                 )
             },
         ),

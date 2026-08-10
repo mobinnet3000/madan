@@ -219,7 +219,7 @@ class ProductionReportViewSet(viewsets.ModelViewSet):
         return ProductionReportSerializer
 
     def get_queryset(self):
-        qs = ProductionReport.objects.all().select_related("line__factory")
+        qs = ProductionReport.objects.all().select_related("line__factory", "contractor")
         factory = get_user_factory(self.request.user)
         if factory is not None:
             qs = qs.filter(line__factory=factory)

@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Workflow, ClipboardList, FlaskConical,
-  FileBarChart, History, Mountain, X, Factory, Users, Gauge,
+  FileBarChart, History, Mountain, X, Users, Gauge,
 } from 'lucide-react'
 import { classNames } from '../../utils'
 import { useAuth } from '../../store/AuthContext'
@@ -12,7 +12,7 @@ const navItems: { to: string; label: string; icon: any; end: boolean; perm?: str
   { to: '/', label: 'داشبورد', icon: LayoutDashboard, end: true, perm: 'dashboard.view' },
   { to: '/lines', label: 'مدل‌سازی خط فرآوری', icon: Workflow, end: false, perm: 'lines.view' },
   { to: '/logs', label: 'گزارش عملکرد', icon: ClipboardList, end: false, perm: 'logs.view' },
-  { to: '/production', label: 'گزارش‌های تولید', icon: Factory, end: false, perm: 'production.view' },
+  { to: '/production', label: 'ریز عملکرد خطوط تولید', icon: FlaskConical, end: false, perm: 'production.view' },
   { to: '/performance', label: 'عملکرد بخش تولید', icon: Gauge, end: false, perm: 'analysis.view' },
   { to: '/analysis', label: 'آنالیز آنلاین', icon: FlaskConical, end: false, perm: 'analysis.view' },
   { to: '/reports', label: 'گزارش‌ها و خروجی', icon: FileBarChart, end: false, perm: 'reports.view' },
