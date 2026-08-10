@@ -20,6 +20,14 @@ const WEEKS = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج']
 
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`)
 
+// تبدیل ارقام به فارسی (شمسی)
+function toFa(n: number | string): string {
+  return String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)])
+}
+
+const fa = (jy: number, jm: number, jd: number) =>
+  `${toFa(jy)}/${toFa(pad(jm))}/${toFa(pad(jd))}`
+
 function normalizeDigits(s: string): string {
   return s
     .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
@@ -39,12 +47,12 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
 
   const [open, setOpen] = useState(false)
   const [view, setView] = useState({ jy: parts?.jy || today?.jy || 1404, jm: parts?.jm || 1 })
-  const [text, setText] = useState(parts ? `${parts.jy}/${pad(parts.jm)}/${pad(parts.jd)}` : '')
+  const [text, setText] = useState(parts ? fa(parts.jy, parts.jm, parts.jd) : '')
   const wrapRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const p = isoToJalaliParts(value)
-    setText(p ? `${p.jy}/${pad(p.jm)}/${pad(p.jd)}` : '')
+    setText(p ? fa(p.jy, p.jm, p.jd) : '')
     if (open && p) setView({ jy: p.jy, jm: p.jm })
   }, [value, open])
 
@@ -74,7 +82,7 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
     const iso = jalaliToIso(jy, jm, jd)
     if (iso) {
       onChange(iso)
-      setText(`${jy}/${pad(jm)}/${pad(jd)}`)
+      setText(fa(jy, jm, jd))
     }
     setOpen(false)
   }, [onChange])
@@ -120,8 +128,8 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
           type="text"
           inputMode="numeric"
           className="input !px-2.5"
-          style={{ width: '132px', direction: 'ltr', textAlign: 'left' }}
-          placeholder="1405/5/15"
+          style={{ width: '158px', direction: 'ltr', textAlign: 'left' }}
+          placeholder="۱۴۰۵/۰۵/۱۵"
           value={text}
           onChange={(e) => onTextChange(e.target.value)}
           onFocus={openCalendar}
@@ -141,7 +149,7 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
           <div className="mb-2 flex items-center justify-between">
             <button type="button" className="btn-ghost !h-8 !w-8 !p-0" onClick={() => go(-1)} title="ماه قبل"><ChevronRight className="h-4 w-4" /></button>
             <div className="text-sm font-bold text-ink-800 dark:text-slate-100">
-              {PERSIAN_MONTHS[view.jm - 1]} {view.jy}
+              {PERSIAN_MONTHS[view.jm - 1]} {toFa(view.jy)}
             </div>
             <button type="button" className="btn-ghost !h-8 !w-8 !p-0" onClick={() => go(1)} title="ماه بعد"><ChevronLeft className="h-4 w-4" /></button>
           </div>
@@ -166,7 +174,7 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
                         : 'text-ink-700 hover:bg-ink-100 dark:text-slate-200 dark:hover:bg-slate-800'
                   }`}
                 >
-                  {d}
+                  {toFa(d)}
                 </button>
               ),
             )}
@@ -177,7 +185,7 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
               امروز
             </button>
             <span className="text-[11px] text-ink-400 dark:text-slate-500">
-              {parts ? `${parts.jy}/${pad(parts.jm)}/${pad(parts.jd)}` : '—'}
+              {parts ? fa(parts.jy, parts.jm, parts.jd) : '—'}
             </span>
           </div>
         </div>
