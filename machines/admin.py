@@ -4,9 +4,26 @@ from django.urls import reverse
 from django.http import HttpResponseRedirect
 from django_jsonform.forms.fields import JSONFormField
 from .models import (
-    DeviceDailyAnalysis, DeviceLog, Factory, FailureReason, ProductionLine,
-    ProductionLineAttribute, ProductionLineTemplate, Attribute, DeviceTemplate,
-    Device, Shift, ProductionReport
+    DeviceDailyAnalysis,
+    DeviceLog,
+    Factory,
+    FailureReason,
+    ProductionLine,
+    ProductionLineAttribute,
+    ProductionLineTemplate,
+    Attribute,
+    DeviceTemplate,
+    Device,
+    Shift,
+    ProductionReport,
+    Contractor,
+    AnalysisTypeDefinition,
+    AnalysisInputDefinition,
+    AnalysisPosition,
+    LineAnalysisDefinition,
+    AdditionalInputDefinition,
+    AnalysisOutputDefinition,
+    ActualAnalysis,
 )
 
 
@@ -14,6 +31,8 @@ def display_attributes_summary(self, obj):
     if not obj.attributes_values:
         return "-"
     return ", ".join([f"{k}: {v}" for k, v in list(obj.attributes_values.items())[:3]])
+
+
 display_attributes_summary.short_description = "ویژگی‌های فنی"
 
 
@@ -21,17 +40,19 @@ def build_schema(template_attr_field):
     def make_schema(template):
         properties = {
             attr.name: {
-                'type': 'number',
-                'default': 0,
-                'title': f"{attr.name} ({attr.unit if attr.unit else 'واحد ندارد'})"
-            } for attr in template_attr_field(template).all()
+                "type": "number",
+                "default": 0,
+                "title": f"{attr.name} ({attr.unit if attr.unit else 'واحد ندارد'})",
+            }
+            for attr in template_attr_field(template).all()
         }
-        return {'type': 'object', 'properties': properties}
+        return {"type": "object", "properties": properties}
+
     return make_schema
 
 
 class DynamicJSONFormMixin:
-    json_field = 'attributes_values'
+    json_field = "attributes_values"
     schema_builder = None
 
     def __init__(self, *args, **kwargs):
@@ -39,7 +60,7 @@ class DynamicJSONFormMixin:
         inst = self.instance
         if inst and inst.pk and self.schema_builder:
             try:
-                template = getattr(inst, 'template', None)
+                template = getattr(inst, "template", None)
                 if template:
                     self.fields[self.json_field] = JSONFormField(
                         schema=self.schema_builder(template),
@@ -58,7 +79,7 @@ class ProductionLineForm(DynamicJSONFormMixin, forms.ModelForm):
 
     class Meta:
         model = ProductionLine
-        fields = '__all__'
+        fields = "__all__"
 
 
 class DeviceForm(DynamicJSONFormMixin, forms.ModelForm):
@@ -66,7 +87,7 @@ class DeviceForm(DynamicJSONFormMixin, forms.ModelForm):
 
     class Meta:
         model = Device
-        fields = '__all__'
+        fields = "__all__"
 
 
 class ShiftInline(admin.TabularInline):
@@ -77,15 +98,22 @@ class ShiftInline(admin.TabularInline):
 class DeviceLogInline(admin.TabularInline):
     model = DeviceLog
     extra = 1
-    fields = ('date', 'shift', 'device', 'runtime_hours', 'downtime_hours', 'failure_cause')
-    classes = ['collapse']
+    fields = (
+        "date",
+        "shift",
+        "device",
+        "runtime_hours",
+        "downtime_hours",
+        "failure_cause",
+    )
+    classes = ["collapse"]
 
 
 class DeviceInline(admin.TabularInline):
     model = Device
-    fields = ('order', 'code', 'name', 'template')
+    fields = ("order", "code", "name", "template")
     extra = 0
-    ordering = ('order',)
+    ordering = ("order",)
 
 
 class DeviceDailyAnalysisInline(admin.TabularInline):
@@ -97,78 +125,81 @@ class DeviceDailyAnalysisInline(admin.TabularInline):
 
 @admin.register(Factory)
 class FactoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'address')
-    search_fields = ('name',)
+    list_display = ("name", "address")
+    search_fields = ("name",)
     inlines = [ShiftInline]
 
 
 @admin.register(Shift)
 class ShiftAdmin(admin.ModelAdmin):
-    list_display = ('name', 'factory', 'start_time', 'end_time', 'is_active')
-    list_filter = ('factory', 'is_active')
+    list_display = ("name", "factory", "start_time", "end_time", "is_active")
+    list_filter = ("factory", "is_active")
 
 
 @admin.register(FailureReason)
 class FailureReasonAdmin(admin.ModelAdmin):
-    list_display = ('title',)
-    search_fields = ('title',)
+    list_display = ("title",)
+    search_fields = ("title",)
 
 
 @admin.register(ProductionLineAttribute)
 class ProductionLineAttributeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'unit')
+    list_display = ("name", "unit")
 
 
 @admin.register(ProductionLineTemplate)
 class ProductionLineTemplateAdmin(admin.ModelAdmin):
-    list_display = ('name', 'description')
-    filter_horizontal = ('available_attributes',)
+    list_display = ("name", "description")
+    filter_horizontal = ("available_attributes",)
 
 
 @admin.register(ProductionLine)
 class ProductionLineAdmin(admin.ModelAdmin):
     form = ProductionLineForm
-    list_display = ('name', 'factory', 'template', 'display_attributes')
-    list_filter = ('factory', 'template')
+    list_display = ("name", "factory", "template", "display_attributes")
+    list_filter = ("factory", "template")
     inlines = [DeviceInline, DeviceLogInline]
-    search_fields = ('name',)
+    search_fields = ("name",)
 
     def get_fields(self, request, obj=None):
         if not obj:
-            return ('factory', 'template', 'name', 'description')
-        return ('factory', 'template', 'name', 'description', 'attributes_values')
+            return ("factory", "template", "name", "description")
+        return ("factory", "template", "name", "description", "attributes_values")
 
     display_attributes = display_attributes_summary
 
     def response_add(self, request, obj, post_url_continue=None):
-        return HttpResponseRedirect(reverse('admin:machines_productionline_change', args=(obj.pk,)))
+        return HttpResponseRedirect(
+            reverse("admin:machines_productionline_change", args=(obj.pk,))
+        )
 
 
 @admin.register(Attribute)
 class AttributeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'unit')
-    search_fields = ('name',)
+    list_display = ("name", "unit")
+    search_fields = ("name",)
 
 
 @admin.register(DeviceTemplate)
 class DeviceTemplateAdmin(admin.ModelAdmin):
-    list_display = ('name', 'get_attributes_list')
-    filter_horizontal = ('available_attributes',)
+    list_display = ("name", "get_attributes_list")
+    filter_horizontal = ("available_attributes",)
 
     def get_attributes_list(self, obj):
         return ", ".join([a.name for a in obj.available_attributes.all()])
+
     get_attributes_list.short_description = "ویژگی‌های الگو"
 
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
     form = DeviceForm
-    list_display = ('order', 'code', 'name', 'line', 'template', 'display_attributes')
+    list_display = ("order", "code", "name", "line", "template", "display_attributes")
     display_attributes = display_attributes_summary
-    list_editable = ('order',)
-    list_display_links = ('name',)
-    list_filter = ('line__factory', 'line', 'template')
-    search_fields = ('name', 'code', 'line__name')
+    list_editable = ("order",)
+    list_display_links = ("name",)
+    list_filter = ("line__factory", "line", "template")
+    search_fields = ("name", "code", "line__name")
 
     def get_inline_instances(self, request, obj=None):
         if obj and obj.is_analyzer:
@@ -177,11 +208,21 @@ class DeviceAdmin(admin.ModelAdmin):
 
     def get_fields(self, request, obj=None):
         if not obj:
-            return ('line', 'template', 'name', 'code', 'order', 'is_analyzer')
-        return ('line', 'template', 'name', 'code', 'order', 'is_analyzer', 'attributes_values')
+            return ("line", "template", "name", "code", "order", "is_analyzer")
+        return (
+            "line",
+            "template",
+            "name",
+            "code",
+            "order",
+            "is_analyzer",
+            "attributes_values",
+        )
 
     def response_add(self, request, obj, post_url_continue=None):
-        return HttpResponseRedirect(reverse('admin:machines_device_change', args=(obj.pk,)))
+        return HttpResponseRedirect(
+            reverse("admin:machines_device_change", args=(obj.pk,))
+        )
 
 
 @admin.register(DeviceDailyAnalysis)
@@ -194,30 +235,56 @@ class DeviceDailyAnalysisAdmin(admin.ModelAdmin):
         if db_field.name == "device":
             kwargs["queryset"] = Device.objects.filter(is_analyzer=True)
         if db_field.name == "shift":
-            obj_id = request.resolver_match.kwargs.get('object_id')
+            obj_id = request.resolver_match.kwargs.get("object_id")
             if obj_id:
                 obj = self.get_object(request, obj_id)
                 if obj and obj.device:
-                    kwargs["queryset"] = Shift.objects.filter(factory=obj.device.line.factory)
+                    kwargs["queryset"] = Shift.objects.filter(
+                        factory=obj.device.line.factory
+                    )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 @admin.register(DeviceLog)
 class DeviceLogAdmin(admin.ModelAdmin):
-    list_display = ('line', 'date', 'shift', 'runtime_hours', 'downtime_hours', 'efficiency', 'failure_cause', 'device')
-    list_filter = ('line__factory', 'line', 'shift', 'failure_cause', 'date')
-    search_fields = ("line__name", "device__name", "failure_description", "repair_description")
+    list_display = (
+        "line",
+        "date",
+        "shift",
+        "runtime_hours",
+        "downtime_hours",
+        "efficiency",
+        "failure_cause",
+        "device",
+    )
+    list_filter = ("line__factory", "line", "shift", "failure_cause", "date")
+    search_fields = (
+        "line__name",
+        "device__name",
+        "failure_description",
+        "repair_description",
+    )
     readonly_fields = ("created_at", "efficiency")
 
     fieldsets = (
         ("اطلاعات کلی", {"fields": ("line", "date", "shift")}),
-        ("اطلاعات خرابی / توقف", {"fields": ("device", "failure_cause", "failure_description", "repair_description")}),
+        (
+            "اطلاعات خرابی / توقف",
+            {
+                "fields": (
+                    "device",
+                    "failure_cause",
+                    "failure_description",
+                    "repair_description",
+                )
+            },
+        ),
         ("ساعات عملکرد", {"fields": ("runtime_hours", "downtime_hours")}),
         ("متفرقه", {"fields": ("created_at",)}),
     )
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        obj_id = request.resolver_match.kwargs.get('object_id')
+        obj_id = request.resolver_match.kwargs.get("object_id")
         log_obj = self.get_object(request, obj_id) if obj_id else None
         if db_field.name == "device" and log_obj:
             kwargs["queryset"] = Device.objects.filter(line=log_obj.line)
@@ -228,12 +295,84 @@ class DeviceLogAdmin(admin.ModelAdmin):
 
 @admin.register(ProductionReport)
 class ProductionReportAdmin(admin.ModelAdmin):
-    list_display = ('line', 'date_from', 'date_to', 'feed_tonnage', 'product_tonnage', 'tailing_tonnage', 'efficiency')
-    list_filter = ('line__factory', 'line')
-    search_fields = ('line__name', 'note')
-    readonly_fields = ('efficiency', 'created_at')
+    list_display = (
+        "line",
+        "date_from",
+        "date_to",
+        "feed_tonnage",
+        "product_tonnage",
+        "tailing_tonnage",
+        "efficiency",
+    )
+    list_filter = ("line__factory", "line")
+    search_fields = ("line__name", "note")
+    readonly_fields = ("efficiency", "created_at")
     fieldsets = (
         ("اطلاعات کلی", {"fields": ("line", "date_from", "date_to")}),
-        ("اطلاعات تولیدی", {"fields": ("feed_tonnage", "product_tonnage", "tailing_tonnage", "efficiency")}),
+        (
+            "اطلاعات تولیدی",
+            {
+                "fields": (
+                    "feed_tonnage",
+                    "product_tonnage",
+                    "tailing_tonnage",
+                    "efficiency",
+                )
+            },
+        ),
         ("سایر", {"fields": ("note", "created_at")}),
     )
+
+
+class AnalysisInputDefinitionInline(admin.TabularInline):
+    model = AnalysisInputDefinition
+    extra = 0
+    fields = ("key", "name", "input_type", "unit", "required", "order")
+
+
+@admin.register(Contractor)
+class ContractorAdmin(admin.ModelAdmin):
+    list_display = ("name", "factory", "contact_name", "phone", "is_active")
+    list_filter = ("factory", "is_active")
+    search_fields = ("name", "contact_name")
+
+
+@admin.register(AnalysisTypeDefinition)
+class AnalysisTypeDefinitionAdmin(admin.ModelAdmin):
+    list_display = ("name", "description")
+    search_fields = ("name",)
+    inlines = [AnalysisInputDefinitionInline]
+
+
+class AdditionalInputDefinitionInline(admin.TabularInline):
+    model = AdditionalInputDefinition
+    extra = 0
+    fields = ("key", "name", "input_type", "unit", "required", "order")
+
+
+class AnalysisOutputDefinitionInline(admin.TabularInline):
+    model = AnalysisOutputDefinition
+    extra = 0
+    fields = ("key", "name", "unit", "formula", "order")
+
+
+@admin.register(AnalysisPosition)
+class AnalysisPositionAdmin(admin.ModelAdmin):
+    list_display = ("line", "name", "key", "definition", "order")
+    list_filter = ("line__factory", "line", "definition")
+    search_fields = ("line__name", "name")
+
+
+@admin.register(LineAnalysisDefinition)
+class LineAnalysisDefinitionAdmin(admin.ModelAdmin):
+    list_display = ("line", "contractor_required", "updated_at")
+    search_fields = ("line__name",)
+    inlines = [AdditionalInputDefinitionInline, AnalysisOutputDefinitionInline]
+
+
+@admin.register(ActualAnalysis)
+class ActualAnalysisAdmin(admin.ModelAdmin):
+    list_display = ("line", "date", "contractor", "created_by", "created_at")
+    list_filter = ("line__factory", "line", "contractor")
+    search_fields = ("line__name",)
+    readonly_fields = ("inputs", "outputs", "created_at", "created_by")

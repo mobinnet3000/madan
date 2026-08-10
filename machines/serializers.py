@@ -1,64 +1,228 @@
 from rest_framework import serializers
 from .models import (
-    Factory, Shift, FailureReason, ProductionLine,
-    Device, DeviceDailyAnalysis, DeviceLog, ProductionReport
+    Factory,
+    Shift,
+    FailureReason,
+    ProductionLine,
+    Device,
+    DeviceDailyAnalysis,
+    DeviceLog,
+    ProductionReport,
+    Contractor,
+    AnalysisTypeDefinition,
+    AnalysisInputDefinition,
+    AnalysisPosition,
+    LineAnalysisDefinition,
+    AdditionalInputDefinition,
+    AnalysisOutputDefinition,
+    ActualAnalysis,
 )
 from .jalali import jalali_and_weekday
 
 
 def _attr_defs(queryset):
-    """تبدیل ویژگی‌های الگو (نام + واحد) به لیست serillizable."""
-    return [{'name': a.name, 'unit': a.unit or ''} for a in queryset]
+    """تبدیل ویژگی‌های الگو (نام + واحد) به لیست سریالایزری."""
+    return [{"name": a.name, "unit": a.unit or ""} for a in queryset]
+
+
+# ── پیمانکار و تعریف‌های نوع آنالیز (قبل از سریالایزر خط تا ارجاع حل شود) ──
+class ContractorSerializer(serializers.ModelSerializer):
+    factory_name = serializers.CharField(source="factory.name", read_only=True)
+
+    class Meta:
+        model = Contractor
+        fields = [
+            "id",
+            "factory",
+            "factory_name",
+            "name",
+            "contact_name",
+            "phone",
+            "is_active",
+            "created_at",
+        ]
+        read_only_fields = ["created_at"]
+
+
+class AnalysisInputDefinitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnalysisInputDefinition
+        fields = ["id", "key", "name", "input_type", "unit", "required", "order"]
+
+
+class AnalysisTypeDefinitionSerializer(serializers.ModelSerializer):
+    inputs = AnalysisInputDefinitionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AnalysisTypeDefinition
+        fields = ["id", "name", "description", "inputs", "created_at"]
+        read_only_fields = ["created_at"]
+
+    def create(self, validated_data):
+        inputs = self.initial_data.get("inputs") or []
+        definition = AnalysisTypeDefinition.objects.create(
+            name=validated_data["name"],
+            description=validated_data.get("description", ""),
+        )
+        _sync_inputs(definition, inputs)
+        return definition
+
+    def update(self, instance, validated_data):
+        instance.name = validated_data.get("name", instance.name)
+        instance.description = validated_data.get("description", instance.description)
+        instance.save()
+        if "inputs" in self.initial_data:
+            _sync_inputs(instance, self.initial_data.get("inputs") or [])
+        return instance
+
+
+def _sync_inputs(definition, inputs):
+    """همگام‌سازی ورودی‌های یک تعریف نوع آنالیز بر اساس لیست ارسالی."""
+    if not isinstance(inputs, list):
+        raise serializers.ValidationError({"inputs": "باید یک لیست باشد."})
+    existing = {i.key: i for i in definition.inputs.all()}
+    seen = set()
+    for idx, item in enumerate(inputs):
+        key = item.get("key")
+        if not key:
+            raise serializers.ValidationError(
+                {"inputs": f"ردیف {idx + 1}: کلید (key) الزامی است."}
+            )
+        if key in seen:
+            raise serializers.ValidationError(
+                {"inputs": f"کلید تکراری «{key}» در ورودی‌ها."}
+            )
+        seen.add(key)
+        defaults = {
+            "name": item.get("name", key),
+            "input_type": item.get("input_type", "number"),
+            "unit": item.get("unit", ""),
+            "required": item.get("required", True),
+            "order": item.get("order", idx),
+        }
+        if key in existing:
+            for f, v in defaults.items():
+                setattr(existing[key], f, v)
+            existing[key].save()
+        else:
+            AnalysisInputDefinition.objects.create(
+                definition=definition, key=key, **defaults
+            )
+    for key in set(existing.keys()) - seen:
+        existing[key].delete()
+
+
+class AnalysisPositionSerializer(serializers.ModelSerializer):
+    definition = AnalysisTypeDefinitionSerializer(read_only=True)
+    inputs = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnalysisPosition
+        fields = ["id", "line", "name", "key", "definition", "inputs", "order"]
+        read_only_fields = ["line"]
+
+    def get_inputs(self, obj):
+        if not obj.definition_id:
+            return []
+        return AnalysisInputDefinitionSerializer(
+            obj.definition.inputs.all(), many=True
+        ).data
+
+    def validate(self, attrs):
+        line_id = self.context.get("line_id")
+        if not line_id:
+            raise serializers.ValidationError("خط تولید نامشخص است.")
+        attrs["line_id"] = line_id
+        return attrs
 
 
 class FailureReasonSerializer(serializers.ModelSerializer):
     class Meta:
         model = FailureReason
-        fields = '__all__'
+        fields = "__all__"
 
 
 class ShiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shift
-        fields = ['id', 'name', 'start_time', 'end_time', 'is_active']
+        fields = ["id", "name", "start_time", "end_time", "is_active"]
 
 
 class DeviceSerializer(serializers.ModelSerializer):
-    template_name = serializers.ReadOnlyField(source='template.name')
+    template_name = serializers.ReadOnlyField(source="template.name")
     attribute_defs = serializers.SerializerMethodField()
 
     class Meta:
         model = Device
-        fields = ['id', 'name', 'code', 'order', 'template_name', 'attributes_values', 'attribute_defs', 'is_analyzer', 'image']
+        fields = [
+            "id",
+            "name",
+            "code",
+            "order",
+            "template_name",
+            "attributes_values",
+            "attribute_defs",
+            "is_analyzer",
+            "image",
+        ]
 
     def get_attribute_defs(self, obj):
-        return _attr_defs(obj.template.available_attributes.all()) if obj.template_id else []
+        return (
+            _attr_defs(obj.template.available_attributes.all())
+            if obj.template_id
+            else []
+        )
 
 
 class ProductionLineSerializer(serializers.ModelSerializer):
     devices = DeviceSerializer(many=True, read_only=True)
-    template_name = serializers.ReadOnlyField(source='template.name')
+    template_name = serializers.ReadOnlyField(source="template.name")
     attribute_defs = serializers.SerializerMethodField()
+    analysis_positions = AnalysisPositionSerializer(many=True, read_only=True)
 
     class Meta:
         model = ProductionLine
-        fields = ['id', 'name', 'description', 'line_type', 'template_name', 'attributes_values', 'attribute_defs', 'devices']
+        fields = [
+            "id",
+            "name",
+            "description",
+            "line_type",
+            "template_name",
+            "attributes_values",
+            "attribute_defs",
+            "devices",
+            "analysis_positions",
+        ]
 
     def get_attribute_defs(self, obj):
-        return _attr_defs(obj.template.available_attributes.all()) if obj.template_id else []
+        return (
+            _attr_defs(obj.template.available_attributes.all())
+            if obj.template_id
+            else []
+        )
 
 
 class FactoryFullDetailSerializer(serializers.ModelSerializer):
     shifts = ShiftSerializer(many=True, read_only=True)
     lines = ProductionLineSerializer(many=True, read_only=True)
     failure_reasons = serializers.SerializerMethodField()
+    contractors = ContractorSerializer(many=True, read_only=True)
 
     class Meta:
         model = Factory
-        fields = ['id', 'name', 'address', 'shifts', 'lines', 'failure_reasons']
+        fields = [
+            "id",
+            "name",
+            "address",
+            "shifts",
+            "lines",
+            "failure_reasons",
+            "contractors",
+        ]
 
     def get_failure_reasons(self, obj):
         return FailureReasonSerializer(FailureReason.objects.all(), many=True).data
+
 
 class DeviceDailyAnalysisSerializer(serializers.ModelSerializer):
     device = DeviceSerializer(read_only=True)
@@ -69,30 +233,50 @@ class DeviceDailyAnalysisSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DeviceDailyAnalysis
-        fields = ['id', 'device', 'sample_point', 'sample_point_display',
-                  'shift', 'date', 'date_jalali', 'day_of_week', 'analysis_text', 'value_1', 'value_2', 'created_at']
-        read_only_fields = ['created_at']
+        fields = [
+            "id",
+            "device",
+            "sample_point",
+            "sample_point_display",
+            "shift",
+            "date",
+            "date_jalali",
+            "day_of_week",
+            "analysis_text",
+            "value_1",
+            "value_2",
+            "created_at",
+        ]
+        read_only_fields = ["created_at"]
 
     def get_sample_point_display(self, obj):
         return obj.get_sample_point_display() if obj.sample_point else None
 
     def get_date_jalali(self, obj):
-        return jalali_and_weekday(obj.date)['date_jalali']
+        return jalali_and_weekday(obj.date)["date_jalali"]
 
     def get_day_of_week(self, obj):
-        return jalali_and_weekday(obj.date)['day_of_week']
+        return jalali_and_weekday(obj.date)["day_of_week"]
 
 
 class DeviceDailyAnalysisWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeviceDailyAnalysis
-        fields = ['device', 'sample_point', 'shift', 'date', 'analysis_text', 'value_1', 'value_2']
+        fields = [
+            "device",
+            "sample_point",
+            "shift",
+            "date",
+            "analysis_text",
+            "value_1",
+            "value_2",
+        ]
 
 
 class FactoryMinSerializer(serializers.ModelSerializer):
     class Meta:
         model = Factory
-        fields = ['id', 'name']
+        fields = ["id", "name"]
 
 
 class ProductionLineMinSerializer(serializers.ModelSerializer):
@@ -100,7 +284,7 @@ class ProductionLineMinSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductionLine
-        fields = ['id', 'name', 'factory']
+        fields = ["id", "name", "factory"]
 
 
 class DeviceLogSerializer(serializers.ModelSerializer):
@@ -115,26 +299,49 @@ class DeviceLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeviceLog
         fields = [
-            'id', 'line', 'shift', 'date', 'date_jalali', 'day_of_week', 'device', 'failure_cause',
-            'runtime_hours', 'downtime_hours', 'failure_description', 'repair_description',
-            'feed_tonnage', 'product_tonnage', 'tailing_tonnage', 'efficiency', 'created_at',
+            "id",
+            "line",
+            "shift",
+            "date",
+            "date_jalali",
+            "day_of_week",
+            "device",
+            "failure_cause",
+            "runtime_hours",
+            "downtime_hours",
+            "failure_description",
+            "repair_description",
+            "feed_tonnage",
+            "product_tonnage",
+            "tailing_tonnage",
+            "efficiency",
+            "created_at",
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ["created_at"]
 
     def get_date_jalali(self, obj):
-        return jalali_and_weekday(obj.date)['date_jalali']
+        return jalali_and_weekday(obj.date)["date_jalali"]
 
     def get_day_of_week(self, obj):
-        return jalali_and_weekday(obj.date)['day_of_week']
+        return jalali_and_weekday(obj.date)["day_of_week"]
 
 
 class DeviceLogWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = DeviceLog
         fields = [
-            'line', 'shift', 'date', 'device', 'failure_cause',
-            'runtime_hours', 'downtime_hours', 'failure_description', 'repair_description',
-            'feed_tonnage', 'product_tonnage', 'tailing_tonnage',
+            "line",
+            "shift",
+            "date",
+            "device",
+            "failure_cause",
+            "runtime_hours",
+            "downtime_hours",
+            "failure_description",
+            "repair_description",
+            "feed_tonnage",
+            "product_tonnage",
+            "tailing_tonnage",
         ]
 
 
@@ -147,22 +354,198 @@ class ProductionReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductionReport
         fields = [
-            'id', 'line', 'date_from', 'date_to', 'date_from_jalali', 'date_to_jalali',
-            'feed_tonnage', 'product_tonnage', 'tailing_tonnage', 'efficiency', 'note', 'created_at',
+            "id",
+            "line",
+            "date_from",
+            "date_to",
+            "date_from_jalali",
+            "date_to_jalali",
+            "feed_tonnage",
+            "product_tonnage",
+            "tailing_tonnage",
+            "efficiency",
+            "note",
+            "created_at",
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ["created_at"]
 
     def get_date_from_jalali(self, obj):
-        return jalali_and_weekday(obj.date_from)['date_jalali']
+        return jalali_and_weekday(obj.date_from)["date_jalali"]
 
     def get_date_to_jalali(self, obj):
-        return jalali_and_weekday(obj.date_to)['date_jalali']
+        return jalali_and_weekday(obj.date_to)["date_jalali"]
 
 
 class ProductionReportWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductionReport
         fields = [
-            'line', 'date_from', 'date_to', 'feed_tonnage',
-            'product_tonnage', 'tailing_tonnage', 'note',
+            "line",
+            "date_from",
+            "date_to",
+            "feed_tonnage",
+            "product_tonnage",
+            "tailing_tonnage",
+            "note",
         ]
+
+
+# ═══════════════════ سیستم آنالیز داینامیک (تعریف‌محور) ═══════════════════
+
+
+class AdditionalInputDefinitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AdditionalInputDefinition
+        fields = ["id", "key", "name", "input_type", "unit", "required", "order"]
+
+
+class AnalysisOutputDefinitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnalysisOutputDefinition
+        fields = ["id", "key", "name", "unit", "formula", "order"]
+
+
+class LineAnalysisDefinitionSerializer(serializers.ModelSerializer):
+    additional_inputs = AdditionalInputDefinitionSerializer(many=True, read_only=True)
+    outputs = AnalysisOutputDefinitionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = LineAnalysisDefinition
+        fields = [
+            "id",
+            "line",
+            "contractor_required",
+            "notes",
+            "additional_inputs",
+            "outputs",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def create(self, validated_data):
+        instance = LineAnalysisDefinition.objects.create(**validated_data)
+        _sync_line_def_nested(instance, self.initial_data)
+        return instance
+
+    def update(self, instance, validated_data):
+        instance.contractor_required = validated_data.get(
+            "contractor_required", instance.contractor_required
+        )
+        instance.notes = validated_data.get("notes", instance.notes)
+        instance.save()
+        _sync_line_def_nested(instance, self.initial_data)
+        return instance
+
+
+def _sync_line_def_nested(instance, data):
+    additional = data.get("additional_inputs")
+    if additional is not None:
+        _sync_additional_inputs(instance, additional)
+    outputs = data.get("outputs")
+    if outputs is not None:
+        _sync_outputs(instance, outputs)
+    instance.full_clean()
+
+
+def _sync_additional_inputs(instance, items):
+    if not isinstance(items, list):
+        raise serializers.ValidationError({"additional_inputs": "باید یک لیست باشد."})
+    existing = {i.key: i for i in instance.additional_inputs.all()}
+    seen = set()
+    for idx, item in enumerate(items):
+        key = item.get("key")
+        if not key:
+            raise serializers.ValidationError(
+                {"additional_inputs": f"ردیف {idx + 1}: کلید (key) الزامی است."}
+            )
+        if key in seen:
+            raise serializers.ValidationError(
+                {"additional_inputs": f"کلید تکراری «{key}»."}
+            )
+        seen.add(key)
+        defaults = {
+            "name": item.get("name", key),
+            "input_type": item.get("input_type", "number"),
+            "unit": item.get("unit", ""),
+            "required": item.get("required", True),
+            "order": item.get("order", idx),
+        }
+        if key in existing:
+            for f, v in defaults.items():
+                setattr(existing[key], f, v)
+            existing[key].save()
+        else:
+            AdditionalInputDefinition.objects.create(
+                line_definition=instance, key=key, **defaults
+            )
+    for key in set(existing.keys()) - seen:
+        existing[key].delete()
+
+
+def _sync_outputs(instance, items):
+    if not isinstance(items, list):
+        raise serializers.ValidationError({"outputs": "باید یک لیست باشد."})
+    existing = {i.key: i for i in instance.outputs.all()}
+    seen = set()
+    for idx, item in enumerate(items):
+        key = item.get("key")
+        if not key:
+            raise serializers.ValidationError(
+                {"outputs": f"ردیف {idx + 1}: کلید (key) الزامی است."}
+            )
+        if key in seen:
+            raise serializers.ValidationError({"outputs": f"کلید تکراری «{key}»."})
+        seen.add(key)
+        formula = item.get("formula")
+        if not formula or not str(formula).strip():
+            raise serializers.ValidationError(
+                {"outputs": f"فرمول خروجی «{key}» خالی است."}
+            )
+        defaults = {
+            "name": item.get("name", key),
+            "unit": item.get("unit", ""),
+            "formula": formula,
+            "order": item.get("order", idx),
+        }
+        if key in existing:
+            for f, v in defaults.items():
+                setattr(existing[key], f, v)
+            existing[key].save()
+        else:
+            AnalysisOutputDefinition.objects.create(
+                line_definition=instance, key=key, **defaults
+            )
+    for key in set(existing.keys()) - seen:
+        existing[key].delete()
+
+
+class ActualAnalysisSerializer(serializers.ModelSerializer):
+    line = ProductionLineMinSerializer(read_only=True)
+    contractor = ContractorSerializer(read_only=True)
+    shift = ShiftSerializer(read_only=True)
+    date_jalali = serializers.SerializerMethodField()
+    day_of_week = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActualAnalysis
+        fields = [
+            "id",
+            "line",
+            "contractor",
+            "date",
+            "date_jalali",
+            "day_of_week",
+            "shift",
+            "inputs",
+            "outputs",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = ["created_by", "created_at", "outputs"]
+
+    def get_date_jalali(self, obj):
+        return jalali_and_weekday(obj.date)["date_jalali"]
+
+    def get_day_of_week(self, obj):
+        return jalali_and_weekday(obj.date)["day_of_week"]
