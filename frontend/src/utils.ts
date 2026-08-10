@@ -4,17 +4,49 @@ const mod = (a: number, b: number) => a - Math.floor(a / b) * b
 
 export function gregorianToJalali(gy: number, gm: number, gd: number): [number, number, number] {
   const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
-  let gy2 = gm > 2 ? gy + 1 : gy
-  let days = 355666 + 365 * gy + div(gy2 + 2, 4) - div(gy2 + 99, 100) + div(gy2 + 399, 400) + gd + g_d_m[gm - 1]
+  const gy2 = gm > 2 ? gy + 1 : gy
+  let days = 355666 + 365 * gy + div(gy2 + 3, 4) - div(gy2 + 99, 100) + div(gy2 + 399, 400) + gd + g_d_m[gm - 1]
   let jy = -1595 + 33 * div(days, 12053)
   days = mod(days, 12053)
   jy += 4 * div(days, 1461)
-  days -= 1461 * div(days, 1461)
-  if (days > 0) { jy += div(days - 1, 365); days = mod(days - 1, 365) }
+  days = mod(days, 1461)
+  if (days > 365) {
+    jy += div(days - 1, 365)
+    days = mod(days - 1, 365)
+  }
   let jm: number, jd: number
-  if (days < 186) { jm = 1 + div(days, 31); jd = mod(days, 31) + 1 }
-  else { jm = 7 + div(days - 186, 30); jd = mod(days - 186, 30) + 1 }
+  if (days < 186) {
+    jm = 1 + div(days, 31)
+    jd = mod(days, 31) + 1
+  } else {
+    jm = 7 + div(days - 186, 30)
+    jd = mod(days - 186, 30) + 1
+  }
   return [jy, jm, jd]
+}
+
+// معکوس: شمسی -> میلادی (جستجو از روز شروعِ سال شمسی؛ همیشه دقیقاً معکوس gregorianToJalali)
+export function jalaliToGregorian(jy: number, jm: number, jd: number): [number, number, number] {
+  // سال شمسی تقریباً از اواخر اسفندِ میلادیِ (jy+621) شروع می‌شود
+  const start = new Date(Date.UTC(jy + 621, 2, 19))
+  for (let k = 0; k < 400; k++) {
+    const dt = new Date(start.getTime() + k * 86400000)
+    const c = gregorianToJalali(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate())
+    if (c[0] === jy && c[1] === jm && c[2] === jd) {
+      return [dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate()]
+    }
+  }
+  return [jy + 621, 3, 20]
+}
+
+export function isJalaliLeap(jy: number): boolean {
+  return mod(((mod((jy > 0 ? jy - 474 : jy - 473), 2820) + 474) * 682), 2816) < 682
+}
+
+export function jalaliDaysInMonth(jy: number, jm: number): number {
+  if (jm <= 6) return 31
+  if (jm <= 11) return 30
+  return isJalaliLeap(jy) ? 30 : 29
 }
 
 export const PERSIAN_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
@@ -33,6 +65,26 @@ export function toJalali(iso: string): [number, number, number] | null {
   const { y, m, d } = parseISO(iso)
   if (!y || !m || !d) return null
   return gregorianToJalali(y, m, d)
+}
+
+export interface JalaliParts {
+  jy: number
+  jm: number
+  jd: number
+}
+
+export function isoToJalaliParts(iso: string): JalaliParts | null {
+  const j = toJalali(iso)
+  if (!j) return null
+  return { jy: j[0], jm: j[1], jd: j[2] }
+}
+
+export function jalaliToIso(jy: number, jm: number, jd: number): string {
+  if (!jy || !jm || !jd) return ''
+  if (jm < 1 || jm > 12) return ''
+  if (jd < 1 || jd > jalaliDaysInMonth(jy, jm)) return ''
+  const [gy, gm, gd] = jalaliToGregorian(jy, jm, jd)
+  return `${gy}-${pad(gm)}-${pad(gd)}`
 }
 
 export function weekdayFa(iso: string): string {

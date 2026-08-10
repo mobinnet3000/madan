@@ -1,0 +1,321 @@
+/* ویرایشگر فرمول خروجی در ادمین — چیدمان کنار هم: متن + لیست متغیرها */
+.fb-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 8px;
+  max-width: 1000px;
+  align-items: flex-start;
+}
+
+.fb-textarea {
+  width: 100%;
+  min-height: 120px;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 13px;
+  direction: ltr;
+  text-align: left;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.fb-main {
+  flex: 1 1 300px;
+  min-width: 260px;
+}
+
+/* پیش‌نمایش ورودی‌های قابل‌استفاده (مرحله ۱ و ۲ تعریف آنالیز خط) */
+.fb-vars-preview {
+  max-width: 980px;
+  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 4px;
+}
+
+.fb-vars-preview .fb-vars-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.fb-preview-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: flex-start;
+}
+
+.fb-preview-body .fb-chips-group {
+  flex-basis: 100%;
+}
+
+.fb-chip-static {
+  display: inline-block;
+  align-self: flex-start;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  direction: ltr;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-chip-static:hover {
+  border-color: #f97316;
+  color: #ea580c;
+}
+
+.dark .fb-vars-preview,
+[data-theme="dark"] .fb-vars-preview {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.dark .fb-vars-preview .fb-vars-title,
+[data-theme="dark"] .fb-vars-preview .fb-vars-title {
+  color: #cbd5e1;
+  border-color: #475569;
+}
+
+.fb-vars {
+  flex: 0 0 280px;
+  max-width: 320px;
+  align-self: stretch;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #f97316;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.fb-vars-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.fb-chips {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fb-chips-group {
+  font-size: 10px;
+  font-weight: 800;
+  color: #64748b;
+  margin-top: 4px;
+  text-transform: none;
+}
+
+.fb-chips-group:first-child {
+  margin-top: 0;
+}
+
+.fb-chip {
+  display: inline-block;
+  align-self: flex-start;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: ltr;
+  text-align: left;
+}
+
+.fb-chip:hover {
+  border-color: #f97316;
+  color: #ea580c;
+  background: #fff7ed;
+  transform: translateY(-1px);
+}
+
+.fb-empty {
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 6px 2px;
+}
+
+/* نوار ابزار */
+.fb-tools {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fb-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.fb-tool-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  min-width: 40px;
+}
+
+.fb-label-fns {
+  margin-inline-start: 8px;
+}
+
+.fb-num {
+  width: 110px;
+  min-height: 28px;
+  font-size: 12px;
+}
+
+.fb-btn {
+  display: inline-block;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.6;
+  transition: all 0.15s ease;
+}
+
+.fb-btn:hover {
+  border-color: #f97316;
+  color: #ea580c;
+  background: #fff7ed;
+}
+
+.fb-op {
+  min-width: 30px;
+  text-align: center;
+  padding: 2px 8px;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+}
+
+.fb-fn {
+  color: #0f766e;
+  background: #f0fdfa;
+  padding: 2px 9px;
+}
+
+.fb-btn-validate {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.fb-btn-validate:hover {
+  background: #ffedd5;
+}
+
+.fb-result {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.fb-result.checking {
+  color: #2563eb;
+}
+
+.fb-result.ok {
+  color: #059669;
+}
+
+.fb-result.warn {
+  color: #b45309;
+}
+
+.fb-result.error {
+  color: #dc2626;
+}
+
+/* دارک مود */
+.dark .fb-layout,
+[data-theme="dark"] .fb-layout {
+  color: #e2e8f0;
+}
+
+.dark .fb-textarea,
+[data-theme="dark"] .fb-textarea {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.dark .fb-vars,
+[data-theme="dark"] .fb-vars {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.dark .fb-vars-title,
+[data-theme="dark"] .fb-vars-title {
+  color: #cbd5e1;
+  border-color: #475569;
+}
+
+.dark .fb-chips-group,
+[data-theme="dark"] .fb-chips-group {
+  color: #94a3b8;
+}
+
+.dark .fb-chip,
+[data-theme="dark"] .fb-chip {
+  background: #334155;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.dark .fb-chip:hover,
+[data-theme="dark"] .fb-chip:hover {
+  border-color: #f97316;
+  color: #fdba74;
+  background: #3b4a5e;
+}
+
+.dark .fb-btn,
+[data-theme="dark"] .fb-btn {
+  background: #334155;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.dark .fb-tool-label,
+[data-theme="dark"] .fb-tool-label {
+  color: #cbd5e1;
+}

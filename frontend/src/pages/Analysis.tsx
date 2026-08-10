@@ -9,6 +9,7 @@ import { Loading, EmptyState, ErrorBanner, TableSkeleton } from '../components/u
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import { formatDate, formatDateWithWeekday, formatNumber, todayISO } from '../utils'
+import JalaliDateInput from '../components/ui/JalaliDateInput'
 import { SAMPLE_POINT_LABELS, SAMPLE_POINT_STYLE } from '../constants'
 
 type AnalysisFormState = { device: string; shift: string; sample_point: SamplePoint | ''; date: string; value_1: number | null; value_2: number | null; analysis_text: string }
@@ -36,7 +37,7 @@ function AnalysisForm({ form, setForm, editing }: { form: AnalysisFormState; set
       </div>
       <div>
         <label className="label">تاریخ *</label>
-        <input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+        <JalaliDateInput value={form.date} onChange={(iso) => setForm({ ...form, date: iso })} />
         {form.date && (
           <p className="mt-1 text-[11px] text-brand-600 dark:text-brand-400">{formatDateWithWeekday(form.date)}</p>
         )}
@@ -153,8 +154,8 @@ export default function Analysis() {
             {analyzers.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
-        <div className="min-w-[130px]"><label className="label">از تاریخ</label><input type="date" className="input" value={filters.date_from ?? ''} onChange={(e) => setFilter('date_from', e.target.value)} /></div>
-        <div className="min-w-[130px]"><label className="label">تا تاریخ</label><input type="date" className="input" value={filters.date_to ?? ''} onChange={(e) => setFilter('date_to', e.target.value)} /></div>
+        <div className="min-w-[130px]"><label className="label">از تاریخ</label><JalaliDateInput value={filters.date_from ?? ''} onChange={(iso) => setFilter('date_from', iso)} /></div>
+        <div className="min-w-[130px]"><label className="label">تا تاریخ</label><JalaliDateInput value={filters.date_to ?? ''} onChange={(iso) => setFilter('date_to', iso)} /></div>
         <button className="btn-ghost" onClick={() => { setFilters({}); setPage(1) }}><X className="h-4 w-4" /> پاک کردن</button>
       </div>
 

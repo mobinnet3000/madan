@@ -12,6 +12,10 @@ from .models import (
     Contractor,
     AnalysisTypeDefinition,
     AnalysisPosition,
+    ActualAnalysis,
+    Attribute,
+    DeviceTemplate,
+    Device,
 )
 from .formula import FormulaError, evaluate, validate_expr, variables
 from .analysis import build_schema, validate_and_compute
@@ -558,3 +562,143 @@ class ServiceDirectTests(FactoryFixtureMixin, TestCase):
         self.assertAlmostEqual(
             outputs["recovery"], round((52.3 - 9.2) / (64.8 - 9.2) * 100, 6)
         )
+
+
+class AdminActualAnalysisFormTests(FactoryFixtureMixin, TestCase):
+    """تست فرم داینامیک ادمین: ساخت فیلد بر اساس خط + محاسبه‌ی خودکار خروجی هنگام ذخیره."""
+
+    def test_admin_form_builds_fields_and_computes_outputs(self):
+        from types import SimpleNamespace
+
+        from machines.admin import ActualAnalysisAdmin
+
+        self._upsert_def(self.url_def1, self._default_outputs())
+        user = User.objects.get(username="admin")
+        fake = SimpleNamespace(
+            GET={"line": str(self.line1.id)}, POST=None, method="GET", user=user
+        )
+        ma = ActualAnalysisAdmin(ActualAnalysis, None)
+        form_cls = ma.get_form(fake, obj=None, change=False)
+
+        f = form_cls()
+        dynamic = [k for k in f.fields if k.startswith(("pos_", "add_"))]
+        self.assertEqual(len(dynamic), 7)  # 3 موقعیت × 2 ورودی + 1 ورودی اضافه
+
+        pos = {p.key: p.id for p in self.line1.analysis_positions.all()}
+        data = {
+            "line": str(self.line1.id),
+            "date_from": "2026-01-05",
+            "date_to": "2026-01-05",
+            "shift": "",
+            "contractor": str(self.c1.id),
+        }
+        for pid in pos.values():
+            data[f"pos_{pid}_fe"] = "52.3"
+            data[f"pos_{pid}_feo"] = "1.2"
+        data[f'pos_{pos["product"]}_fe'] = "64.8"
+        data[f'pos_{pos["tail"]}_fe'] = "9.2"
+        data["add_input_a"] = "20"
+
+        form = form_cls(data=data)
+        self.assertTrue(form.is_valid(), form.errors)
+        analysis = form.save()
+        self.assertEqual(analysis.outputs["grade"], 64.8)
+        self.assertAlmostEqual(
+            analysis.outputs["recovery"], round((52.3 - 9.2) / (64.8 - 9.2) * 100, 6)
+        )
+        self.assertEqual(analysis.created_by_id, user.id)
+
+
+class DateRangeAndDetailTests(FactoryFixtureMixin, TestCase):
+    """بازه تاریخی، جزئیات خط (دستگاه‌ها + ورودی‌ها) و اعتبارسنجی فرمول."""
+
+    def setUp(self):
+        super().setUp()
+        self._upsert_def(self.url_def1, self._default_outputs())
+        attr = Attribute.objects.create(name="توان")
+        dtpl = DeviceTemplate.objects.create(name="الگو")
+        dtpl.available_attributes.add(attr)
+        Device.objects.create(
+            name="سنگ‌شکن", code="M-01", line=self.line1, template=dtpl, order=1
+        )
+
+    def test_single_date_gives_equal_range(self):
+        payload = {**self.valid_payload}
+        r = self.client.post("/api/actual-analyses/", payload, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data["date_from"], r.data["date_to"])
+
+    def test_date_range_accepted(self):
+        payload = {
+            **self.valid_payload,
+            "date_from": "2026-01-01",
+            "date_to": "2026-01-10",
+        }
+        payload.pop("date", None)
+        r = self.client.post("/api/actual-analyses/", payload, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data["date_from"], "2026-01-01")
+        self.assertEqual(r.data["date_to"], "2026-01-10")
+        self.assertIn("date_from_jalali", r.data)
+
+    def test_invalid_range_rejected(self):
+        payload = {
+            **self.valid_payload,
+            "date_from": "2026-01-20",
+            "date_to": "2026-01-10",
+        }
+        payload.pop("date", None)
+        r = self.client.post("/api/actual-analyses/", payload, format="json")
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_overlap_filter(self):
+        self.client.post(
+            "/api/actual-analyses/",
+            {**self.valid_payload, "date_from": "2026-01-05", "date_to": "2026-01-07"},
+            format="json",
+        )
+        r = self.client.get(
+            "/api/actual-analyses/?date_from=2026-01-06&date_to=2026-01-06"
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["count"], 1)
+        r2 = self.client.get(
+            "/api/actual-analyses/?date_from=2026-02-01&date_to=2026-02-10"
+        )
+        self.assertEqual(r2.data["count"], 0)
+
+    def test_line_detail_includes_devices_and_inputs(self):
+        r = self.client.get(f"/api/production-lines/{self.line1.id}/")
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.data
+        self.assertEqual(len(data["devices"]), 1)
+        self.assertEqual(data["devices"][0]["code"], "M-01")
+        self.assertEqual(len(data["positions"]), 3)
+        self.assertEqual(len(data["outputs"]), 3)
+        self.assertEqual(data["contractor"]["options"][0]["id"], self.c1.id)
+
+    def test_actual_analysis_returns_line_devices(self):
+        r = self.client.post("/api/actual-analyses/", self.valid_payload, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(len(r.data["line_devices"]), 1)
+
+    def test_formula_validate_endpoint(self):
+        ok = self.client.post(
+            "/api/formula/validate/",
+            {
+                "line_id": self.line1.id,
+                "expression": "(feed.fe - tail.fe) / (product.fe - tail.fe) * 100",
+            },
+            format="json",
+        )
+        self.assertEqual(ok.status_code, 200, ok.content)
+        self.assertTrue(ok.data["ok"])
+
+        bad = self.client.post(
+            "/api/formula/validate/",
+            {"line_id": self.line1.id, "expression": "nope.fe * 2"},
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 200)
+        self.assertFalse(bad.data["ok"])
+        self.assertTrue(any("nope" in e for e in bad.data["errors"]))

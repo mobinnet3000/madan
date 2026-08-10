@@ -42,7 +42,7 @@ from .filters import (
     ActualAnalysisFilter,
 )
 from .reports import RANGE_LABELS
-from .analysis import build_schema, validate_and_compute
+from .analysis import build_schema, validate_and_compute, validate_formula_for_line
 from accounts.services import get_user_factory, log_activity
 from accounts.permissions import HasPermission, require_permission, user_has_permission
 from core.pagination import StandardPagination
@@ -627,7 +627,7 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
         return qs
 
     def _make_actual(self, request):
-        """پردازش Payload و محاسبه‌ی خروجی‌ها؛ خروجی: (line, contractor, date, shift, inputs, outputs)."""
+        """پردازش Payload و محاسبه‌ی خروجی‌ها؛ خروجی: (line, contractor, date_from, date_to, shift, inputs, outputs)."""
         data = request.data
         line_id = data.get("line_id") or (
             data.get("line", {}).get("id")
@@ -638,15 +638,9 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
             raise ValueError("خط تولید (line_id) الزامی است.")
         line = _get_scoped_line(request, line_id)
 
-        from datetime import datetime
-
-        date_val = data.get("date")
-        if not date_val:
-            raise ValueError("تاریخ (date) الزامی است.")
-        try:
-            date_obj = datetime.strptime(str(date_val), "%Y-%m-%d").date()
-        except ValueError:
-            raise ValueError("فرمت تاریخ باید YYYY-MM-DD باشد.")
+        date_from, date_to = self._resolve_dates(data)
+        if date_to < date_from:
+            raise ValueError("تاریخ پایان بازه نمی‌تواند قبل از تاریخ شروع باشد.")
 
         contractor = None
         contractor_id = data.get("contractor_id")
@@ -667,19 +661,37 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
                 raise ValueError("شیفت انتخاب‌شده متعلق به کارخانه‌ی همین خط نیست.")
 
         inputs, outputs = validate_and_compute(line, data)
-        return line, contractor, date_obj, shift, inputs, outputs
+        return line, contractor, date_from, date_to, shift, inputs, outputs
+
+    def _resolve_dates(self, data):
+        """تاریخ تکی (date) یا بازه (date_from/date_to) را برمی‌گرداند."""
+        from datetime import datetime
+
+        raw_from = data.get("date_from") or data.get("date")
+        raw_to = data.get("date_to") or data.get("date")
+        if not raw_from:
+            raise ValueError("تاریخ شروع آنالیز (date یا date_from) الزامی است.")
+        if not raw_to:
+            raise ValueError("تاریخ پایان آنالیز (date یا date_to) الزامی است.")
+        try:
+            date_from = datetime.strptime(str(raw_from), "%Y-%m-%d").date()
+            date_to = datetime.strptime(str(raw_to), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("فرمت تاریخ باید YYYY-MM-DD باشد.")
+        return date_from, date_to
 
     def create(self, request, *args, **kwargs):
         try:
-            line, contractor, date_obj, shift, inputs, outputs = self._make_actual(
-                request
+            line, contractor, date_from, date_to, shift, inputs, outputs = (
+                self._make_actual(request)
             )
         except ValueError as e:
             return _error(e)
         obj = ActualAnalysis.objects.create(
             line=line,
             contractor=contractor,
-            date=date_obj,
+            date_from=date_from,
+            date_to=date_to,
             shift=shift,
             inputs=inputs,
             outputs=outputs,
@@ -689,7 +701,7 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
             request.user,
             "create",
             "آنالیز واقعی",
-            f"{line.name} - {date_obj}",
+            f"{line.name} - {date_from} تا {date_to}",
             request,
             factory=line.factory,
         )
@@ -700,14 +712,15 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         try:
-            line, contractor, date_obj, shift, inputs, outputs = self._make_actual(
-                request
+            line, contractor, date_from, date_to, shift, inputs, outputs = (
+                self._make_actual(request)
             )
         except ValueError as e:
             return _error(e)
         instance.line = line
         instance.contractor = contractor
-        instance.date = date_obj
+        instance.date_from = date_from
+        instance.date_to = date_to
         instance.shift = shift
         instance.inputs = inputs
         instance.outputs = outputs
@@ -716,7 +729,7 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
             request.user,
             "update",
             "آنالیز واقعی",
-            f"{line.name} - {date_obj}",
+            f"{line.name} - {date_from} تا {date_to}",
             request,
             factory=line.factory,
         )
@@ -730,7 +743,7 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
             self.request.user,
             "delete",
             "آنالیز واقعی",
-            f"{instance.line.name} - {instance.date}",
+            f"{instance.line.name} - {instance.date_from}",
             self.request,
             factory=instance.line.factory,
         )
@@ -744,6 +757,34 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
 def line_analysis_schema_view(request, line_id):
     line = _get_scoped_line(request, line_id)
     return Response(build_schema(line))
+
+
+# ── جزئیات کامل خط تولید: تعریف/ورودی‌ها + دستگاه‌ها (ماشین‌ها) ──
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.view")
+def production_line_detail_view(request, line_id):
+    line = _get_scoped_line(request, line_id)
+    schema = build_schema(line)
+    devices = [
+        {"id": d.id, "name": d.name, "code": d.code, "order": d.order}
+        for d in line.devices.all().order_by("order")
+    ]
+    return Response({**schema, "devices": devices})
+
+
+# ── اعتبارسنجی آنی فرمول در ادمین/فرانت ──
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.view")
+def formula_validate_view(request):
+    line_id = request.data.get("line_id")
+    expression = request.data.get("expression") or ""
+    if not line_id:
+        return _error("line_id الزامی است.")
+    line = _get_scoped_line(request, line_id)
+    errors = validate_formula_for_line(line, expression)
+    return Response({"ok": not errors, "errors": errors})
 
 
 # ── مدیریت موقعیت‌های آنالیز یک خط ──

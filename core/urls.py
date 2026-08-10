@@ -1,11 +1,11 @@
-from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from django.conf import settings
 from django.conf.urls.static import static
+from core.admin import madan_site
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("admin/", madan_site.urls),
     path('', include('accounts.urls')),
     path('', include('machines.urls')),
 

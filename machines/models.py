@@ -372,7 +372,7 @@ class DeviceLog(models.Model):
 
 
 class ProductionReport(models.Model):
-    """گزارش تولیدی خط در یک بازه زمانی (جدای از گزارش عملکرد روزانه)."""
+    """آنالیز خطوط تولید — ریز عملکرد هر خط در یک بازه زمانی."""
 
     line = models.ForeignKey(
         ProductionLine,
@@ -380,17 +380,28 @@ class ProductionReport(models.Model):
         related_name="production_reports",
         verbose_name="خط تولید",
     )
+    contractor = models.ForeignKey(
+        Contractor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="production_reports",
+        verbose_name="پیمانکار",
+    )
     date_from = models.DateField(verbose_name="تاریخ شروع بازه")
     date_to = models.DateField(verbose_name="تاریخ پایان بازه")
-    feed_tonnage = models.FloatField(default=0, verbose_name="تناژ ورودی (Feed)")
-    product_tonnage = models.FloatField(default=0, verbose_name="تناژ محصول/خروجی خط")
-    tailing_tonnage = models.FloatField(default=0, verbose_name="تناژ باطله")
+    batala_avalieh = models.FloatField(default=0, verbose_name="باطله اولیه")
+    darsad_batale = models.FloatField(default=0, verbose_name="درصد باطله")
+    darsad_dane_dorosht = models.FloatField(default=0, verbose_name="درصد دانه درشت")
+    darsad_rotobat = models.FloatField(default=0, verbose_name="درصد رطوبت")
+    darsad_takhfif = models.FloatField(default=0, verbose_name="درصد تخفیف")
+    darsad_jerime = models.FloatField(default=0, verbose_name="درصد جریمه")
     note = models.TextField(blank=True, verbose_name="توضیحات / ملاحظات")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
 
     class Meta:
-        verbose_name = "گزارش تولید"
-        verbose_name_plural = "گزارش‌های تولید"
+        verbose_name = "آنالیز خط تولید"
+        verbose_name_plural = "آنالیز خطوط تولید"
         ordering = ["-date_from", "-created_at"]
         indexes = [
             models.Index(fields=["line", "date_from"]),
@@ -398,16 +409,14 @@ class ProductionReport(models.Model):
         ]
 
     def __str__(self):
-        return f"گزارش تولید {self.line.name} - {self.date_from} تا {self.date_to}"
-
-    @property
-    def efficiency(self):
-        if self.feed_tonnage > 0:
-            return round((self.product_tonnage / self.feed_tonnage) * 100, 2)
-        return None
+        return f"آنالیز {self.line.name} - {self.date_from} تا {self.date_to}"
 
     def clean(self):
         super().clean()
+        if self.contractor_id and self.contractor.factory_id != self.line.factory_id:
+            raise ValidationError(
+                {"contractor": "پیمانکار باید متعلق به کارخانه‌ی همین خط تولید باشد."}
+            )
         if self.date_from and self.date_to and self.date_to < self.date_from:
             raise ValidationError(
                 {"date_to": "تاریخ پایان بازه نمی‌تواند قبل از تاریخ شروع باشد."}
@@ -646,7 +655,8 @@ class ActualAnalysis(models.Model):
         related_name="actual_analyses",
         verbose_name="پیمانکار",
     )
-    date = models.DateField(verbose_name="تاریخ آنالیز", db_index=True)
+    date_from = models.DateField(verbose_name="تاریخ شروع بازه", db_index=True)
+    date_to = models.DateField(verbose_name="تاریخ پایان بازه")
     shift = models.ForeignKey(
         Shift,
         on_delete=models.SET_NULL,
@@ -672,18 +682,32 @@ class ActualAnalysis(models.Model):
     class Meta:
         verbose_name = "آنالیز واقعی"
         verbose_name_plural = "آنالیزهای واقعی"
-        ordering = ["-date", "-created_at"]
+        ordering = ["-date_from", "-created_at"]
         indexes = [
-            models.Index(fields=["line", "date"]),
+            models.Index(fields=["line", "date_from"]),
+            models.Index(fields=["line", "date_to"]),
             models.Index(fields=["contractor"]),
         ]
 
     def __str__(self):
-        return f"آنالیز {self.line.name} - {self.date}"
+        label = (
+            self.date_from
+            if self.date_from == self.date_to
+            else f"{self.date_from} تا {self.date_to}"
+        )
+        return f"آنالیز {self.line.name} - {label}"
+
+    @property
+    def is_range(self):
+        return self.date_from != self.date_to
 
     def clean(self):
         super().clean()
         if self.contractor_id and self.contractor.factory_id != self.line.factory_id:
             raise ValidationError(
                 {"contractor": "پیمانکار باید متعلق به کارخانه‌ی همین خط تولید باشد."}
+            )
+        if self.date_from and self.date_to and self.date_to < self.date_from:
+            raise ValidationError(
+                {"date_to": "تاریخ پایان بازه نمی‌تواند قبل از تاریخ شروع باشد."}
             )

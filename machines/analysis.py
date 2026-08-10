@@ -6,7 +6,112 @@
 - محاسبه‌ی خروجی‌ها با موتور فرمول امن.
 """
 
-from .formula import FormulaError, variables, evaluate
+from .formula import FormulaError, variables, evaluate, validate_expr
+
+
+def formula_variables_for_line(line):
+    """لیست متغیرهای قابل‌استفاده در فرمول‌های یک خط (برای فرمول‌ساز).
+
+    شامل: ورودی‌های موقعیت‌ها، ورودی‌های اضافه و خروجی‌های تعریف خط + ورودی‌ها/خروجی‌هایی
+    که در رکوردهای آنالیز ثبت‌شده (Actual Analysisهای قبلی) استفاده شده‌اند.
+    """
+    items = []
+    positions = line.analysis_positions.select_related("definition").prefetch_related(
+        "definition__inputs"
+    )
+    for pos in positions:
+        if not pos.definition_id:
+            continue
+        for inp in pos.definition.inputs.all():
+            items.append(
+                {
+                    "var": f"{pos.key}.{inp.key}",
+                    "label": f"{pos.name} / {inp.name}",
+                    "group": "ورودی موقعیت‌ها",
+                }
+            )
+    line_def = getattr(line, "analysis_definition", None)
+    if line_def:
+        for a in line_def.additional_inputs.all():
+            items.append({"var": a.key, "label": a.name, "group": "ورودی‌های اضافه"})
+        for o in line_def.outputs.all():
+            items.append({"var": o.key, "label": o.name, "group": "خروجی‌ها"})
+
+    # متغیرهای مستخرج از رکوردهای آنالیز ثبت‌شده (داده‌های واقعی)
+    items.extend(_record_variables_for_line(line))
+    return items
+
+
+def _record_variables_for_line(line):
+    """متغیرهایی که در رکوردهای Actual Analysis همین خط استفاده شده‌اند."""
+    from .models import ActualAnalysis
+
+    pos_names = {
+        p.key: p.name for p in line.analysis_positions.all()
+    }
+    analyses = ActualAnalysis.objects.filter(line=line).order_by("-created_at")[:300]
+
+    used_pos = {}
+    used_add = set()
+    used_out = set()
+    for a in analyses:
+        inputs = a.inputs or {}
+        for pos_key, vals in (inputs.get("positions") or {}).items():
+            used_pos.setdefault(pos_key, set()).update(vals.keys())
+        used_add.update((inputs.get("additional_inputs") or {}).keys())
+        used_out.update((a.outputs or {}).keys())
+
+    record_items = []
+    for pos_key in sorted(used_pos):
+        base = pos_names.get(pos_key, pos_key)
+        for inkey in sorted(used_pos[pos_key]):
+            record_items.append(
+                {"var": f"{pos_key}.{inkey}", "label": f"{base} / {inkey}",
+                 "group": "ورودی موقعیت‌ها (رکوردها)"}
+            )
+    for add in sorted(used_add):
+        record_items.append(
+            {"var": add, "label": add, "group": "ورودی اضافه (رکوردها)"}
+        )
+    for out in sorted(used_out):
+        record_items.append(
+            {"var": out, "label": out, "group": "خروجی (رکوردها)"}
+        )
+    return record_items
+
+
+def validate_formula_for_line(line, expr):
+    """اعتبارسنجی فرمول نسبت به یک خط؛ لیست خطاها را برمی‌گرداند (خالی = معتبر)."""
+    errors = []
+    if not expr or not str(expr).strip():
+        return ["فرمول خالی است."]
+    try:
+        validate_expr(expr)
+    except FormulaError as e:
+        return [str(e)]
+
+    valid = set()
+    positions = line.analysis_positions.select_related("definition").prefetch_related(
+        "definition__inputs"
+    )
+    for pos in positions:
+        if not pos.definition_id:
+            continue
+        for inp in pos.definition.inputs.all():
+            valid.add(f"{pos.key}.{inp.key}")
+    line_def = getattr(line, "analysis_definition", None)
+    if line_def:
+        valid.update(line_def.additional_inputs.values_list("key", flat=True))
+        valid.update(line_def.outputs.values_list("key", flat=True))
+
+    try:
+        used = set(variables(expr))
+    except FormulaError as e:
+        return [str(e)]
+    for var in sorted(used):
+        if var not in valid:
+            errors.append(f"متغیر «{var}» در این خط تعریف نشده است.")
+    return errors
 
 
 def _position_inputs(position):

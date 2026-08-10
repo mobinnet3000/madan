@@ -12,6 +12,7 @@ import type { DeviceLog, DeviceDailyAnalysis } from '../types'
 import { Loading, EmptyState, ErrorBanner, CardSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
 import { formatDate, formatNumber, formatPercent, todayISO } from '../utils'
+import JalaliDateInput from '../components/ui/JalaliDateInput'
 
 type DataType = 'logs' | 'analysis'
 
@@ -268,15 +269,9 @@ export default function Reports() {
           <span className="mx-1 self-center text-ink-300 dark:text-slate-600">|</span>
           <div className="flex items-center gap-1.5">
             <label className="text-xs text-ink-500">از</label>
-            <input type="date" value={dateFrom}
-              onChange={e => applyCustomDate(e.target.value, dateTo)}
-              className="rounded-lg border px-2 py-1.5 text-xs outline-none transition focus:border-brand-400"
-              style={{ background: 'rgba(241,245,249,0.5)', borderColor: activePreset === 'custom' ? '#f97316' : 'rgba(148,163,184,0.3)' }} />
+            <JalaliDateInput value={dateFrom} onChange={(iso) => applyCustomDate(iso, dateTo)} />
             <label className="text-xs text-ink-500">تا</label>
-            <input type="date" value={dateTo}
-              onChange={e => applyCustomDate(dateFrom, e.target.value)}
-              className="rounded-lg border px-2 py-1.5 text-xs outline-none transition focus:border-brand-400"
-              style={{ background: 'rgba(241,245,249,0.5)', borderColor: activePreset === 'custom' ? '#f97316' : 'rgba(148,163,184,0.3)' }} />
+            <JalaliDateInput value={dateTo} onChange={(iso) => applyCustomDate(dateFrom, iso)} />
           </div>
         </div>
       </div>

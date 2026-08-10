@@ -524,8 +524,9 @@ class ActualAnalysisSerializer(serializers.ModelSerializer):
     line = ProductionLineMinSerializer(read_only=True)
     contractor = ContractorSerializer(read_only=True)
     shift = ShiftSerializer(read_only=True)
-    date_jalali = serializers.SerializerMethodField()
-    day_of_week = serializers.SerializerMethodField()
+    date_from_jalali = serializers.SerializerMethodField()
+    date_to_jalali = serializers.SerializerMethodField()
+    line_devices = serializers.SerializerMethodField()
 
     class Meta:
         model = ActualAnalysis
@@ -533,19 +534,27 @@ class ActualAnalysisSerializer(serializers.ModelSerializer):
             "id",
             "line",
             "contractor",
-            "date",
-            "date_jalali",
-            "day_of_week",
+            "date_from",
+            "date_to",
+            "date_from_jalali",
+            "date_to_jalali",
             "shift",
             "inputs",
             "outputs",
+            "line_devices",
             "created_by",
             "created_at",
         ]
         read_only_fields = ["created_by", "created_at", "outputs"]
 
-    def get_date_jalali(self, obj):
-        return jalali_and_weekday(obj.date)["date_jalali"]
+    def get_date_from_jalali(self, obj):
+        return jalali_and_weekday(obj.date_from)["date_jalali"]
 
-    def get_day_of_week(self, obj):
-        return jalali_and_weekday(obj.date)["day_of_week"]
+    def get_date_to_jalali(self, obj):
+        return jalali_and_weekday(obj.date_to)["date_jalali"]
+
+    def get_line_devices(self, obj):
+        return [
+            {"id": d.id, "name": d.name, "code": d.code, "order": d.order}
+            for d in obj.line.devices.all().order_by("order")
+        ]

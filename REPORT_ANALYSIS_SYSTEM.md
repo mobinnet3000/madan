@@ -190,12 +190,13 @@ Queryها با `prefetch_related` بهینه شدند:
 - فایل جدید: `machines/migrations/0007_analysistypedefinition_contractor_actualanalysis_and_more.py`
 - جدول‌های جدید + constraintهای `unique_contractor_per_factory`، `uniq_input_key_per_definition`، `uniq_position_key_per_line`، `uniq_add_input_key_per_line_def`، `uniq_output_key_per_line_def` + ایندکس‌های `actualanalysis(line,date)` و `(contractor)`.
 - داده‌ی قبلی دست‌نخورده (همه‌ی تغییرات افزودنی هستند)؛ `makemigrations --check` بدون تغییر است.
+- فایل جدیدتر: `machines/migrations/0008_actualanalysis_date_range.py` (تبدیل `date` به `date_from/date_to`؛ داده‌ی قبلی با RunPython کپی می‌شود).
 
 ---
 
 ## ۹. تست‌ها (نتیجه‌ی واقعی اجرا)
 
-دستور: `python manage.py test` — **۴۰ تست، همگی OK** (شامل تست‌های قبلی پروژه به‌عنوان Regression):
+دستور: `python manage.py test` — **۴۸ تست، همگی OK** (شامل تست‌های قبلی پروژه به‌عنوان Regression):
 
 ```text
 Unit Tests (Formula Engine):        PASS
@@ -257,3 +258,72 @@ Query Optimization (N+1):           PASS (۹۶ → ۲۴ کوئری، بدون ک
 دو نکته‌ی تصمیم‌گیری شده (مستند برای ادامه‌ی کار):
 1. در Payload ثبت Actual Analysis، ارسال **کاملِ تمام موقعیت‌های دارای تعریف** الزامی نیست؛ اگر موقعیتی ارسال نشود و فرمولی به آن نیاز داشته باشد، هنگام محاسبه خطای شفاف فارسی برمی‌گردد. در صورت تمایل می‌توان این رفتار را به «الزام به ارسال همه‌ی موقعیت‌ها» سخت‌گیرانه‌تر کرد.
 2. عملیات «حذف تعریف» (DELETE) به دلیل `PROTECT` روی موقعیت/خروجی‌ها در صورت وجود داده‌ی وابسته با خطای محدودیت مواجه می‌شود (رفتار امنیتی عمدی).
+
+---
+
+## ۱۲. لایه‌ی میانی در پنل ادمین (تکمیل)
+
+لایه‌ی میانی که «خط تولید را به رکوردهای آنالیز واقعی وصل می‌کند» همان `LineAnalysisDefinition` است و حالا در ادمین کاملاً در دسترس است:
+
+### الف) مدیریت تعریف‌ها از صفحه‌ی خط تولید
+- در ادمین خط تولید (`machines/productionline`) اینلاین `LineAnalysisDefinition` اضافه شد: `contractor_required`، `notes` و دکمه‌ی «مدیریت ورودی‌ها و فرمول‌های خروجی».
+- ستون «لایه میانی آنالیز» در لیست خطوط، لینک مستقیم به تعریف همان خط است.
+- صفحه‌ی مستقل `machines/lineanalysisdefinition` با دو اینلاین:
+  - `AdditionalInputDefinitionInline` (ورودی‌های اضافه)
+  - `AnalysisOutputDefinitionInline` (خروجی‌ها + فیلد `formula`)
+
+  → همان‌جاست که فرمول‌ها و ورودی‌ها/خروجی‌ها وارد می‌شوند (با اعتبارسنجی فرمول و چرخه هنگام ذخیره).
+
+### ب) فرم داینامیک ثبت «آنالیز واقعی» در ادمین
+- صفحه‌ی `machines/actualanalysis` دیگر فرم ثابت نیست؛ بر اساس `line` انتخاب‌شده:
+  1. با JS (فایل استاتیک `madan_admin/js/actual_analysis_line.js`) به‌محض انتخاب خط، فرم با `?line=` دوباره بارگذاری می‌شود.
+  2. فیلدهای موقعیت‌ها (`pos_<positionId>_<inputKey>`) و ورودی‌های اضافه (`add_<key>`) به‌صورت خودکار ساخته می‌شوند.
+  3. لیست پیمانکار فقط به کارخانه‌ی همان خط و لیست شیفت به همان کارخانه محدود می‌شود.
+  4. هنگام ذخیره، `validate_and_compute` خروجی‌ها را محاسبه می‌کند و در `outputs` (فقط‌خواندنی) نمایش داده می‌شود.
+- فایل‌های مرتبط: `machines/admin.py` (کلاس `ActualAnalysisAdminForm`) + `machines/static/madan_admin/js/actual_analysis_line.js`
+- تست اضافه‌شده: `AdminActualAnalysisFormTests` (ساخت فیلد + محاسبه‌ی خروجی هنگام ذخیره) — ۴۸ تست کل، همه PASS.
+
+---
+
+## ۱۳. اصلاحات فرمول‌نویسی، API خط‌تولید و بازه‌ی تاریخ (آخرین تغییرات)
+
+### الف) فرمول‌ساز هوشمند در ادمین
+فرمول نویسی دیگر فقط یک فیلد متنی خالی نیست؛ در اینلاین «خروجی‌ها» (`AnalysisOutputDefinitionInline`) هر فیلد `formula` یک **ویرایشگر ساختی (Formula Builder)** دارد:
+- **انتخاب از ورودی‌های موجود**: دراپ‌داونِ متغیرها از خودِ خط — ورودی‌های موقعیت‌ها (`feed.fe`، `product.fe`، ...)، ورودی‌های اضافه و خودِ خروجی‌های دیگر.
+- **عملگرها**: `+  -  *  /  ^  %  (  )`  و دکمه‌های **تابع** `abs, sqrt, max, min, round, if, pow, log` و **عدد** — با کلیک به فرمول اضافه می‌شوند (رابطه‌ی مثل «ورودی اول × عدد ÷ ورودی دوم»).
+- **اعتبارسنجی آنی**: دکمه‌ی «اعتبارسنجی فرمول» با `POST /api/formula/validate/` (بدنه: `{line_id, expression}`) فرمول را الان چک می‌کند: نحو + وجود متغیرها در همان خط.
+- پیاده‌سازی: `FormulaInputWidget` در `machines/admin.py` + فایل استاتیک `madan_admin/js/formula_builder.js`.
+
+### ب) API خط تولید کامل
+اندپوینت جدید `GET /api/production-lines/{line_id}/` همزمان برمی‌گرداند:
+- **دستگاه‌ها (ماشین‌ها)**: `devices: [{id, name, code, order}]`
+- کل Schema آنالیز خط: `positions` (با تعریف و ورودی‌ها)، `additional_inputs`، `outputs`، گزینه‌های `contractor` و `defined`.
+
+و هنگام **خواندن یک Actual Analysis**، پاسخ شامل `line_devices` (ماشین‌های همان خط) به‌همراه `inputs` و `outputs` می‌شود تا فرانت تمام زمینه‌ی موردنیاز را یک‌جا داشته باشد.
+
+### ج) بازه‌ی تاریخ برای آنالیز
+- `ActualAnalysis` به‌جای `date` تکی، از `date_from` و `date_to` استفاده می‌کند (اعتبارسنجی: پایان ≥ شروع).
+- **تاریخ تکی**: اگر Client فقط `date` بدهد، `date_from = date_to = date`.
+- **بازه**: با `date_from` و `date_to` (مثلاً `2026-01-01` تا `2026-01-10`).
+- فیلتر لیست بر اساس **هم‌پوشانی بازه‌ها** (`?date_from=...&date_to=...`): رکوردی که بازه‌اش با بازه‌ی درخواستی تلاقی دارد برمی‌گردد.
+- ادمین: فیلدهای `date_from` و `date_to` با اعتبارسنجی؛ فرم داینامیک آنالیز واقعی هم بازه می‌پذیرد.
+
+### تست‌های اضافه‌شده (`DateRangeAndDetailTests`)
+- تاریخ تکی → شروع = پایان
+- بازه‌ی تاریخ پذیرفته و ذخیره می‌شود
+- بازه‌ی نامعتبر (پایان < شروع) رد می‌شود
+- فیلتر هم‌پوشانی بازه
+- جزئیات خط شامل دستگاه‌ها + ورودی‌ها + خروجی‌ها
+- پاسخ Actual Analysis شامل `line_devices`
+- اندپوینت اعتبارسنجی فرمول (معتبر/نامعتبر)
+
+### فایل‌های مرتبط (بخش ۱۳)
+- `machines/models.py` — `date_from/date_to` در `ActualAnalysis`
+- `machines/migrations/0008_actualanalysis_date_range.py` — جدید
+- `machines/serializers.py` — `line_devices` + تاریخ‌های شمسیِ بازه
+- `machines/views.py` — `production_line_detail_view` + `formula_validate_view` + پردازش بازه
+- `machines/urls.py` — مسیرهای جدید
+- `machines/filters.py` — فیلتر هم‌پوشانی بازه
+- `machines/analysis.py` — `formula_variables_for_line` و `validate_formula_for_line`
+- `machines/admin.py` — `FormulaInputWidget` + فیلدهای بازه در فرم ادمین
+- `machines/static/madan_admin/js/formula_builder.js` — جدید

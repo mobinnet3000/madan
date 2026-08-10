@@ -10,6 +10,7 @@ import { Loading, EmptyState, ErrorBanner, TableSkeleton } from '../components/u
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import { formatDate, formatNumber, formatPercent, todayISO } from '../utils'
+import JalaliDateInput from '../components/ui/JalaliDateInput'
 
 type FormState = {
   line: string; date_from: string; date_to: string
@@ -46,12 +47,12 @@ function ProductionForm({ form, setForm }: { form: FormState; setForm: (f: FormS
       </div>
       <div>
         <label className="label">تاریخ شروع بازه *</label>
-        <input type="date" className="input" value={form.date_from} onChange={(e) => set('date_from', e.target.value)} />
+        <JalaliDateInput value={form.date_from} onChange={(iso) => set('date_from', iso)} />
         <p className="mt-1 text-[11px] text-brand-600 dark:text-brand-400">{formatDate(form.date_from)}</p>
       </div>
       <div>
         <label className="label">تاریخ پایان بازه *</label>
-        <input type="date" className="input" value={form.date_to} onChange={(e) => set('date_to', e.target.value)} />
+        <JalaliDateInput value={form.date_to} onChange={(iso) => set('date_to', iso)} />
         <p className="mt-1 text-[11px] text-brand-600 dark:text-brand-400">{formatDate(form.date_to)}</p>
       </div>
       {rangeInvalid && (
@@ -170,8 +171,8 @@ export default function ProductionReports() {
             {selectedFactory?.lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
-        <div className="min-w-[130px]"><label className="label">از تاریخ</label><input type="date" className="input" value={filters.date_from ?? ''} onChange={(e) => setFilter('date_from', e.target.value)} /></div>
-        <div className="min-w-[130px]"><label className="label">تا تاریخ</label><input type="date" className="input" value={filters.date_to ?? ''} onChange={(e) => setFilter('date_to', e.target.value)} /></div>
+        <div className="min-w-[130px]"><label className="label">از تاریخ</label><JalaliDateInput value={filters.date_from ?? ''} onChange={(iso) => setFilter('date_from', iso)} /></div>
+        <div className="min-w-[130px]"><label className="label">تا تاریخ</label><JalaliDateInput value={filters.date_to ?? ''} onChange={(iso) => setFilter('date_to', iso)} /></div>
         <button className="btn-ghost" onClick={() => { setFilters({}); setPage(1) }}>پاک کردن</button>
       </div>
 

@@ -48,6 +48,7 @@ export interface Factory {
   shifts: Shift[]
   lines: ProductionLine[]
   failure_reasons: FailureReason[]
+  contractors: Contractor[]
 }
 
 export interface DeviceLog {
@@ -214,6 +215,106 @@ export interface ProductionReportPayload {
 
 export interface ProductionReportFilters {
   line?: number
+  date_from?: string
+  date_to?: string
+}
+
+// ── عملکرد بخش تولید (Actual Analysis داینامیک) ──
+export interface ContractorOpt {
+  id: number
+  name: string
+  contact_name?: string
+  phone?: string
+}
+
+export interface Contractor extends ContractorOpt {
+  factory?: number
+  factory_name?: string
+  is_active?: boolean
+}
+
+export interface InputSchema {
+  id: number
+  key: string
+  name: string
+  type: 'number' | 'text'
+  required: boolean
+  unit: string
+}
+
+export interface PositionSchema {
+  id: number
+  key: string
+  name: string
+  definition: { id: number; name: string } | null
+  inputs: InputSchema[]
+}
+
+export interface AnalysisOutputSchema {
+  id: number
+  key: string
+  name: string
+  unit: string
+}
+
+export interface AnalysisSchema {
+  line: { id: number; name: string }
+  contractor: { required: boolean; options: ContractorOpt[] }
+  positions: PositionSchema[]
+  additional_inputs: InputSchema[]
+  outputs: AnalysisOutputSchema[]
+  defined: boolean
+}
+
+export interface LineDeviceRef {
+  id: number
+  name: string
+  code: string
+  order: number
+}
+
+export interface ProductionLineDetail extends AnalysisSchema {
+  devices: LineDeviceRef[]
+}
+
+export interface ActualAnalysis {
+  id: number
+  line: { id: number; name: string; factory: { id: number; name: string } }
+  contractor: ContractorOpt | null
+  date_from: string
+  date_to: string
+  date_from_jalali?: string
+  date_to_jalali?: string
+  shift: {
+    id: number
+    name: string
+    start_time: string
+    end_time: string
+    is_active: boolean
+  } | null
+  inputs: {
+    positions: Record<string, Record<string, number | string>>
+    additional_inputs: Record<string, number | string>
+  }
+  outputs: Record<string, number>
+  line_devices: LineDeviceRef[]
+  created_by: number | null
+  created_at: string
+}
+
+export interface ActualAnalysisPayload {
+  line_id: number
+  contractor_id?: number | null
+  date_from: string
+  date_to: string
+  positions: Record<string, Record<string, number | string>>
+  additional_inputs: Record<string, number | string>
+}
+
+export interface ActualAnalysisFilters {
+  line?: number
+  lines?: string
+  contractor?: number
   date_from?: string
   date_to?: string
 }

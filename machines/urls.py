@@ -22,6 +22,8 @@ from .views import (
     line_additional_input_detail_view,
     line_outputs_view,
     line_output_detail_view,
+    production_line_detail_view,
+    formula_validate_view,
 )
 
 router = DefaultRouter()
@@ -57,6 +59,16 @@ urlpatterns = [
         name="device-attributes",
     ),
     # ── سیستم آنالیز داینامیک ──
+    path(
+        "api/production-lines/<int:line_id>/",
+        production_line_detail_view,
+        name="production-line-detail",
+    ),
+    path(
+        "api/formula/validate/",
+        formula_validate_view,
+        name="formula-validate",
+    ),
     path(
         "api/production-lines/<int:line_id>/analysis-definition/",
         line_analysis_schema_view,
