@@ -196,27 +196,19 @@ export interface ProductionReport {
   contractor: ContractorOpt | null
   date_from: string
   date_to: string
-  batala_avalieh: number
-  darsad_batale: number
-  darsad_dane_dorosht: number
-  darsad_rotobat: number
-  darsad_takhfif: number
-  darsad_jerime: number
+  inputs: Record<string, number | string>
+  outputs: Record<string, number>
   note: string
+  created_by: number | null
   created_at: string
 }
 
 export interface ProductionReportPayload {
-  line: number
-  contractor?: number | null
+  line_id: number
+  contractor_id?: number | null
   date_from: string
   date_to: string
-  batala_avalieh?: number
-  darsad_batale?: number
-  darsad_dane_dorosht?: number
-  darsad_rotobat?: number
-  darsad_takhfif?: number
-  darsad_jerime?: number
+  inputs: Record<string, number | string>
   note?: string
 }
 
@@ -225,6 +217,14 @@ export interface ProductionReportFilters {
   contractor?: number
   date_from?: string
   date_to?: string
+}
+
+// تعریف آنالیز کارخانه (ورودی/خروجی داینامیک با فرمول)
+export interface FactoryAnalysisSchema {
+  factory: { id: number; name: string }
+  inputs: InputSchema[]
+  outputs: AnalysisOutputSchema[]
+  defined: boolean
 }
 
 // ── عملکرد بخش تولید (Actual Analysis داینامیک) ──

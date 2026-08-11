@@ -5,6 +5,7 @@ import type {
   ProductionReportPayload,
   ProductionReportFilters,
   AttributeDef,
+  FactoryAnalysisSchema,
 } from '../types'
 
 export const getProductionReports = (filters: ProductionReportFilters = {}, page = 1, pageSize = 30) =>
@@ -21,6 +22,14 @@ export const updateProductionReport = (id: number, payload: Partial<ProductionRe
 
 export const deleteProductionReport = (id: number) =>
   api.delete(`/production-reports/${id}/`)
+
+// اسکیمای داینامیک آنالیز کارخانه (بر اساس خط یا کارخانه)
+export function getFactoryAnalysisSchema(lineId?: number, factoryId?: number) {
+  const params: Record<string, number> = {}
+  if (lineId) params.line = lineId
+  if (factoryId) params.factory = factoryId
+  return api.get<FactoryAnalysisSchema>('/factory-analysis-definition/schema/', { params }).then(r => r.data)
+}
 
 export interface AttributesPayload {
   attributes_values: Record<string, number | string>

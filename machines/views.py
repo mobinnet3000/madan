@@ -18,6 +18,9 @@ from .models import (
     AnalysisOutputDefinition,
     ActualAnalysis,
     Shift,
+    FactoryAnalysisDefinition,
+    FactoryAnalysisInput,
+    FactoryAnalysisOutput,
 )
 from .serializers import (
     DeviceDailyAnalysisSerializer,
@@ -34,6 +37,9 @@ from .serializers import (
     AnalysisOutputDefinitionSerializer,
     LineAnalysisDefinitionSerializer,
     ActualAnalysisSerializer,
+    FactoryAnalysisDefinitionSerializer,
+    FactoryAnalysisInputSerializer,
+    FactoryAnalysisOutputSerializer,
 )
 from .filters import (
     DailyAnalysisFilter,
@@ -43,6 +49,12 @@ from .filters import (
 )
 from .reports import RANGE_LABELS
 from .analysis import build_schema, validate_and_compute, validate_formula_for_line
+from .factory_analysis import (
+    build_schema as build_factory_schema,
+    validate_and_compute as validate_and_compute_factory,
+    validate_formula_for_factory,
+    formula_variables_for_factory,
+)
 from accounts.services import get_user_factory, log_activity
 from accounts.permissions import HasPermission, require_permission, user_has_permission
 from core.pagination import StandardPagination
@@ -225,33 +237,101 @@ class ProductionReportViewSet(viewsets.ModelViewSet):
             qs = qs.filter(line__factory=factory)
         return qs
 
-    def perform_create(self, serializer):
-        obj = serializer.save()
-        log_activity(
-            self.request.user,
-            "create",
-            "گزارش تولید",
-            f"{obj.line.name} - {obj.date_from} تا {obj.date_to}",
-            self.request,
-            factory=obj.line.factory,
+    def _make_report(self, request):
+        data = request.data
+        line_id = data.get("line_id") or (
+            data.get("line", {}).get("id") if isinstance(data.get("line"), dict) else None
         )
+        if not line_id:
+            raise ValueError("خط تولید (line_id) الزامی است.")
+        line = _get_scoped_line(request, line_id)
 
-    def perform_update(self, serializer):
-        obj = serializer.save()
-        log_activity(
-            self.request.user,
-            "update",
-            "گزارش تولید",
-            f"{obj.line.name} - {obj.date_from} تا {obj.date_to}",
-            self.request,
-            factory=obj.line.factory,
+        from datetime import datetime
+
+        raw_from = data.get("date_from") or data.get("date")
+        raw_to = data.get("date_to") or data.get("date")
+        if not raw_from or not raw_to:
+            raise ValueError("تاریخ شروع و پایان (بازه) الزامی است.")
+        try:
+            date_from = datetime.strptime(str(raw_from), "%Y-%m-%d").date()
+            date_to = datetime.strptime(str(raw_to), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("فرمت تاریخ باید YYYY-MM-DD باشد.")
+        if date_to < date_from:
+            raise ValueError("تاریخ پایان بازه نمی‌تواند قبل از شروع باشد.")
+
+        contractor = None
+        contractor_id = data.get("contractor_id") or data.get("contractor")
+        if contractor_id:
+            contractor = Contractor.objects.filter(
+                pk=contractor_id, factory=line.factory_id
+            ).first()
+            if contractor is None:
+                raise ValueError(
+                    "پیمانکار انتخاب‌شده متعلق به کارخانه‌ی همین خط نیست یا غیرفعال است."
+                )
+
+        inputs, outputs = validate_and_compute_factory(line, data)
+        return line, contractor, date_from, date_to, inputs, outputs
+
+    def create(self, request, *args, **kwargs):
+        try:
+            line, contractor, date_from, date_to, inputs, outputs = self._make_report(request)
+        except ValueError as e:
+            return _error(e)
+        obj = ProductionReport.objects.create(
+            line=line,
+            contractor=contractor,
+            date_from=date_from,
+            date_to=date_to,
+            inputs=inputs,
+            outputs=outputs,
+            note=request.data.get("note", ""),
+            created_by=request.user if hasattr(request, "user") else None,
         )
+        log_activity(
+            request.user,
+            "create",
+            "آنالیز خط تولید",
+            f"{line.name} - {date_from} تا {date_to}",
+            request,
+            factory=line.factory,
+        )
+        return Response(ProductionReportSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            line, contractor, date_from, date_to, inputs, outputs = self._make_report(request)
+        except ValueError as e:
+            return _error(e)
+        instance.line = line
+        instance.contractor = contractor
+        instance.date_from = date_from
+        instance.date_to = date_to
+        instance.inputs = inputs
+        instance.outputs = outputs
+        if request.data.get("note") is not None:
+            instance.note = request.data.get("note", "")
+        instance.save()
+        log_activity(
+            request.user,
+            "update",
+            "آنالیز خط تولید",
+            f"{line.name} - {date_from} تا {date_to}",
+            request,
+            factory=line.factory,
+        )
+        return Response(ProductionReportSerializer(instance).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         log_activity(
             self.request.user,
             "delete",
-            "گزارش تولید",
+            "آنالیز خط تولید",
             f"{instance.line.name} - {instance.date_from}",
             self.request,
             factory=instance.line.factory,
@@ -1101,3 +1181,175 @@ def line_output_detail_view(request, line_id, pk):
         factory=line.factory,
     )
     return Response(serializer.data)
+
+
+# ═══════════════════ آنالیز داینامیک کارخانه (ورودی/خروجی/فرمول) ═══════════════════
+
+
+def _get_scoped_factory(request, factory_id):
+    try:
+        factory = Factory.objects.get(pk=factory_id)
+    except Factory.DoesNotExist:
+        raise Http404
+    scope = get_user_factory(request.user)
+    if scope is not None and scope.id != factory.id:
+        raise Http404
+    return factory
+
+
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.view")
+def factory_analysis_definition_view(request, factory_id):
+    factory = _get_scoped_factory(request, factory_id)
+    definition = getattr(factory, "factory_analysis_definition", None)
+
+    if request.method == "DELETE":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        if definition is not None:
+            definition.delete()
+        return Response({"detail": "تعریف آنالیز کارخانه حذف شد."})
+
+    if request.method == "PUT":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        data = request.data.copy()
+        data["factory"] = factory.id
+        serializer = FactoryAnalysisDefinitionSerializer(definition, data=data) if definition else FactoryAnalysisDefinitionSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.save()
+        except Exception as e:  # noqa: BLE001
+            from django.core.exceptions import ValidationError as _DVE
+            from rest_framework.exceptions import ValidationError as _RVE
+            if isinstance(e, (_DVE, _RVE)):
+                return _error(e)
+            raise
+        return Response(FactoryAnalysisDefinitionSerializer(serializer.instance).data)
+
+    if definition is None:
+        raise Http404
+    return Response(FactoryAnalysisDefinitionSerializer(definition).data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.view")
+def factory_analysis_inputs_view(request, factory_id):
+    factory = _get_scoped_factory(request, factory_id)
+    definition = getattr(factory, "factory_analysis_definition", None)
+    if definition is None:
+        raise Http404
+    if request.method == "POST":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        serializer = FactoryAnalysisInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(definition=definition)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(FactoryAnalysisInputSerializer(definition.inputs.all(), many=True).data)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.manage")
+def factory_analysis_input_detail_view(request, factory_id, pk):
+    factory = _get_scoped_factory(request, factory_id)
+    definition = getattr(factory, "factory_analysis_definition", None)
+    item = FactoryAnalysisInput.objects.filter(definition=definition, pk=pk).first() if definition else None
+    if item is None:
+        raise Http404
+    if request.method == "DELETE":
+        item.delete()
+        return Response({"detail": "حذف شد."})
+    serializer = FactoryAnalysisInputSerializer(item, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.view")
+def factory_analysis_outputs_view(request, factory_id):
+    factory = _get_scoped_factory(request, factory_id)
+    definition = getattr(factory, "factory_analysis_definition", None)
+    if definition is None:
+        raise Http404
+    if request.method == "POST":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        serializer = FactoryAnalysisOutputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.save(definition=definition)
+            definition.full_clean()
+        except Exception as e:  # noqa: BLE001
+            from django.core.exceptions import ValidationError as _DVE
+            from rest_framework.exceptions import ValidationError as _RVE
+            if isinstance(e, (_DVE, _RVE)):
+                return _error(e)
+            raise
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(FactoryAnalysisOutputSerializer(definition.outputs.all(), many=True).data)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.manage")
+def factory_analysis_output_detail_view(request, factory_id, pk):
+    factory = _get_scoped_factory(request, factory_id)
+    definition = getattr(factory, "factory_analysis_definition", None)
+    item = FactoryAnalysisOutput.objects.filter(definition=definition, pk=pk).first() if definition else None
+    if item is None:
+        raise Http404
+    if request.method == "DELETE":
+        item.delete()
+        return Response({"detail": "حذف شد."})
+    serializer = FactoryAnalysisOutputSerializer(item, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    try:
+        serializer.save()
+        definition.full_clean()
+    except Exception as e:  # noqa: BLE001
+        from django.core.exceptions import ValidationError as _DVE
+        from rest_framework.exceptions import ValidationError as _RVE
+        if isinstance(e, (_DVE, _RVE)):
+            return _error(e)
+        raise
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.view")
+def factory_analysis_schema_view(request):
+    """اسکیمای فرم داینامیک بر اساس کارخانه (از ?factory یا ?line)."""
+    factory_id = request.query_params.get("factory")
+    line_id = request.query_params.get("line")
+    if line_id:
+        line = _get_scoped_line(request, line_id)
+        factory = line.factory
+    elif factory_id:
+        factory = _get_scoped_factory(request, factory_id)
+    else:
+        return _error("?factory یا ?line الزامی است.")
+    return Response(build_factory_schema(factory))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.view")
+def formula_validate_factory_view(request):
+    factory_id = request.data.get("factory_id")
+    line_id = request.data.get("line_id")
+    expression = request.data.get("expression") or ""
+    if line_id:
+        factory = _get_scoped_line(request, line_id).factory
+    elif factory_id:
+        factory = _get_scoped_factory(request, factory_id)
+    else:
+        return _error("factory_id یا line_id الزامی است.")
+    errors = validate_formula_for_factory(factory, expression)
+    return Response({"ok": not errors, "errors": errors})

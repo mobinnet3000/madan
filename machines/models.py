@@ -390,13 +390,17 @@ class ProductionReport(models.Model):
     )
     date_from = models.DateField(verbose_name="تاریخ شروع بازه")
     date_to = models.DateField(verbose_name="تاریخ پایان بازه")
-    batala_avalieh = models.FloatField(default=0, verbose_name="باطله اولیه")
-    darsad_batale = models.FloatField(default=0, verbose_name="درصد باطله")
-    darsad_dane_dorosht = models.FloatField(default=0, verbose_name="درصد دانه درشت")
-    darsad_rotobat = models.FloatField(default=0, verbose_name="درصد رطوبت")
-    darsad_takhfif = models.FloatField(default=0, verbose_name="درصد تخفیف")
-    darsad_jerime = models.FloatField(default=0, verbose_name="درصد جریمه")
+    inputs = models.JSONField(default=dict, blank=True, verbose_name="مقادیر ورودی")
+    outputs = models.JSONField(default=dict, blank=True, verbose_name="خروجی‌های محاسبه‌شده")
     note = models.TextField(blank=True, verbose_name="توضیحات / ملاحظات")
+    created_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_production_reports",
+        verbose_name="ثبت‌کننده",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
 
     class Meta:
@@ -711,3 +715,91 @@ class ActualAnalysis(models.Model):
             raise ValidationError(
                 {"date_to": "تاریخ پایان بازه نمی‌تواند قبل از تاریخ شروع باشد."}
             )
+
+
+class FactoryAnalysisDefinition(models.Model):
+    """تعریف آنالیز کارخانه - ورودی‌های داینامیک مختص کارخانه + خروجی‌ها با فرمول."""
+
+    factory = models.OneToOneField(
+        Factory,
+        on_delete=models.CASCADE,
+        related_name="factory_analysis_definition",
+        verbose_name="کارخانه",
+    )
+    description = models.TextField(blank=True, verbose_name="توضیحات")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین ویرایش")
+
+    class Meta:
+        verbose_name = "تعریف آنالیز کارخانه"
+        verbose_name_plural = "تعریف‌های آنالیز کارخانه"
+
+    def __str__(self):
+        return f"تعریف آنالیز کارخانه {self.factory.name}"
+
+    def clean(self):
+        super().clean()
+        if self.pk:
+            from .factory_analysis import (
+                validate_output_formula_for_factory,
+                validate_outputs_no_cycle_factory,
+            )
+
+            try:
+                validate_output_formula_for_factory(self)
+                validate_outputs_no_cycle_factory(self)
+            except ValueError as e:
+                raise ValidationError({"outputs": str(e)})
+
+
+class FactoryAnalysisInput(models.Model):
+    definition = models.ForeignKey(
+        FactoryAnalysisDefinition,
+        on_delete=models.CASCADE,
+        related_name="inputs",
+        verbose_name="تعریف آنالیز کارخانه",
+    )
+    key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
+    name = models.CharField(max_length=100, verbose_name="نام نمایشی")
+    input_type = models.CharField(
+        max_length=20, choices=INPUT_TYPE_CHOICES, default="number", verbose_name="نوع ورودی"
+    )
+    unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
+    required = models.BooleanField(default=True, verbose_name="الزامی")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+
+    class Meta:
+        verbose_name = "ورودی آنالیز کارخانه"
+        verbose_name_plural = "ورودی‌های آنالیز کارخانه"
+        ordering = ["definition", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["definition", "key"], name="uniq_factory_input_key_per_def"),
+        ]
+
+    def __str__(self):
+        return f"{self.definition.factory.name} - {self.name}"
+
+
+class FactoryAnalysisOutput(models.Model):
+    definition = models.ForeignKey(
+        FactoryAnalysisDefinition,
+        on_delete=models.CASCADE,
+        related_name="outputs",
+        verbose_name="تعریف آنالیز کارخانه",
+    )
+    key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
+    name = models.CharField(max_length=100, verbose_name="نام نمایشی")
+    unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
+    formula = models.TextField(verbose_name="فرمول")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+
+    class Meta:
+        verbose_name = "خروجی آنالیز کارخانه"
+        verbose_name_plural = "خروجی‌های آنالیز کارخانه"
+        ordering = ["definition", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["definition", "key"], name="uniq_factory_output_key_per_def"),
+        ]
+
+    def __str__(self):
+        return f"{self.definition.factory.name} - {self.name}"

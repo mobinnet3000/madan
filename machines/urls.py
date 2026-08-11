@@ -24,6 +24,13 @@ from .views import (
     line_output_detail_view,
     production_line_detail_view,
     formula_validate_view,
+    factory_analysis_definition_view,
+    factory_analysis_inputs_view,
+    factory_analysis_input_detail_view,
+    factory_analysis_outputs_view,
+    factory_analysis_output_detail_view,
+    factory_analysis_schema_view,
+    formula_validate_factory_view,
 )
 
 router = DefaultRouter()
@@ -68,6 +75,41 @@ urlpatterns = [
         "api/formula/validate/",
         formula_validate_view,
         name="formula-validate",
+    ),
+    path(
+        "api/formula/validate-factory/",
+        formula_validate_factory_view,
+        name="formula-validate-factory",
+    ),
+    path(
+        "api/factory-analysis-definition/schema/",
+        factory_analysis_schema_view,
+        name="factory-analysis-schema",
+    ),
+    path(
+        "api/factories/<int:factory_id>/analysis-definition/",
+        factory_analysis_definition_view,
+        name="factory-analysis-definition",
+    ),
+    path(
+        "api/factories/<int:factory_id>/analysis-definition/inputs/",
+        factory_analysis_inputs_view,
+        name="factory-analysis-inputs",
+    ),
+    path(
+        "api/factories/<int:factory_id>/analysis-definition/inputs/<int:pk>/",
+        factory_analysis_input_detail_view,
+        name="factory-analysis-input-detail",
+    ),
+    path(
+        "api/factories/<int:factory_id>/analysis-definition/outputs/",
+        factory_analysis_outputs_view,
+        name="factory-analysis-outputs",
+    ),
+    path(
+        "api/factories/<int:factory_id>/analysis-definition/outputs/<int:pk>/",
+        factory_analysis_output_detail_view,
+        name="factory-analysis-output-detail",
     ),
     path(
         "api/production-lines/<int:line_id>/analysis-definition/",

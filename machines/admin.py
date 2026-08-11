@@ -26,12 +26,16 @@ from .models import (
     AdditionalInputDefinition,
     AnalysisOutputDefinition,
     ActualAnalysis,
+    FactoryAnalysisDefinition,
+    FactoryAnalysisInput,
+    FactoryAnalysisOutput,
 )
 from .analysis import (
     build_schema as build_analysis_schema,
     validate_and_compute,
     formula_variables_for_line,
 )
+from .factory_analysis import formula_variables_for_factory
 import json
 
 
@@ -344,37 +348,14 @@ class DeviceLogAdmin(admin.ModelAdmin):
 
 @admin.register(ProductionReport)
 class ProductionReportAdmin(admin.ModelAdmin):
-    list_display = (
-        "line",
-        "contractor",
-        "date_from",
-        "date_to",
-        "batala_avalieh",
-        "darsad_batale",
-        "darsad_dane_dorosht",
-    )
+    list_display = ("line", "contractor", "date_from", "date_to", "created_by", "created_at")
     list_filter = ("line__factory", "line", "contractor")
     search_fields = ("line__name", "note")
-    readonly_fields = ("created_at",)
+    readonly_fields = ("inputs", "outputs", "created_by", "created_at")
     fieldsets = (
-        (
-            "اطلاعات کلی",
-            {"fields": ("line", "contractor", "date_from", "date_to")},
-        ),
-        (
-            "آنالیز خطوط تولید",
-            {
-                "fields": (
-                    "batala_avalieh",
-                    "darsad_batale",
-                    "darsad_dane_dorosht",
-                    "darsad_rotobat",
-                    "darsad_takhfif",
-                    "darsad_jerime",
-                )
-            },
-        ),
-        ("سایر", {"fields": ("note", "created_at")}),
+        ("اطلاعات کلی", {"fields": ("line", "contractor", "date_from", "date_to")}),
+        ("ورودی‌ها / خروجی‌های محاسبه‌شده", {"fields": ("inputs", "outputs")}),
+        ("سایر", {"fields": ("note", "created_by", "created_at")}),
     )
 
 
@@ -779,3 +760,65 @@ class ActualAnalysisAdmin(admin.ModelAdmin):
                 for add in schema["additional_inputs"]:
                     base.append(f'add_{add["key"]}')
         return base + ["outputs", "created_at", "created_by"]
+
+
+class FactoryAnalysisInputInline(admin.TabularInline):
+    model = FactoryAnalysisInput
+    extra = 1
+    fields = ("key", "name", "input_type", "unit", "required", "order")
+
+
+class FactoryAnalysisOutputInline(admin.StackedInline):
+    model = FactoryAnalysisOutput
+    extra = 1
+    fields = (("key", "name", "unit", "order"), "formula")
+
+    class Media:
+        js = ("madan_admin/js/formula_builder.js",)
+        css = {"all": ("madan_admin/css/formula_builder.css",)}
+
+    def get_formset(self, request, obj=None, **kwargs):
+        variables = []
+        line_id = ""
+        if obj is not None:
+            variables = formula_variables_for_factory(obj.factory)
+            first_line = obj.factory.lines.first()
+            line_id = first_line.id if first_line else ""
+        validate_url = reverse("formula-validate-factory")
+        formset_cls = super().get_formset(request, obj, **kwargs)
+
+        class FactoryOutputFormSet(formset_cls):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                widget = FormulaInputWidget(
+                    variables=variables,
+                    validate_url=validate_url,
+                    line_id=line_id,
+                )
+                for form in self.forms:
+                    if "formula" in form.fields:
+                        form.fields["formula"].widget = widget
+                try:
+                    if "formula" in self.empty_form.fields:
+                        self.empty_form.fields["formula"].widget = widget
+                except Exception:  # noqa: BLE001
+                    pass
+
+        return FactoryOutputFormSet
+
+
+@admin.register(FactoryAnalysisDefinition)
+class FactoryAnalysisDefinitionAdmin(admin.ModelAdmin):
+    list_display = ("factory", "inputs_count", "outputs_count", "updated_at")
+    search_fields = ("factory__name",)
+    inlines = [FactoryAnalysisInputInline, FactoryAnalysisOutputInline]
+
+    def inputs_count(self, obj):
+        return obj.inputs.count()
+
+    inputs_count.short_description = "ورودی‌ها"
+
+    def outputs_count(self, obj):
+        return obj.outputs.count()
+
+    outputs_count.short_description = "خروجی‌ها / فرمول‌ها"

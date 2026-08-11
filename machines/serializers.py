@@ -16,6 +16,9 @@ from .models import (
     AdditionalInputDefinition,
     AnalysisOutputDefinition,
     ActualAnalysis,
+    FactoryAnalysisDefinition,
+    FactoryAnalysisInput,
+    FactoryAnalysisOutput,
 )
 from .jalali import jalali_and_weekday
 
@@ -361,16 +364,12 @@ class ProductionReportSerializer(serializers.ModelSerializer):
             "date_to",
             "date_from_jalali",
             "date_to_jalali",
-            "batala_avalieh",
-            "darsad_batale",
-            "darsad_dane_dorosht",
-            "darsad_rotobat",
-            "darsad_takhfif",
-            "darsad_jerime",
+            "inputs",
+            "outputs",
             "note",
             "created_at",
         ]
-        read_only_fields = ["created_at"]
+        read_only_fields = ["created_at", "outputs"]
 
     def get_date_from_jalali(self, obj):
         return jalali_and_weekday(obj.date_from)["date_jalali"]
@@ -387,12 +386,7 @@ class ProductionReportWriteSerializer(serializers.ModelSerializer):
             "contractor",
             "date_from",
             "date_to",
-            "batala_avalieh",
-            "darsad_batale",
-            "darsad_dane_dorosht",
-            "darsad_rotobat",
-            "darsad_takhfif",
-            "darsad_jerime",
+            "inputs",
             "note",
         ]
 
@@ -565,3 +559,104 @@ class ActualAnalysisSerializer(serializers.ModelSerializer):
             {"id": d.id, "name": d.name, "code": d.code, "order": d.order}
             for d in obj.line.devices.all().order_by("order")
         ]
+
+
+class FactoryAnalysisInputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FactoryAnalysisInput
+        fields = ["id", "key", "name", "input_type", "unit", "required", "order"]
+
+
+class FactoryAnalysisOutputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FactoryAnalysisOutput
+        fields = ["id", "key", "name", "unit", "formula", "order"]
+
+
+class FactoryAnalysisDefinitionSerializer(serializers.ModelSerializer):
+    inputs = FactoryAnalysisInputSerializer(many=True, read_only=True)
+    outputs = FactoryAnalysisOutputSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FactoryAnalysisDefinition
+        fields = ["id", "factory", "description", "inputs", "outputs", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def create(self, validated_data):
+        instance = FactoryAnalysisDefinition.objects.create(**validated_data)
+        _sync_factory_nested(instance, self.initial_data)
+        return instance
+
+    def update(self, instance, validated_data):
+        instance.description = validated_data.get("description", instance.description)
+        instance.save()
+        _sync_factory_nested(instance, self.initial_data)
+        return instance
+
+
+def _sync_factory_nested(instance, data):
+    if data.get("inputs") is not None:
+        _sync_factory_inputs(instance, data["inputs"])
+    if data.get("outputs") is not None:
+        _sync_factory_outputs(instance, data["outputs"])
+    instance.full_clean()
+
+
+def _sync_factory_inputs(instance, items):
+    if not isinstance(items, list):
+        raise serializers.ValidationError({"inputs": "باید یک لیست باشد."})
+    existing = {i.key: i for i in instance.inputs.all()}
+    seen = set()
+    for idx, item in enumerate(items):
+        key = item.get("key")
+        if not key:
+            raise serializers.ValidationError({"inputs": f"ردیف {idx + 1}: کلید (key) الزامی است."})
+        if key in seen:
+            raise serializers.ValidationError({"inputs": f"کلید تکراری «{key}»."})
+        seen.add(key)
+        defaults = {
+            "name": item.get("name", key),
+            "input_type": item.get("input_type", "number"),
+            "unit": item.get("unit", ""),
+            "required": item.get("required", True),
+            "order": item.get("order", idx),
+        }
+        if key in existing:
+            for f, v in defaults.items():
+                setattr(existing[key], f, v)
+            existing[key].save()
+        else:
+            FactoryAnalysisInput.objects.create(definition=instance, key=key, **defaults)
+    for key in set(existing.keys()) - seen:
+        existing[key].delete()
+
+
+def _sync_factory_outputs(instance, items):
+    if not isinstance(items, list):
+        raise serializers.ValidationError({"outputs": "باید یک لیست باشد."})
+    existing = {i.key: i for i in instance.outputs.all()}
+    seen = set()
+    for idx, item in enumerate(items):
+        key = item.get("key")
+        if not key:
+            raise serializers.ValidationError({"outputs": f"ردیف {idx + 1}: کلید (key) الزامی است."})
+        if key in seen:
+            raise serializers.ValidationError({"outputs": f"کلید تکراری «{key}»."})
+        seen.add(key)
+        formula = item.get("formula")
+        if not formula or not str(formula).strip():
+            raise serializers.ValidationError({"outputs": f"فرمول خروجی «{key}» خالی است."})
+        defaults = {
+            "name": item.get("name", key),
+            "unit": item.get("unit", ""),
+            "formula": formula,
+            "order": item.get("order", idx),
+        }
+        if key in existing:
+            for f, v in defaults.items():
+                setattr(existing[key], f, v)
+            existing[key].save()
+        else:
+            FactoryAnalysisOutput.objects.create(definition=instance, key=key, **defaults)
+    for key in set(existing.keys()) - seen:
+        existing[key].delete()

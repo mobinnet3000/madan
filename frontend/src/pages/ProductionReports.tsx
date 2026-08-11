@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Plus, Pencil, Trash2, X, Filter, FlaskConical } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Filter, FlaskConical, Loader2, AlertTriangle } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useToast } from '../components/ui/Toast'
 import {
   getProductionReports, createProductionReport, updateProductionReport, deleteProductionReport,
+  getFactoryAnalysisSchema,
 } from '../api/production'
-import type { ProductionReport, ProductionReportFilters, ProductionReportPayload } from '../types'
+import type { ProductionReport, ProductionReportFilters, ProductionReportPayload, FactoryAnalysisSchema } from '../types'
 import { Loading, EmptyState, ErrorBanner, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
@@ -17,77 +18,135 @@ type FormState = {
   contractor: string
   date_from: string
   date_to: string
-  batala_avalieh: string
-  darsad_batale: string
-  darsad_dane_dorosht: string
-  darsad_rotobat: string
-  darsad_takhfif: string
-  darsad_jerime: string
   note: string
+  values: Record<string, string>
 }
 
 const emptyForm: FormState = {
-  line: '', contractor: '', date_from: todayISO(), date_to: todayISO(),
-  batala_avalieh: '0', darsad_batale: '0', darsad_dane_dorosht: '0',
-  darsad_rotobat: '0', darsad_takhfif: '0', darsad_jerime: '0', note: '',
+  line: '', contractor: '', date_from: todayISO(), date_to: todayISO(), note: '', values: {},
 }
 
-const FIELDS: { key: keyof FormState; label: string }[] = [
-  { key: 'batala_avalieh', label: 'باطله اولیه' },
-  { key: 'darsad_batale', label: 'درصد باطله' },
-  { key: 'darsad_dane_dorosht', label: 'درصد دانه درشت' },
-  { key: 'darsad_rotobat', label: 'درصد رطوبت' },
-  { key: 'darsad_takhfif', label: 'درصد تخفیف' },
-  { key: 'darsad_jerime', label: 'درصد جریمه' },
-]
-
-function ProductionForm({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
+function FactoryForm({ form, setForm, editing }: { form: FormState; setForm: (f: FormState) => void; editing: ProductionReport | null }) {
   const { selectedFactory } = useFactory()
+  const [schema, setSchema] = useState<FactoryAnalysisSchema | null>(null)
+  const [loadingSchema, setLoadingSchema] = useState(false)
+
   const set = (k: keyof FormState, v: string) => setForm({ ...form, [k]: v })
   const rangeInvalid = form.date_from && form.date_to && form.date_to < form.date_from
 
+  useEffect(() => {
+    if (!form.line) {
+      setSchema(null)
+      return
+    }
+    setLoadingSchema(true)
+    getFactoryAnalysisSchema(Number(form.line))
+      .then((s) => {
+        setSchema(s)
+        if (editing) {
+          const seed: Record<string, string> = {}
+          s.inputs.forEach((inp) => {
+            const v = editing.inputs?.[inp.key]
+            if (v !== undefined && v !== null && v !== '') seed[inp.key] = String(v)
+          })
+          setForm((prev) => ({ ...prev, values: seed }))
+        } else {
+          setForm((prev) => ({ ...prev, values: {} }))
+        }
+      })
+      .catch((e) => setLoadingSchema(false))
+      .finally(() => setLoadingSchema(false))
+  }, [form.line]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <div>
-        <label className="label">خط تولید *</label>
-        <select className="input" value={form.line} onChange={(e) => set('line', e.target.value)}>
-          <option value="">انتخاب خط</option>
-          {selectedFactory?.lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="label">پیمانکار</label>
-        <select className="input" value={form.contractor} onChange={(e) => set('contractor', e.target.value)}>
-          <option value="">بدون پیمانکار</option>
-          {selectedFactory?.contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="label">از تاریخ (بازه) *</label>
-        <JalaliDateInput value={form.date_from} onChange={(iso) => set('date_from', iso)} />
-      </div>
-      <div>
-        <label className="label">تا تاریخ (بازه) *</label>
-        <JalaliDateInput value={form.date_to} onChange={(iso) => set('date_to', iso)} />
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label">خط تولید *</label>
+          <select className="input" value={form.line} onChange={(e) => set('line', e.target.value)}>
+            <option value="">انتخاب خط</option>
+            {selectedFactory?.lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">پیمانکار</label>
+          <select className="input" value={form.contractor} onChange={(e) => set('contractor', e.target.value)}>
+            <option value="">بدون پیمانکار</option>
+            {selectedFactory?.contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">از تاریخ (بازه) *</label>
+          <JalaliDateInput value={form.date_from} onChange={(iso) => set('date_from', iso)} />
+        </div>
+        <div>
+          <label className="label">تا تاریخ (بازه) *</label>
+          <JalaliDateInput value={form.date_to} onChange={(iso) => set('date_to', iso)} />
+        </div>
       </div>
       {rangeInvalid && (
-        <div className="sm:col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">
+        <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">
           تاریخ پایان نمی‌تواند قبل از شروع باشد.
         </div>
       )}
 
-      {FIELDS.map((f) => (
-        <div key={f.key}>
-          <label className="label">{f.label} {f.key === 'batala_avalieh' ? '' : '(٪)'}</label>
-          <input
-            type="number" step="0.1" min="0" className="input"
-            value={form[f.key]}
-            onChange={(e) => set(f.key, e.target.value)}
-          />
+      {loadingSchema && (
+        <div className="flex items-center gap-2 text-sm text-ink-500 dark:text-slate-400">
+          <Loader2 className="h-4 w-4 animate-spin" /> در حال بارگذاری تعریف آنالیز کارخانه...
         </div>
-      ))}
+      )}
 
-      <div className="sm:col-span-2">
+      {schema && !schema.defined && (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          برای این کارخانه تعریف آنالیز (ورودیها/خروجیها و فرمولها) ثبت نشده است.
+        </div>
+      )}
+
+      {schema?.defined && schema.inputs.length === 0 && (
+        <div className="rounded-lg bg-ink-50 px-3 py-2 text-sm text-ink-500 dark:bg-slate-800/60 dark:text-slate-400">
+          ورودیای برای این کارخانه تعریف نشده است.
+        </div>
+      )}
+
+      {schema?.defined && schema.inputs.length > 0 && (
+        <fieldset className="rounded-xl border border-ink-100 p-3 dark:border-slate-700">
+          <legend className="rounded-lg bg-ink-50 px-2 py-0.5 text-xs font-bold text-ink-700 dark:bg-slate-800 dark:text-slate-200">
+            ورودیهای آنالیز کارخانه
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {schema.inputs.map((inp) => (
+              <div key={inp.id}>
+                <label className="label">
+                  {inp.name} {inp.required && <span className="text-rose-500">*</span>}
+                  {inp.unit && <span className="mr-1 badge bg-ink-100 text-ink-500 dark:bg-slate-700 dark:text-slate-300">{inp.unit}</span>}
+                </label>
+                <input
+                  type={inp.type === 'number' ? 'number' : 'text'}
+                  step={inp.type === 'number' ? 'any' : undefined}
+                  className="input"
+                  value={form.values[inp.key] ?? ''}
+                  onChange={(e) => set('values', { ...form.values, [inp.key]: e.target.value })}
+                  placeholder={inp.type === 'number' ? 'عدد...' : 'متن...'}
+                />
+              </div>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
+      {schema?.defined && schema.outputs.length > 0 && (
+        <div className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-3 dark:border-brand-900/50 dark:bg-brand-950/20">
+          <div className="mb-1.5 text-xs font-bold text-brand-700 dark:text-brand-300">خروجیهای خودکار (پس از ثبت محاسبه میشوند)</div>
+          <div className="flex flex-wrap gap-1.5">
+            {schema.outputs.map((o) => (
+              <span key={o.id} className="chip">{o.name} {o.unit && <span className="text-[10px] text-ink-400">{o.unit}</span>}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
         <label className="label">توضیحات / ملاحظات</label>
         <textarea className="input min-h-[70px]" value={form.note} onChange={(e) => set('note', e.target.value)} placeholder="اختیاری" />
       </div>
@@ -138,10 +197,8 @@ export default function ProductionReports() {
       line: String(p.line.id),
       contractor: p.contractor ? String(p.contractor.id) : '',
       date_from: p.date_from, date_to: p.date_to,
-      batala_avalieh: String(p.batala_avalieh), darsad_batale: String(p.darsad_batale),
-      darsad_dane_dorosht: String(p.darsad_dane_dorosht), darsad_rotobat: String(p.darsad_rotobat),
-      darsad_takhfif: String(p.darsad_takhfif), darsad_jerime: String(p.darsad_jerime),
       note: p.note || '',
+      values: {},
     })
     setModalOpen(true)
   }
@@ -151,14 +208,16 @@ export default function ProductionReports() {
       notify('خط و بازه تاریخ الزامی هستند', 'error'); return
     }
     if (form.date_to < form.date_from) { notify('تاریخ پایان معتبر نیست', 'error'); return }
-    const num = (v: string) => Number(v) || 0
+    const inputs: Record<string, number | string> = {}
+    Object.entries(form.values).forEach(([k, raw]) => {
+      const v = (raw ?? '').trim()
+      if (v !== '') inputs[k] = isNaN(Number(v)) ? v : Number(v)
+    })
     const payload: ProductionReportPayload = {
-      line: Number(form.line),
-      contractor: form.contractor ? Number(form.contractor) : null,
+      line_id: Number(form.line),
+      contractor_id: form.contractor ? Number(form.contractor) : null,
       date_from: form.date_from, date_to: form.date_to,
-      batala_avalieh: num(form.batala_avalieh), darsad_batale: num(form.darsad_batale),
-      darsad_dane_dorosht: num(form.darsad_dane_dorosht), darsad_rotobat: num(form.darsad_rotobat),
-      darsad_takhfif: num(form.darsad_takhfif), darsad_jerime: num(form.darsad_jerime),
+      inputs,
       note: form.note,
     }
     setSaving(true)
@@ -166,7 +225,7 @@ export default function ProductionReports() {
       if (editing) { await updateProductionReport(editing.id, payload); notify('آنالیز خط ویرایش شد') }
       else { await createProductionReport(payload); notify('آنالیز خط ثبت شد') }
       setModalOpen(false); load()
-    } catch (e: any) { notify(e.message || 'خطا در ذخیره‌سازی', 'error') }
+    } catch (e: any) { notify(e.message || 'خطا در ذخیرهسازی', 'error') }
     finally { setSaving(false) }
   }
 
@@ -189,7 +248,7 @@ export default function ProductionReports() {
             <FlaskConical className="h-6 w-6 text-brand-600" /> آنالیز خطوط تولید
           </h1>
           <p className="text-sm text-ink-500">
-            ثبت ریز عملکرد خطوط تولید (باطله، دانه‌بندی، رطوبت، تخفیف و جریمه) در بازه‌های زمانی
+            ثبت آنالیز داینامیک خطوط تولید بر اساس ورودی/خروجیهای تعریفشده برای کارخانه
           </p>
         </div>
         <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت آنالیز جدید</button>
@@ -219,7 +278,7 @@ export default function ProductionReports() {
       </div>
 
       {loading ? (
-        <TableSkeleton columns={8} />
+        <TableSkeleton columns={6} />
       ) : sorted.length === 0 ? (
         <EmptyState
           icon={<FlaskConical className="h-10 w-10" />}
@@ -236,12 +295,7 @@ export default function ProductionReports() {
                   <th className="px-4 py-3 font-semibold">بازه تاریخ</th>
                   <th className="px-4 py-3 font-semibold">خط</th>
                   <th className="px-4 py-3 font-semibold">پیمانکار</th>
-                  <th className="px-4 py-3 font-semibold">باطله اولیه</th>
-                  <th className="px-4 py-3 font-semibold">باطله ٪</th>
-                  <th className="px-4 py-3 font-semibold">دانه درشت ٪</th>
-                  <th className="px-4 py-3 font-semibold">رطوبت ٪</th>
-                  <th className="px-4 py-3 font-semibold">تخفیف ٪</th>
-                  <th className="px-4 py-3 font-semibold">جریمه ٪</th>
+                  <th className="px-4 py-3 font-semibold">خروجیهای محاسبهشده</th>
                   <th className="px-4 py-3 font-semibold text-center">عملیات</th>
                 </tr>
               </thead>
@@ -254,12 +308,15 @@ export default function ProductionReports() {
                     </td>
                     <td className="px-4 py-3 dark:text-slate-300">{p.line.name}</td>
                     <td className="px-4 py-3 text-ink-600 dark:text-slate-400">{p.contractor?.name ?? '—'}</td>
-                    <td className="px-4 py-3 dark:text-slate-300">{formatNumber(p.batala_avalieh)}</td>
-                    <td className="px-4 py-3 dark:text-slate-300">{formatNumber(p.darsad_batale)}</td>
-                    <td className="px-4 py-3 dark:text-slate-300">{formatNumber(p.darsad_dane_dorosht)}</td>
-                    <td className="px-4 py-3 dark:text-slate-300">{formatNumber(p.darsad_rotobat)}</td>
-                    <td className="px-4 py-3 dark:text-slate-300">{formatNumber(p.darsad_takhfif)}</td>
-                    <td className="px-4 py-3 dark:text-slate-300">{formatNumber(p.darsad_jerime)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex max-w-[420px] flex-wrap gap-1">
+                        {Object.entries(p.outputs || {}).map(([k, v]) => (
+                          <span key={k} className="chip">
+                            {k}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
                         <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-brand-600 dark:hover:bg-slate-800" onClick={() => openEdit(p)} title="ویرایش"><Pencil className="h-4 w-4" /></button>
@@ -280,7 +337,7 @@ export default function ProductionReports() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'ویرایش آنالیز خط' : 'ثبت آنالیز جدید خط تولید'} subtitle={selectedFactory?.name} size="lg"
         footer={<><button className="btn-ghost" onClick={() => setModalOpen(false)}>انصراف</button><button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'در حال ذخیره...' : editing ? 'ذخیره تغییرات' : 'ثبت آنالیز'}</button></>}>
-        <ProductionForm form={form} setForm={setForm} />
+        <FactoryForm form={form} setForm={setForm} editing={editing} />
       </Modal>
 
       <Modal open={confirmId != null} onClose={() => setConfirmId(null)} title="حذف آنالیز"
