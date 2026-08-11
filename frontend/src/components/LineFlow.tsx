@@ -7,18 +7,20 @@ import { LINE_TYPE_STYLE, LINE_TYPE_LABELS } from '../constants'
 
 function imgUrl(path: string | null): string | null {
   if (!path) return null
-  // آدرس‌های مطلق را به مسیر نسبی تبدیل کن تا همیشه از هاست فعلی (لوکال/هاست) لود شوند
-  let p = path
-  if (/^https?:\/\//i.test(p)) {
-    try {
-      p = new URL(p).pathname
-    } catch {
-      /* keep original */
-    }
+
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
   }
-  if (p.startsWith('/media/')) return p
-  if (p.startsWith('media/')) return '/' + p
-  return '/media/' + p
+
+  if (path.startsWith('/media/')) {
+    return `https://mback.ba3tani.ir${path}`
+  }
+
+  if (path.startsWith('media/')) {
+    return `https://mback.ba3tani.ir/${path}`
+  }
+
+  return `https://mback.ba3tani.ir/media/${path}`
 }
 
 function DeviceImage({ device }: { device: Device }) {
