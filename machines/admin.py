@@ -105,41 +105,109 @@ class AttributeValuesFormMixin:
         return instance
 
 
+# class AttributeFieldsAdminMixin:
+#     """پشتیبانی ادمین از فیلدهای داینامیک ویژگی‌ها (مرحله ۲) در fieldsets."""
+
+#     template_model = None
+#     step1_fields = ()
+
+#     def _template_from_request(self, request, obj):
+#         raw = (request.POST or request.GET).get("template")
+#         if raw:
+#             try:
+#                 return self.template_model.objects.get(pk=raw)
+#             except (self.template_model.DoesNotExist, TypeError, ValueError):
+#                 pass
+#         if obj is not None and obj.template_id:
+#             return obj.template
+#         return None
+
+#     def _attr_field_names(self, request, obj):
+#         template = self._template_from_request(request, obj)
+#         if template is None:
+#             return []
+#         return [f"attr_{a.id}" for a in template.available_attributes.all()]
+
+#     def get_fieldsets(self, request, obj=None):
+#         fieldsets = [
+#             ("مرحله ۱ — اطلاعات پایه و الگو", {"fields": list(self.step1_fields)}),
+#         ]
+#         attr_fields = self._attr_field_names(request, obj)
+#         if attr_fields:
+#             fieldsets.append(
+#                 ("مرحله ۲ — مقادیر ویژگی‌های الگو", {"fields": attr_fields})
+#             )
+#         return fieldsets
+
 class AttributeFieldsAdminMixin:
-    """پشتیبانی ادمین از فیلدهای داینامیک ویژگی‌ها (مرحله ۲) در fieldsets."""
+    """پشتیبانی ادمین از فیلدهای داینامیک ویژگی‌ها."""
 
     template_model = None
     step1_fields = ()
 
     def _template_from_request(self, request, obj):
         raw = (request.POST or request.GET).get("template")
+
         if raw:
             try:
                 return self.template_model.objects.get(pk=raw)
-            except (self.template_model.DoesNotExist, TypeError, ValueError):
+            except (
+                self.template_model.DoesNotExist,
+                TypeError,
+                ValueError,
+            ):
                 pass
+
         if obj is not None and obj.template_id:
             return obj.template
+
         return None
 
     def _attr_field_names(self, request, obj):
         template = self._template_from_request(request, obj)
+
         if template is None:
             return []
-        return [f"attr_{a.id}" for a in template.available_attributes.all()]
+
+        return [
+            f"attr_{a.id}"
+            for a in template.available_attributes.all()
+        ]
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        kwargs["fields"] = list(self.step1_fields)
+
+        return super().get_form(
+            request,
+            obj,
+            change=change,
+            **kwargs,
+        )
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = [
-            ("مرحله ۱ — اطلاعات پایه و الگو", {"fields": list(self.step1_fields)}),
+            (
+                "مرحله ۱ — اطلاعات پایه و الگو",
+                {
+                    "fields": list(self.step1_fields),
+                },
+            ),
         ]
+
         attr_fields = self._attr_field_names(request, obj)
+
         if attr_fields:
             fieldsets.append(
-                ("مرحله ۲ — مقادیر ویژگی‌های الگو", {"fields": attr_fields})
+                (
+                    "مرحله ۲ — مقادیر ویژگی‌های الگو",
+                    {
+                        "fields": attr_fields,
+                    },
+                )
             )
+
         return fieldsets
-
-
+        
 class ProductionLineForm(AttributeValuesFormMixin, forms.ModelForm):
     template_model = ProductionLineTemplate
 
