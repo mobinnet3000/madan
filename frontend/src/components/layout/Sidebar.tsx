@@ -11,11 +11,10 @@ import { ROLE_BADGE, ROLE_LABELS, hasPerm } from '../../constants'
 const navItems: { to: string; label: string; icon: any; end: boolean; perm?: string }[] = [
   { to: '/', label: 'داشبورد', icon: LayoutDashboard, end: true, perm: 'dashboard.view' },
   { to: '/lines', label: 'مدل‌سازی خط فرآوری', icon: Workflow, end: false, perm: 'lines.view' },
-  { to: '/logs', label: 'گزارش عملکرد', icon: ClipboardList, end: false, perm: 'logs.view' },
+  { to: '/logs', label: 'توقفات خط تولید', icon: ClipboardList, end: false, perm: 'logs.view' },
   { to: '/production', label: 'ریز عملکرد خطوط تولید', icon: FlaskConical, end: false, perm: 'production.view' },
   { to: '/tonnage', label: 'تناژ تحویلی خطوط تولید', icon: Truck, end: false, perm: 'production.view' },
   { to: '/performance', label: 'عملکرد بخش تولید', icon: Gauge, end: false, perm: 'analysis.view' },
-  { to: '/analysis', label: 'آنالیز آنلاین', icon: FlaskConical, end: false, perm: 'analysis.view' },
   { to: '/reports', label: 'گزارش‌ها و خروجی', icon: FileBarChart, end: false, perm: 'reports.view' },
   { to: '/users', label: 'مدیریت کاربران و دسترسی‌ها', icon: Users, end: false, perm: 'users.view' },
   { to: '/activity', label: 'لاگ فعالیت‌ها', icon: History, end: false, perm: 'activity.view' },

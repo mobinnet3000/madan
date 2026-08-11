@@ -7,14 +7,11 @@ import {
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { fetchAllLogs } from '../api/logs'
-import { fetchAllAnalyses } from '../api/analysis'
-import type { DeviceLog, DeviceDailyAnalysis } from '../types'
+import type { DeviceLog } from '../types'
 import { Loading, EmptyState, ErrorBanner, CardSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
 import { formatDate, formatNumber, formatPercent, todayISO } from '../utils'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
-
-type DataType = 'logs' | 'analysis'
 
 // ── بازه‌های زمانی مشخص ──
 const PRESETS = [
@@ -53,9 +50,7 @@ export default function Reports() {
   const factoryName = selectedFactory?.name ?? ''
   const factoryAddr = selectedFactory?.address ?? ''
   const lineIds = useMemo(() => (selectedFactory?.lines ?? []).map(l => l.id), [selectedFactory])
-  const analyzerIds = useMemo(() => (selectedFactory?.lines ?? []).flatMap(l => l.devices).filter(d => d.is_analyzer).map(d => d.id), [selectedFactory])
 
-  const [dataType, setDataType] = useState<DataType>('logs')
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
 
   const todayStr = useMemo(() => todayISO(), [])
@@ -64,7 +59,6 @@ export default function Reports() {
   const [activePreset, setActivePreset] = useState<string>('30days')
 
   const [logs, setLogs] = useState<DeviceLog[]>([])
-  const [analyses, setAnalyses] = useState<DeviceDailyAnalysis[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -103,29 +97,17 @@ export default function Reports() {
     setPage(1)
   }
 
-  const loadLogs = useCallback(async () => {
-    const q: any = { date_from: dateFrom, date_to: dateTo }
-    if (lineIds.length) q.lines = lineIds.join(',')
-    const data = await fetchAllLogs(q, 200)
-    return data.filter((l: DeviceLog) => !lineIds.length || lineIds.includes(l.line.id))
-  }, [dateFrom, dateTo, lineIds])
-
-  const loadAnalyses = useCallback(async () => {
-    const q: any = { date_from: dateFrom, date_to: dateTo }
-    if (analyzerIds.length) q.devices = analyzerIds.join(',')
-    const data = await fetchAllAnalyses(q, 200)
-    return data.filter((a: DeviceDailyAnalysis) => !analyzerIds.length || analyzerIds.includes(a.device.id))
-  }, [dateFrom, dateTo, analyzerIds])
-
   const load = useCallback(async () => {
     setLoading(true)
     setPage(1)
     try {
-      if (dataType === 'logs') setLogs(await loadLogs())
-      else setAnalyses(await loadAnalyses())
+      const q: any = { date_from: dateFrom, date_to: dateTo }
+      if (lineIds.length) q.lines = lineIds.join(',')
+      const data = await fetchAllLogs(q, 200)
+      setLogs(data.filter((l: DeviceLog) => !lineIds.length || lineIds.includes(l.line.id)))
       setError(null)
     } catch (e: any) { setError(e.message) } finally { setLoading(false) }
-  }, [dataType, loadLogs, loadAnalyses])
+  }, [dateFrom, dateTo, lineIds])
 
   useEffect(() => { if (selectedFactory) load() }, [selectedFactory, load])
 
@@ -152,52 +134,27 @@ export default function Reports() {
     return { totalFeed, totalProduct, totalDowntime, avgEff, trend, lineEff, count: logs.length }
   }, [logs])
 
-  const anStats = useMemo(() => {
-    const byDevice = analyses.reduce((acc, a) => {
-      const n = a.device?.name || 'بدون'; if (!acc[n]) acc[n] = { count: 0, avg1: 0 }
-      acc[n].count += 1; acc[n].avg1 += a.value_1 || 0
-      return acc
-    }, {} as Record<string, { count: number; avg1: number }>)
-    const deviceData = Object.entries(byDevice).map(([n, v]) => ({ name: n, value: Math.round(v.avg1 / v.count * 10) / 10 }))
-    const byPoint = analyses.reduce((acc, a) => {
-      const p = a.sample_point || 'بدون'; if (!acc[p]) acc[p] = 0; acc[p] += 1; return acc
-    }, {} as Record<string, number>)
-    const pointData = Object.entries(byPoint).map(([n, v]) => ({ name: n === 'feed' ? 'خوراک' : n === 'tailing' ? 'باطله' : n === 'product' ? 'محصول' : n, value: v }))
-    return { deviceData, pointData, count: analyses.length }
-  }, [analyses])
-
   const pageItems = useMemo(() => {
-    const items = dataType === 'logs' ? logs : analyses
-    const sorted = [...items].sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))
+    const sorted = [...logs].sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''))
     return sorted.slice((page - 1) * pageSize, page * pageSize)
-  }, [dataType, logs, analyses, page, pageSize])
-  const totalItems = dataType === 'logs' ? logs.length : analyses.length
+  }, [logs, page, pageSize])
+  const totalItems = logs.length
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
 
   const handleExport = async (type: 'excel' | 'pdf') => {
     setExporting(type)
     try {
       const { exportToExcel, exportToPdf } = await import('../utils')
-      const name = `${dataType === 'logs' ? 'گزارش_عملکرد' : 'گزارش_آنالیز'}_${factoryName}`
-      const title = `${factoryName} — ${dataType === 'logs' ? 'گزارش عملکرد خطوط' : 'گزارش آنالیز دستگاه‌ها'} — بازه ${formatDate(dateFrom)} تا ${formatDate(dateTo)}`
-
-      if (dataType === 'logs') {
-        const rows: Record<string, string | number>[] = logs.map(l => ({
-          'تاریخ': l.date, 'خط': l.line?.name || '—', 'شیفت': l.shift?.name || '—',
-          'دستگاه': l.device?.name || '—', 'علت خرابی': l.failure_cause?.title || '—',
-          'کارکرد': l.runtime_hours, 'توقف': l.downtime_hours,
-          'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage, 'راندمان': l.efficiency ?? 0,
-        }))
-        if (type === 'excel') await exportToExcel(rows, name)
-        else await exportToPdf(rows, name, title)
-      } else {
-        const rows: Record<string, string | number>[] = analyses.map(a => ({
-          'تاریخ': a.date, 'دستگاه': a.device?.name || '—', 'شیفت': a.shift?.name || '—',
-          'نقطه نمونه': a.sample_point || '—', 'پارامتر ۱': a.value_1 ?? 0, 'پارامتر ۲': a.value_2 ?? 0, 'شرح': a.analysis_text || '—',
-        }))
-        if (type === 'excel') await exportToExcel(rows, name)
-        else await exportToPdf(rows, name, title)
-      }
+      const name = `توقفات_خط_تولید_${factoryName}`
+      const title = `${factoryName} — توقفات خط تولید — بازه ${formatDate(dateFrom)} تا ${formatDate(dateTo)}`
+      const rows: Record<string, string | number>[] = logs.map(l => ({
+        'تاریخ': l.date, 'خط': l.line?.name || '—', 'شیفت': l.shift?.name || '—',
+        'دستگاه': l.device?.name || '—', 'علت خرابی': l.failure_cause?.title || '—',
+        'کارکرد': l.runtime_hours, 'توقف': l.downtime_hours,
+        'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage, 'راندمان': l.efficiency ?? 0,
+      }))
+      if (type === 'excel') await exportToExcel(rows, name)
+      else await exportToPdf(rows, name, title)
     } catch (e: any) {
       setError(e.message || 'خطا در دریافت گزارش')
     } finally { setExporting(null) }
@@ -236,19 +193,8 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* ── انتخاب نوع گزارش + بازه ── */}
+      {/* ── انتخاب بازه ── */}
       <div className="card-glass p-5">
-        {/* نوع داده */}
-        <div className="flex gap-1.5 rounded-xl p-1 w-fit mb-5" style={{ background: 'rgba(241,245,249,0.6)' }}>
-          {(['logs', 'analysis'] as const).map(t => (
-            <button key={t} onClick={() => setDataType(t)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${dataType === t ? 'bg-white text-ink-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-ink-500 hover:text-ink-700 dark:text-slate-400'}`}>
-              {t === 'logs' ? '📊 گزارش عملکرد' : '🧪 گزارش آنالیز'}
-            </button>
-          ))}
-        </div>
-
-        {/* برچسب بازه */}
         <div className="mb-3 flex items-center gap-2">
           <Calendar className="h-4 w-4 text-ink-400" />
           <span className="text-sm font-bold text-ink-700 dark:text-slate-200">بازه گزارش:</span>
@@ -281,7 +227,7 @@ export default function Reports() {
       {/* ── محتوای اصلی ── */}
       {loading ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
-      ) : dataType === 'logs' ? (
+      ) : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <KpiCard icon={<TrendingUp className="h-5 w-5 text-brand-600" />} label="تناژ ورودی" value={formatNumber(Math.round(logsStats.totalFeed / 1000)) + ' هزار'} suffix="تن" accentBg="bg-brand-50" />
@@ -370,88 +316,6 @@ export default function Reports() {
               </div>
             </>
           )}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <KpiCard icon={<BarChart2 className="h-5 w-5 text-violet-600" />} label="کل آنالیزها" value={formatNumber(anStats.count)} suffix="مورد" accentBg="bg-violet-50" />
-            <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="دستگاه‌های آنالایزور" value={formatNumber(analyzerIds.length)} suffix="دستگاه" accentBg="bg-emerald-50" />
-            <KpiCard icon={<FileText className="h-5 w-5 text-sky-600" />} label="نقاط نمونه‌برداری" value={formatNumber(anStats.pointData.length)} suffix="نقطه" accentBg="bg-sky-50" />
-            <KpiCard icon={<Calendar className="h-5 w-5 text-brand-600" />} label="بازه" value={`${formatDate(dateFrom)} تا ${formatDate(dateTo)}`} accentBg="bg-brand-50" />
-          </div>
-
-          {anStats.count === 0 ? <EmptyState icon={<BarChart2 className="h-10 w-10" />} title="داده‌ای وجود ندارد" /> : (
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <div className="card-glass p-5">
-                <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">میانگین پارامتر به تفکیک دستگاه</h4>
-                <div className="space-y-3">
-                  {anStats.deviceData.sort((a, b) => b.value - a.value).map((item, i) => (
-                    <div key={item.name}>
-                      <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600">{item.name}</span><span className="font-bold text-ink-800">{item.value}</span></div>
-                      <div className="h-2.5 rounded-full bg-ink-100 dark:bg-slate-800">
-                        <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(item.value * 10, 100)}%` }} transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
-                          className="h-full rounded-full" style={{ background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)' }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="card-glass p-5">
-                <h4 className="mb-3 text-sm font-bold text-ink-800 dark:text-slate-200">توزیع نقاط نمونه‌برداری</h4>
-                <div className="space-y-3">
-                  {anStats.pointData.map((item, i) => (
-                    <div key={item.name}>
-                      <div className="mb-1 flex justify-between text-xs"><span className="text-ink-600">{item.name}</span><span className="font-bold text-ink-800">{item.value} مورد</span></div>
-                      <div className="h-3 rounded-full bg-ink-100 dark:bg-slate-800">
-                        <motion.div initial={{ width: 0 }} animate={{ width: `${(item.value / Math.max(...anStats.pointData.map(d => d.value))) * 100}%` }}
-                          transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
-                          className="h-full rounded-full" style={{ background: 'linear-gradient(90deg, #06b6d4, #22d3ee)' }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="card-glass overflow-hidden">
-            <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
-              <span className="text-xs font-semibold text-ink-500"><span className="text-ink-800 dark:text-white">{formatNumber(totalItems)}</span> رکورد</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-right text-xs text-ink-500" style={{ background: 'rgba(241,245,249,0.4)' }}>
-                    <th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">دستگاه</th><th className="px-4 py-3 font-semibold">شیفت</th>
-                    <th className="px-4 py-3 font-semibold">نقطه</th><th className="px-4 py-3 font-semibold">پارامتر ۱</th><th className="px-4 py-3 font-semibold">پارامتر ۲</th><th className="px-4 py-3 font-semibold">شرح</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ borderColor: 'rgba(148,163,184,0.1)' }}>
-                  {(pageItems as DeviceDailyAnalysis[]).map(a => (
-                    <tr key={a.id} className="transition hover:bg-ink-50/40 dark:hover:bg-white/5">
-                      <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(a.date)}</td>
-                      <td className="px-4 py-3 dark:text-slate-300">{a.device?.name}</td>
-                      <td className="px-4 py-3 dark:text-slate-400">{a.shift?.name || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`badge ${a.sample_point === 'feed' ? 'bg-amber-100 text-amber-700' : a.sample_point === 'tailing' ? 'bg-rose-100 text-rose-700' : a.sample_point === 'product' ? 'bg-emerald-100 text-emerald-700' : ''}`}>
-                          {a.sample_point === 'feed' ? 'خوراک' : a.sample_point === 'tailing' ? 'باطله' : a.sample_point === 'product' ? 'محصول' : '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 dark:text-slate-300">{a.value_1 != null ? a.value_1 : '—'}</td>
-                      <td className="px-4 py-3 dark:text-slate-300">{a.value_2 != null ? a.value_2 : '—'}</td>
-                      <td className="max-w-[200px] truncate px-4 py-3 text-ink-500 dark:text-slate-400" title={a.analysis_text || ''}>{a.analysis_text || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between border-t px-4 py-3" style={{ borderColor: 'rgba(148,163,184,0.15)' }}>
-                <span className="text-xs text-ink-400">صفحه {page} از {totalPages}</span>
-                <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>

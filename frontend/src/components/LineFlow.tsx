@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Cpu, FlaskConical, ImageOff, Settings2 } from 'lucide-react'
+import { Cpu, ImageOff, Settings2 } from 'lucide-react'
 import type { ProductionLine, Device } from '../types'
 import { formatNumber } from '../utils'
 import { LINE_TYPE_STYLE, LINE_TYPE_LABELS } from '../constants'
@@ -57,15 +57,9 @@ function DeviceNode({ device, index, onEdit }: { device: Device; index: number; 
             {index + 1}
           </span>
           <div className="flex items-center gap-1">
-            {device.is_analyzer ? (
-              <span className="badge bg-violet-100 text-violet-700">
-                <FlaskConical className="h-3 w-3" /> آنالایزر
-              </span>
-            ) : (
-              <span className="badge bg-ink-100 text-ink-500">
-                <Cpu className="h-3 w-3" /> دستگاه
-              </span>
-            )}
+            <span className="badge bg-ink-100 text-ink-500">
+              <Cpu className="h-3 w-3" /> دستگاه
+            </span>
             {onEdit && (
               <button
                 onClick={() => onEdit(device)}

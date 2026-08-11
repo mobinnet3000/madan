@@ -17,7 +17,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-from .models import Factory, ProductionLine, Device, DeviceLog, DeviceDailyAnalysis
+from .models import Factory, ProductionLine, Device, DeviceLog
 from .jalali import to_jalali, to_jalali_full, weekday_fa
 
 # Arabic/Persian text reshaping for correct glyph rendering in Reportlab
@@ -123,8 +123,6 @@ STYLES = {
                                   alignment=1, textColor=C_PRIMARY),
     'total_value': ParagraphStyle('TotVl', fontName='VazirBold', fontSize=9,
                                   alignment=1, textColor=C_PRIMARY),
-    'analysis_title': ParagraphStyle('AnalTl', fontName='VazirBold', fontSize=16,
-                                     alignment=1, textColor=C_PRIMARY, spaceAfter=4),
 }
 
 # --- Date range helpers ---
@@ -203,10 +201,10 @@ def _write_rows(ws, rows, row_offset=1):
 def excel_performance(factory, lines_data, date_from, date_to, date_label, factory_obj=None):
     wb = Workbook()
     ws = wb.active
-    ws.title = 'گزارش عملکرد'
+    ws.title = 'توقفات خط تولید'
 
     data_rows = []
-    data_rows.append(['گزارش عملکرد - ' + (factory.name if factory else 'کل کارخانه‌ها')] + [''] * 7)
+    data_rows.append(['توقفات خط تولید - ' + (factory.name if factory else 'کل کارخانه‌ها')] + [''] * 7)
     data_rows.append(['بازه: ' + date_label] + [''] * 7)
     data_rows.append([])
     headers = ['ردیف', 'خط تولید', 'تعداد ثبت', 'ساعت کارکرد', 'ساعت توقف',
@@ -259,44 +257,6 @@ def excel_performance(factory, lines_data, date_from, date_to, date_label, facto
     ws.cell(row=last_row, column=8, value=total_tailing).font = Font(name='Vazirmatn', bold=True, size=11)
     eff_all = (total_product / total_feed * 100) if total_feed else 0
     ws.cell(row=last_row, column=9, value=round(eff_all, 1)).font = Font(name='Vazirmatn', bold=True, size=11)
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
-
-def excel_analysis(factory, analyses_data, date_from, date_to, date_label):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'گزارش آنالیز'
-
-    title_font = Font(name='Vazirmatn', bold=True, size=14)
-    subtitle_font = Font(name='Vazirmatn', size=10)
-
-    ws.cell(row=1, column=1, value=f'گزارش آنالیز - {factory.name if factory else "کل کارخانه‌ها"}').font = title_font
-    ws.cell(row=1, column=1).alignment = Alignment(horizontal='center')
-    ws.cell(row=2, column=1, value=f'بازه: {date_label}').font = subtitle_font
-    ws.cell(row=2, column=1).alignment = Alignment(horizontal='center')
-
-    headers = ['ردیف', 'دستگاه', 'نقطه نمونه', 'تاریخ', 'پارامتر ۱', 'پارامتر ۲', 'شرح']
-
-    data_rows = [headers]
-    for i, item in enumerate(analyses_data, 1):
-        dow = item.get('day_of_week', '')
-        date_cell = f"{item.get('date', '')} {dow}".strip()
-        data_rows.append([
-            i,
-            item.get('device_name', ''),
-            item.get('sample_point_display', ''),
-            date_cell,
-            item.get('value_1', ''),
-            item.get('value_2', ''),
-            item.get('analysis_text', ''),
-        ])
-
-    _write_rows(ws, data_rows, row_offset=4)
-    for col in range(1, 8):
-        ws.column_dimensions[get_column_letter(col)].width = 16
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -359,7 +319,7 @@ def pdf_performance(factory, lines_data, date_from, date_to, date_label, factory
     elements = []
 
     # ── title block ──
-    elements.append(Paragraph(_fa('گزارش عملکرد خطوط تولید'), STYLES['title']))
+    elements.append(Paragraph(_fa('توقفات خطوط تولید'), STYLES['title']))
     elements.append(Spacer(1, 3))
 
     info_lines = []
@@ -428,57 +388,12 @@ def pdf_performance(factory, lines_data, date_from, date_to, date_label, factory
 
     doc.build(
         elements,
-        onFirstPage=lambda c, d: _pdf_header_footer(c, d, 'گزارش عملکرد', factory, date_label),
-        onLaterPages=lambda c, d: _pdf_header_footer(c, d, 'گزارش عملکرد', factory, date_label),
+        onFirstPage=lambda c, d: _pdf_header_footer(c, d, 'توقفات خط تولید', factory, date_label),
+        onLaterPages=lambda c, d: _pdf_header_footer(c, d, 'توقفات خط تولید', factory, date_label),
     )
     buf.seek(0)
     return buf
 
-
-# ---------- analysis report (landscape) ----------
-def pdf_analysis(factory, analyses_data, date_from, date_to, date_label, factory_obj=None):
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=landscape(A4),
-        rightMargin=12*mm, leftMargin=12*mm,
-        topMargin=16*mm, bottomMargin=16*mm,
-    )
-
-    elements = []
-    elements.append(Paragraph(_fa('گزارش آنالیز روزانه'), STYLES['analysis_title']))
-    elements.append(Spacer(1, 3))
-    if factory:
-        elements.append(Paragraph(_fa(f'شرکت: {factory.name}'), STYLES['subtitle']))
-    elements.append(Paragraph(_fa(f'بازه گزارش: {date_label}'), STYLES['meta']))
-    elements.append(Spacer(1, 6))
-
-    hdr = [_fa('ردیف'), _fa('دستگاه'), _fa('خط تولید'), _fa('نقطه نمونه'),
-           _fa('تاریخ'), _fa('پارامتر ۱'), _fa('پارامتر ۲'), _fa('شرح')]
-    cw = [22, 75, 80, 60, 55, 55, 55, 130]
-    rows = [hdr]
-    for i, item in enumerate(analyses_data, 1):
-        dow = item.get('day_of_week', '')
-        date_cell = f"{item.get('date', '')} {dow}".strip()
-        rows.append([
-            _p_cell(str(i)),
-            _p_cell(item.get('device_name', '')),
-            _p_cell(item.get('line_name', '')),
-            _p_cell(item.get('sample_point_display', '')),
-            _p_cell(date_cell),
-            _p_cell(_p(item.get('value_1'))),
-            _p_cell(_p(item.get('value_2'))),
-            _p_cell(item.get('analysis_text', '')[:60]),
-        ])
-
-    elements.append(_make_table(rows, col_widths=cw))
-
-    doc.build(
-        elements,
-        onFirstPage=lambda c, d: _pdf_header_footer(c, d, 'گزارش آنالیز', factory, date_label),
-        onLaterPages=lambda c, d: _pdf_header_footer(c, d, 'گزارش آنالیز', factory, date_label),
-    )
-    buf.seek(0)
-    return buf
 
 # ─────────────────────────────── QUERIES ───────────────────────────────
 
@@ -516,36 +431,6 @@ def performance_data(factory, date_from, date_to):
 
     return lines_data
 
-def analysis_data(factory, date_from, date_to):
-    qs = DeviceDailyAnalysis.objects.select_related(
-        'device', 'device__line', 'shift'
-    )
-
-    if factory:
-        qs = qs.filter(device__line__factory=factory)
-    if date_from:
-        qs = qs.filter(date__gte=date_from)
-    if date_to:
-        qs = qs.filter(date__lte=date_to)
-
-    qs = qs.order_by('-date', 'device__line__name', 'device__name')
-
-    results = []
-    for a in qs:
-        results.append({
-            'device_name': a.device.name if a.device else '',
-            'line_name': a.device.line.name if a.device and hasattr(a.device, 'line') else '',
-            'sample_point': a.sample_point or '',
-            'sample_point_display': a.get_sample_point_display() or '',
-            'shift_name': a.shift.name if a.shift else '',
-            'date': to_jalali(a.date) if a.date else '',
-            'day_of_week': weekday_fa(a.date) if a.date else '',
-            'value_1': a.value_1,
-            'value_2': a.value_2,
-            'analysis_text': a.analysis_text or '',
-        })
-
-    return results
 
 # ─────────────────────────────── MAIN ───────────────────────────────
 
@@ -572,18 +457,4 @@ def generate_performance_report(factory_id, range_key, date_from=None, date_to=N
         return buf, 'xlsx'
     else:
         buf = pdf_performance(factory, lines_data, d_from, d_to, date_label)
-        return buf, 'pdf'
-
-def generate_analysis_report(factory_id, range_key, date_from=None, date_to=None, fmt='excel'):
-    factory = Factory.objects.filter(id=factory_id).first() if factory_id else None
-    d_from, d_to = get_date_range(range_key, date_from, date_to)
-    date_label = _date_label(range_key, d_from, d_to)
-
-    analyses = analysis_data(factory, d_from, d_to)
-
-    if fmt == 'excel':
-        buf = excel_analysis(factory, analyses, d_from, d_to, date_label)
-        return buf, 'xlsx'
-    else:
-        buf = pdf_analysis(factory, analyses, d_from, d_to, date_label)
         return buf, 'pdf'

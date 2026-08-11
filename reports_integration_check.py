@@ -35,14 +35,13 @@ try:
     django.setup()
     ok("Django setup completed")
 
-    from machines.reports import generate_performance_report, generate_analysis_report
-    from machines.models import Factory, DeviceLog, DeviceDailyAnalysis
+    from machines.reports import generate_performance_report
+    from machines.models import Factory, DeviceLog
     ok("Reports module and models imported")
 
     factory_count = Factory.objects.count()
     log_count = DeviceLog.objects.count()
-    analysis_count = DeviceDailyAnalysis.objects.count()
-    say(f"[DATA] factories={factory_count} logs={log_count} analyses={analysis_count}")
+    say(f"[DATA] factories={factory_count} logs={log_count}")
 
     font_files = [
         'machines/fonts/Vazirmatn-FD-Regular.ttf',
@@ -63,23 +62,19 @@ try:
             pdfmetrics.registerFont(TTFont('VazirMedium', font_file))
     ok("All Persian fonts registered")
 
-    say("Testing PDF/Excel report generation:")
+    say("Testing PDF/Excel report generation (توقفات خط تولید):")
     cases = [
         ('performance', 'today'), ('performance', 'yesterday'),
         ('performance', 'this_week'), ('performance', 'this_month'),
         ('performance', 'this_year'), ('performance', '30days'), ('performance', 'all'),
         ('performance', 'all', 'excel'),
-        ('analysis', 'today'), ('analysis', '30days'), ('analysis', 'all'),
     ]
     all_ok = True
     for spec in cases:
         kind, range_key = spec[0], spec[1]
         fmt = spec[2] if len(spec) > 2 else 'pdf'
         try:
-            if kind == 'performance':
-                buf, _ = generate_performance_report(None, range_key, fmt=fmt)
-            else:
-                buf, _ = generate_analysis_report(None, range_key, fmt=fmt)
+            buf, _ = generate_performance_report(None, range_key, fmt=fmt)
             ok(f"{kind}/{range_key} [{fmt}]: {len(buf.getvalue())} bytes")
         except Exception as e:  # noqa: BLE001
             all_ok = False

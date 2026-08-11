@@ -5,7 +5,6 @@ from .models import (
     FailureReason,
     ProductionLine,
     Device,
-    DeviceDailyAnalysis,
     DeviceLog,
     ProductionReport,
     Contractor,
@@ -169,7 +168,6 @@ class DeviceSerializer(serializers.ModelSerializer):
             "template_name",
             "attributes_values",
             "attribute_defs",
-            "is_analyzer",
             "image",
         ]
 
@@ -277,55 +275,6 @@ class FactoryFullDetailSerializer(serializers.ModelSerializer):
 
     def get_failure_reasons(self, obj):
         return FailureReasonSerializer(FailureReason.objects.all(), many=True).data
-
-
-class DeviceDailyAnalysisSerializer(serializers.ModelSerializer):
-    device = DeviceSerializer(read_only=True)
-    shift = ShiftSerializer(read_only=True)
-    sample_point_display = serializers.SerializerMethodField()
-    date_jalali = serializers.SerializerMethodField()
-    day_of_week = serializers.SerializerMethodField()
-
-    class Meta:
-        model = DeviceDailyAnalysis
-        fields = [
-            "id",
-            "device",
-            "sample_point",
-            "sample_point_display",
-            "shift",
-            "date",
-            "date_jalali",
-            "day_of_week",
-            "analysis_text",
-            "value_1",
-            "value_2",
-            "created_at",
-        ]
-        read_only_fields = ["created_at"]
-
-    def get_sample_point_display(self, obj):
-        return obj.get_sample_point_display() if obj.sample_point else None
-
-    def get_date_jalali(self, obj):
-        return jalali_and_weekday(obj.date)["date_jalali"]
-
-    def get_day_of_week(self, obj):
-        return jalali_and_weekday(obj.date)["day_of_week"]
-
-
-class DeviceDailyAnalysisWriteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DeviceDailyAnalysis
-        fields = [
-            "device",
-            "sample_point",
-            "shift",
-            "date",
-            "analysis_text",
-            "value_1",
-            "value_2",
-        ]
 
 
 class FactoryMinSerializer(serializers.ModelSerializer):

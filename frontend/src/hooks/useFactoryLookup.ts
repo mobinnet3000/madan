@@ -17,11 +17,6 @@ export function useFactoryLookup(factories: Factory[], selectedFactoryId: number
     [allLines],
   )
 
-  const analyzers = useMemo(
-    () => allDevices.filter((d) => d.is_analyzer),
-    [allDevices],
-  )
-
   const lineName = (id: number) =>
     allLines.find((l) => l.id === id)?.name ?? `خط ${id}`
 
@@ -36,5 +31,5 @@ export function useFactoryLookup(factories: Factory[], selectedFactoryId: number
     return fr?.title ?? `علت ${id}`
   }
 
-  return { selectedFactory, allLines, allDevices, analyzers, lineName, deviceName, shiftName, failureReasonTitle }
+  return { selectedFactory, allLines, allDevices, lineName, deviceName, shiftName, failureReasonTitle }
 }

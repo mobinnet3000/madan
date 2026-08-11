@@ -93,7 +93,6 @@ class AdminAttributeFlowTests(TestCase):
                 "name": "دستگاه جدید",
                 "code": "M-02",
                 "order": "2",
-                "is_analyzer": "on",
                 f"attr_{self.power.id}": "550",
             },
             instance=Device(line_id=self.line.id, template_id=self.device_template.id),

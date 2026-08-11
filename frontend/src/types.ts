@@ -24,7 +24,6 @@ export interface Device {
   template_name: string
   attributes_values: Record<string, number>
   attribute_defs: AttributeDef[]
-  is_analyzer: boolean
   image: string | null
 }
 
@@ -99,47 +98,12 @@ export interface DeviceLogPayload {
   tailing_tonnage?: number
 }
 
-export type SamplePoint = 'feed' | 'tailing' | 'product'
-
-export interface DeviceDailyAnalysis {
-  id: number
-  device: Device
-  shift: Shift | null
-  date: string
-  date_jalali?: string
-  day_of_week?: string
-  sample_point: SamplePoint | null
-  analysis_text: string | null
-  value_1: number | null
-  value_2: number | null
-  created_at: string
-}
-
-export interface DeviceDailyAnalysisPayload {
-  device: number
-  shift?: number | null
-  date: string
-  sample_point?: SamplePoint | null
-  analysis_text?: string
-  value_1?: number | null
-  value_2?: number | null
-}
-
 export interface LogFilters {
   line?: number
   lines?: string
   shift?: number
   device?: number
   failure_cause?: number
-  date?: string
-  date_from?: string
-  date_to?: string
-}
-
-export interface AnalysisFilters {
-  device?: number
-  devices?: string
-  shift?: number
   date?: string
   date_from?: string
   date_to?: string

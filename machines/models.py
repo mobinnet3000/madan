@@ -189,13 +189,11 @@ class Device(models.Model):
     image = models.ImageField(
         upload_to="devices/", null=True, blank=True, verbose_name="تصویر دستگاه"
     )
-    is_analyzer = models.BooleanField(default=False, verbose_name="آیا آنالیزور است؟")
 
     class Meta:
         verbose_name = "دستگاه"
         verbose_name_plural = "دستگاه‌ها"
         ordering = ["line", "order"]
-        indexes = [models.Index(fields=["line", "is_analyzer"])]
 
     def clean(self):
         super().clean()
@@ -218,77 +216,6 @@ class Device(models.Model):
         return f"{self.name} (خط {self.line.name} - {self.line.factory.name})"
 
 
-class DeviceDailyAnalysis(models.Model):
-    SAMPLE_POINT_CHOICES = [
-        ("feed", "خوراک (Feed)"),
-        ("tailing", "باطله (Tailing)"),
-        ("product", "محصول نهایی (Product)"),
-    ]
-
-    device = models.ForeignKey(
-        Device,
-        on_delete=models.CASCADE,
-        related_name="daily_analyses",
-        verbose_name="دستگاه (آنالیزور)",
-    )
-    sample_point = models.CharField(
-        max_length=20,
-        choices=SAMPLE_POINT_CHOICES,
-        null=True,
-        blank=True,
-        verbose_name="نقطه نمونه‌برداری",
-    )
-    shift = models.ForeignKey(
-        Shift,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="daily_analyses",
-        verbose_name="شیفت",
-    )
-    date = models.DateField(verbose_name="تاریخ آنالیز")
-    analysis_text = models.TextField(
-        verbose_name="شرح/نتیجه آنالیز", null=True, blank=True
-    )
-    value_1 = models.FloatField(verbose_name="پارامتر ۱", null=True, blank=True)
-    value_2 = models.FloatField(verbose_name="پارامتر ۲", null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
-
-    class Meta:
-        verbose_name = "آنالیز روزانه دستگاه"
-        verbose_name_plural = "آنالیزهای روزانه دستگاه"
-        ordering = ["-date", "-created_at"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["device", "date", "shift"],
-                name="uniq_device_daily_analysis_per_day_shift",
-            ),
-        ]
-        indexes = [models.Index(fields=["date", "device"])]
-
-    def __str__(self):
-        dev = self.device.name if self.device else "بدون دستگاه"
-        d = self.date.isoformat() if self.date else "بدون تاریخ"
-        sh = self.shift.name if self.shift else "بدون شیفت"
-        return f"{dev} - {d} - {sh}"
-
-    def clean(self):
-        super().clean()
-        if self.device and not self.device.is_analyzer:
-            raise ValidationError(
-                {
-                    "device": "این دستگاه آنالیزور نیست و نباید برای آن رکورد آنالیز ثبت شود."
-                }
-            )
-        if self.device and self.shift:
-            if self.shift.factory_id != self.device.line.factory_id:
-                raise ValidationError(
-                    {"shift": "شیفت انتخاب‌شده متعلق به کارخانه خط این دستگاه نیست."}
-                )
-        if (self.shift and not self.date) or (self.date and not self.shift):
-            raise ValidationError("تاریخ و شیفت باید هم‌زمان پر شوند.")
-
-
 class DeviceLog(models.Model):
     line = models.ForeignKey(
         ProductionLine,
@@ -299,7 +226,7 @@ class DeviceLog(models.Model):
     shift = models.ForeignKey(
         Shift, on_delete=models.PROTECT, related_name="device_logs", verbose_name="شیفت"
     )
-    date = models.DateField(verbose_name="تاریخ گزارش", db_index=True)
+    date = models.DateField(verbose_name="تاریخ توقف", db_index=True)
     device = models.ForeignKey(
         Device,
         on_delete=models.SET_NULL,
@@ -330,8 +257,8 @@ class DeviceLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
 
     class Meta:
-        verbose_name = "گزارش عملکرد روزانه"
-        verbose_name_plural = "گزارشات عملکرد روزانه"
+        verbose_name = "توقف خط تولید"
+        verbose_name_plural = "توقفات خط تولید"
         ordering = ["-date"]
         indexes = [
             models.Index(fields=["line", "date"]),
@@ -339,7 +266,7 @@ class DeviceLog(models.Model):
         ]
 
     def __str__(self):
-        return f"گزارش {self.line.name} - {self.date} - {self.shift.name}"
+        return f"توقف {self.line.name} - {self.date} - {self.shift.name}"
 
     @property
     def efficiency(self):

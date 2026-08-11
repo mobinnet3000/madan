@@ -1,4 +1,4 @@
-import type { LineType, Role, SamplePoint } from './types'
+import type { LineType, Role } from './types'
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'مدیر سیستم',
@@ -53,16 +53,4 @@ export const LINE_TYPE_STYLE: Record<
     ring: 'ring-teal-200',
     dot: 'bg-teal-500',
   },
-}
-
-export const SAMPLE_POINT_LABELS: Record<SamplePoint, string> = {
-  feed: 'خوراک (Feed)',
-  tailing: 'باطله (Tailing)',
-  product: 'محصول نهایی',
-}
-
-export const SAMPLE_POINT_STYLE: Record<SamplePoint, string> = {
-  feed: 'bg-amber-100 text-amber-700',
-  tailing: 'bg-rose-100 text-rose-700',
-  product: 'bg-emerald-100 text-emerald-700',
 }

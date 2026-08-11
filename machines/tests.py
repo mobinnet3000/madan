@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from .models import (
     Factory, Shift, FailureReason, ProductionLineAttribute,
     ProductionLineTemplate, ProductionLine, Attribute, DeviceTemplate,
-    Device, DeviceLog, DeviceDailyAnalysis
+    Device, DeviceLog
 )
 from accounts.models import UserProfile
 
@@ -89,11 +89,3 @@ class TestDeviceClean(TestCase):
         d.refresh_from_db()
         self.assertNotIn('غیرمجاز', d.attributes_values)
         self.assertIn('توان', d.attributes_values)
-
-    def test_analyzer_validation(self):
-        shift = Shift.objects.create(factory=self.fac, name='صبح', start_time='06:00', end_time='14:00')
-        d = Device(name='An', line=self.line, template=self.tpl, is_analyzer=False)
-        d.save()
-        analysis = DeviceDailyAnalysis(device=d, shift=shift, date='2025-01-01')
-        with self.assertRaises(ValidationError):
-            analysis.full_clean()

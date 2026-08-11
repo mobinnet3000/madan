@@ -12,7 +12,6 @@ interface FactoryContextValue {
   selectedFactory: Factory | null
   reload: () => void
   allDevices: Device[]
-  analyzers: Device[]
   lineName: (id: number) => string
   shiftName: (id: number) => string
   deviceName: (id: number) => string
@@ -41,7 +40,7 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { reload() }, [reload])
 
-  const { selectedFactory, allDevices, analyzers, lineName, shiftName, deviceName, failureReasonTitle } =
+  const { selectedFactory, allDevices, lineName, shiftName, deviceName, failureReasonTitle } =
     useFactoryLookup(factories, selectedFactoryId)
 
   const value: FactoryContextValue = {
@@ -53,7 +52,6 @@ export function FactoryProvider({ children }: { children: ReactNode }) {
     selectedFactory,
     reload,
     allDevices,
-    analyzers,
     lineName,
     shiftName,
     deviceName,

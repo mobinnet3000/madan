@@ -254,12 +254,12 @@ export default function Logs() {
     try {
       if (editing) {
         await updateLog(editing.id, buildPayload(form.rows[0]))
-        notify('گزارش با موفقیت ویرایش شد')
+        notify('توقف خط تولید با موفقیت ویرایش شد')
       } else {
         for (const row of form.rows) {
           await createLog(buildPayload(row))
         }
-        notify(`گزارش ثبت شد (${form.rows.length} ردیف توقف)`)
+        notify(`توقف خط تولید ثبت شد (${form.rows.length} ردیف توقف)`)
       }
       setModalOpen(false); load()
     } catch (e: any) {
@@ -271,7 +271,7 @@ export default function Logs() {
 
   const confirmDelete = async () => {
     if (confirmId == null) return
-    try { await deleteLog(confirmId); notify('گزارش حذف شد'); setConfirmId(null); load() }
+    try { await deleteLog(confirmId); notify('توقف حذف شد'); setConfirmId(null); load() }
     catch (e: any) { notify(e.message || 'خطا در حذف', 'error') }
   }
 
@@ -284,10 +284,10 @@ export default function Logs() {
     <div className="animate-fade-in space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold text-ink-900 dark:text-slate-100">گزارش عملکرد روزانه</h1>
-          <p className="text-sm text-ink-500">ثبت و مدیریت گزارش‌های عملکرد، توقف و خرابی خطوط (چند توقف در یک گزارش)</p>
+          <h1 className="text-xl font-extrabold text-ink-900 dark:text-slate-100">توقفات خط تولید</h1>
+          <p className="text-sm text-ink-500">ثبت و مدیریت توقفات و خرابی خطوط تولید (چند توقف در یک ثبت)</p>
         </div>
-        <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت گزارش جدید</button>
+        <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت توقف جدید</button>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={load} />}
@@ -322,9 +322,9 @@ export default function Logs() {
       {loading ? (
         <TableSkeleton columns={7} />
       ) : sorted.length === 0 ? (
-        <EmptyState icon={<ClipboardList className="h-10 w-10" />} title="گزارشی یافت نشد"
-          description="با فیلترهای فعلی رکوردی وجود ندارد یا هنوز گزارشی ثبت نشده است."
-          action={<button className="btn-primary mt-2" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت اولین گزارش</button>} />
+        <EmptyState icon={<ClipboardList className="h-10 w-10" />} title="توقفی یافت نشد"
+          description="با فیلترهای فعلی رکوردی وجود ندارد یا هنوز توقفی ثبت نشده است."
+          action={<button className="btn-primary mt-2" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت اولین توقف</button>} />
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
@@ -373,15 +373,15 @@ export default function Logs() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'ویرایش گزارش عملکرد' : 'ثبت گزارش عملکرد جدید'} subtitle={selectedFactory?.name}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'ویرایش توقف خط تولید' : 'ثبت توقف خط تولید'} subtitle={selectedFactory?.name}
         size="lg"
-        footer={<><button className="btn-ghost" onClick={() => setModalOpen(false)}>انصراف</button><button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'در حال ذخیره...' : editing ? 'ذخیره تغییرات' : 'ثبت گزارش'}</button></>}>
+        footer={<><button className="btn-ghost" onClick={() => setModalOpen(false)}>انصراف</button><button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'در حال ذخیره...' : editing ? 'ذخیره تغییرات' : 'ثبت توقف'}</button></>}>
         <LogForm form={form} setForm={setForm} editing={editing} />
       </Modal>
 
-      <Modal open={confirmId != null} onClose={() => setConfirmId(null)} title="حذف گزارش"
+      <Modal open={confirmId != null} onClose={() => setConfirmId(null)} title="حذف توقف"
         footer={<><button className="btn-ghost" onClick={() => setConfirmId(null)}>انصراف</button><button className="btn-danger" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> حذف قطعی</button></>}>
-        <p className="text-sm text-ink-600 dark:text-slate-300">آیا از حذف این گزارش عملکرد اطمینان دارید؟ این عمل قابل بازگشت نیست.</p>
+        <p className="text-sm text-ink-600 dark:text-slate-300">آیا از حذف این توقف خط تولید اطمینان دارید؟ این عمل قابل بازگشت نیست.</p>
       </Modal>
     </div>
   )

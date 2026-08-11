@@ -1,7 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    DeviceDailyAnalysisViewSet,
     DeviceLogViewSet,
     FactoryDetailViewSet,
     ProductionReportViewSet,
@@ -9,7 +8,6 @@ from .views import (
     AnalysisTypeDefinitionViewSet,
     ActualAnalysisViewSet,
     performance_report_view,
-    analysis_report_view,
     report_ranges_view,
     line_attributes_view,
     device_attributes_view,
@@ -43,9 +41,6 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r"factory-setup", FactoryDetailViewSet, basename="factory-setup")
-router.register(
-    r"daily-analysis", DeviceDailyAnalysisViewSet, basename="daily-analysis"
-)
 router.register(r"device-logs", DeviceLogViewSet, basename="device-logs")
 router.register(
     r"production-reports", ProductionReportViewSet, basename="production-reports"
@@ -67,7 +62,6 @@ urlpatterns = [
     path(
         "api/reports/performance/", performance_report_view, name="report-performance"
     ),
-    path("api/reports/analysis/", analysis_report_view, name="report-analysis"),
     path(
         "api/lines/<int:uid>/attributes/", line_attributes_view, name="line-attributes"
     ),

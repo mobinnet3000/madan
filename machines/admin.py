@@ -5,7 +5,6 @@ from django.http import HttpResponseRedirect
 from django.utils.html import format_html, escape
 from django.utils.safestring import mark_safe
 from .models import (
-    DeviceDailyAnalysis,
     DeviceLog,
     Factory,
     FailureReason,
@@ -183,13 +182,6 @@ class DeviceInline(admin.TabularInline):
     ordering = ("order",)
 
 
-class DeviceDailyAnalysisInline(admin.TabularInline):
-    model = DeviceDailyAnalysis
-    extra = 0
-    fields = ("date", "shift", "value_1", "value_2", "analysis_text")
-    ordering = ("-date",)
-
-
 class LineAnalysisDefinitionInline(admin.StackedInline):
     """لایه‌ی میانی اتصال خط تولید به آنالیزهای واقعی (تعریف ورودی/خروجی/فرمول)."""
 
@@ -338,7 +330,7 @@ class DeviceTemplateAdmin(admin.ModelAdmin):
 class DeviceAdmin(AttributeFieldsAdminMixin, admin.ModelAdmin):
     form = DeviceForm
     template_model = DeviceTemplate
-    step1_fields = ("line", "template", "name", "code", "order", "is_analyzer")
+    step1_fields = ("line", "template", "name", "code", "order")
     list_display = ("order", "code", "name", "line", "template", "display_attributes")
     display_attributes = display_attributes_summary
     list_editable = ("order",)
@@ -346,35 +338,10 @@ class DeviceAdmin(AttributeFieldsAdminMixin, admin.ModelAdmin):
     list_filter = ("line__factory", "line", "template")
     search_fields = ("name", "code", "line__name")
 
-    def get_inline_instances(self, request, obj=None):
-        if obj and obj.is_analyzer:
-            return [DeviceDailyAnalysisInline(self.model, self.admin_site)]
-        return []
-
     def response_add(self, request, obj, post_url_continue=None):
         return HttpResponseRedirect(
             reverse("admin:machines_device_change", args=(obj.pk,))
         )
-
-
-@admin.register(DeviceDailyAnalysis)
-class DeviceDailyAnalysisAdmin(admin.ModelAdmin):
-    list_display = ("device", "date", "shift", "created_at")
-    list_filter = ("date", "shift__factory")
-    search_fields = ("device__name", "analysis_text")
-
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "device":
-            kwargs["queryset"] = Device.objects.filter(is_analyzer=True)
-        if db_field.name == "shift":
-            obj_id = request.resolver_match.kwargs.get("object_id")
-            if obj_id:
-                obj = self.get_object(request, obj_id)
-                if obj and obj.device:
-                    kwargs["queryset"] = Shift.objects.filter(
-                        factory=obj.device.line.factory
-                    )
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 @admin.register(DeviceLog)

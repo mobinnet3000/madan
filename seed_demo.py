@@ -9,7 +9,7 @@ from django.core.files import File
 from machines.models import (
     Factory, Shift, FailureReason, ProductionLineAttribute,
     ProductionLineTemplate, ProductionLine, Attribute, DeviceTemplate,
-    Device, DeviceLog, DeviceDailyAnalysis, LINE_TYPE_CHOICES,
+    Device, DeviceLog, LINE_TYPE_CHOICES,
 )
 from accounts.models import UserProfile
 from django.contrib.auth.models import User
@@ -74,7 +74,7 @@ def make_image(filename, label, icon):
     return 'devices/' + filename
 
 # پاکسازي
-for m in (DeviceDailyAnalysis, DeviceLog, Device, ProductionLine, Shift,
+for m in (DeviceLog, Device, ProductionLine, Shift,
           FailureReason, ProductionLineTemplate, ProductionLineAttribute,
           DeviceTemplate, Attribute, Factory):
     m.objects.all().delete()
@@ -214,15 +214,13 @@ for fd in factories_data:
             description='خط %s کارخانه %s' % (lname, fd['name']),
             attributes_values=lattrs,
         )
-        for dname, dtpl, order, dattrs, is_an in devs:
+        for dname, dtpl, order, dattrs, _is_an in devs:
             icon = TEMPLATE_ICON.get(dtpl.name, 'gear')
             img = make_image('%s_%s.svg' % (slug(fac.name), slug(dname)), dname, icon)
-            d = Device.objects.create(
+            Device.objects.create(
                 name=dname, code='L%d-D%02d' % (line.id, order), line=line, template=dtpl, order=order,
-                attributes_values=dattrs, is_analyzer=is_an, image=img,
+                attributes_values=dattrs, image=img,
             )
-            if is_an:
-                analyzers.append(d)
     factories.append((fac, shifts, failures, analyzers))
 
 # گزارش‌های ۹۲ روزه با حالات متنوع
@@ -276,21 +274,6 @@ for fac, shifts, failures, analyzers in factories:
                         failure_description=fdesc, repair_description=rdesc,
                     )
                 log_total += 1
-    # آنالیزها در نقاط خوراک/باطله/محصول
-    points_cfg = {
-        'feed': (0, (58, 63), (2, 5), 'عیار خوراک در محدوده پایدار'),
-        'tailing': (2, (4, 9), (1, 3), 'عیار باطله کنترل شده'),
-        'product': (1, (60, 66), (1, 4), 'کنسانتره با کیفیت مطلوب'),
-    }
-    for an in analyzers:
-        for i in range(92):
-            d = today - timedelta(days=i)
-            for point, (sidx, v1r, v2r, txt) in points_cfg.items():
-                DeviceDailyAnalysis.objects.create(
-                    device=an, sample_point=point, shift=shifts[sidx],
-                    date=d, value_1=round(random.uniform(*v1r), 1),
-                    value_2=round(random.uniform(*v2r), 1), analysis_text=txt,
-                )
 
 # کاربران نقش‌بندي شده
 User.objects.filter(username='admin').delete()
@@ -298,7 +281,7 @@ admin_u = User.objects.create_superuser('admin', 'admin@madan.ir', 'Madan@1404')
 UserProfile.objects.create(user=admin_u, role='admin', factory=None)
 
 idx = 0
-for fac, shifts, failures, analyzers in factories:
+for fac, shifts, failures, _analyzers in factories:
     idx += 1
     mu = User.objects.create_user('manager%d' % idx, 'manager%d@madan.ir' % idx, 'Madan@1404', first_name='مدیر', last_name='کارخانه %d' % idx)
     UserProfile.objects.create(user=mu, role='manager', factory=fac)
@@ -309,7 +292,6 @@ for fac, shifts, failures, analyzers in factories:
 
 print('OK - seed done')
 print('Factories:', Factory.objects.count())
-print('Lines:', ProductionLine.objects.count(), '| Devices:', Device.objects.count(), '| Analyzers:', Device.objects.filter(is_analyzer=True).count())
+print('Lines:', ProductionLine.objects.count(), '| Devices:', Device.objects.count())
 print('Logs:', DeviceLog.objects.count())
-print('Analyses:', DeviceDailyAnalysis.objects.count())
 print('Users:', User.objects.count())

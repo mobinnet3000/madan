@@ -12,17 +12,18 @@ MODEL_GROUPS = [
     (
         "کارخانه‌ها، خطوط تولید و پیمانکاران",
         [
-            "contractor",
             "factory",
-            "shift",
             "productionline",
             "productionlinetemplate",
             "productionlineattribute",
+            "shift",
+            "contractor",
+            "failurereason",
         ],
     ),
     ("دستگاه‌ها و تجهیزات", ["device", "devicetemplate", "attribute"]),
     (
-        "آنالیز — تعریف‌ها، ورودی‌ها و رکوردهای واقعی",
+        "تعریف‌های آنالیز (خط و کارخانه) و تناژ تحویلی",
         [
             "analysistypedefinition",
             "analysisinputdefinition",
@@ -30,11 +31,14 @@ MODEL_GROUPS = [
             "lineanalysisdefinition",
             "additionalinputdefinition",
             "analysisoutputdefinition",
-            "actualanalysis",
-            "devicedailyanalysis",
+            "factoryanalysisdefinition",
+            "deliveredtonnagedefinition",
         ],
     ),
-    ("گزارش عملکرد و تولید", ["devicelog", "productionreport", "failurereason"]),
+    (
+        "ثبت‌های عملیاتی",
+        ["actualanalysis", "productionreport", "deliveredtonnage", "devicelog"],
+    ),
     (
         "کاربران و دسترسی‌ها",
         ["user", "group", "userprofile", "rolepermissionconfig", "activitylog"],

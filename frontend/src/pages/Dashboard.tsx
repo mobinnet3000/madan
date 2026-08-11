@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts'
 import {
-  Boxes, Cpu, Gauge, TrendingUp, ArrowLeft, ClipboardList,
+  Boxes, Gauge, TrendingUp, ArrowLeft, ClipboardList,
 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { getLogsPage } from '../api/logs'
@@ -71,7 +71,7 @@ export default function Dashboard() {
     const totalProduct = logs.reduce((s, l) => s + (l.product_tonnage || 0), 0)
     const effs = logs.filter((l) => l.efficiency != null).map((l) => l.efficiency!)
     const avgEff = effs.length ? effs.reduce((a, b) => a + b, 0) / effs.length : null
-    return { lines: selectedFactory?.lines.length ?? 0, devices: devices.length, analyzers: devices.filter((d) => d.is_analyzer).length, totalFeed, totalProduct, avgEff, logCount: logs.length }
+    return { lines: selectedFactory?.lines.length ?? 0, devices: devices.length, totalFeed, totalProduct, avgEff, logCount: logs.length }
   }, [logs, selectedFactory])
 
   const efficiencyTrend = useMemo(() => {
@@ -105,16 +105,15 @@ export default function Dashboard() {
           <h1 className="text-xl font-extrabold text-ink-900 dark:text-slate-100">داشبورد کارخانه</h1>
           <p className="text-sm text-ink-500">نمای کلی از خطوط فرآوری، دستگاه‌ها و عملکرد {selectedFactory.name}</p>
         </div>
-        <Link to="/logs" className="btn-outline"><ClipboardList className="h-4 w-4" /> مشاهده گزارش‌ها</Link>
+        <Link to="/logs" className="btn-outline"><ClipboardList className="h-4 w-4" /> مشاهده توقفات</Link>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={loadDashboard} />}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Kpi icon={<Boxes className="h-6 w-6 text-brand-600" />} label="خطوط فرآوری" value={formatNumber(stats.lines)} sub={`${formatNumber(stats.devices)} دستگاه`} accent="bg-brand-50 dark:bg-brand-950/30" />
-        <Kpi icon={<Gauge className="h-6 w-6 text-emerald-600" />} label="میانگین راندمان" value={formatPercent(stats.avgEff)} sub={`${formatNumber(stats.logCount)} گزارش ثبت‌شده`} accent="bg-emerald-50 dark:bg-emerald-950/30" />
+        <Kpi icon={<Gauge className="h-6 w-6 text-emerald-600" />} label="میانگین راندمان" value={formatPercent(stats.avgEff)} sub={`${formatNumber(stats.logCount)} توقف ثبت‌شده`} accent="bg-emerald-50 dark:bg-emerald-950/30" />
         <Kpi icon={<TrendingUp className="h-6 w-6 text-sky-600" />} label="تناژ ورودی" value={`${formatNumber(Math.round(stats.totalFeed))} تن`} sub={`خروجی ${formatNumber(Math.round(stats.totalProduct))} تن`} accent="bg-sky-50 dark:bg-sky-950/30" />
-        <Kpi icon={<Cpu className="h-6 w-6 text-violet-600" />} label="آنالایزرها" value={formatNumber(stats.analyzers)} sub="دستگاه آنالیزور فعال" accent="bg-violet-50 dark:bg-violet-950/30" />
       </div>
 
       <section className="space-y-3">
@@ -170,11 +169,11 @@ export default function Dashboard() {
 
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-slate-700">
-          <h3 className="text-sm font-bold text-ink-700 dark:text-slate-200">آخرین گزارش‌های عملکرد</h3>
+          <h3 className="text-sm font-bold text-ink-700 dark:text-slate-200">آخرین توقفات خط تولید</h3>
           <Link to="/logs" className="text-xs font-medium text-brand-600">مشاهده همه</Link>
         </div>
         {recentLogs.length === 0 ? (
-          <div className="py-10 text-center text-xs text-ink-400">هنوز گزارشی ثبت نشده است</div>
+          <div className="py-10 text-center text-xs text-ink-400">هنوز توقفی ثبت نشده است</div>
         ) : (
           <div className="divide-y divide-ink-100 dark:divide-slate-700">
             {recentLogs.map((l) => (
