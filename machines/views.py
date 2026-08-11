@@ -1,4 +1,5 @@
 from django.http import FileResponse, Http404
+from datetime import datetime
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -21,6 +22,10 @@ from .models import (
     FactoryAnalysisDefinition,
     FactoryAnalysisInput,
     FactoryAnalysisOutput,
+    DeliveredTonnageDefinition,
+    DeliveredTonnageInput,
+    DeliveredTonnageOutput,
+    DeliveredTonnage,
 )
 from .serializers import (
     DeviceDailyAnalysisSerializer,
@@ -40,12 +45,18 @@ from .serializers import (
     FactoryAnalysisDefinitionSerializer,
     FactoryAnalysisInputSerializer,
     FactoryAnalysisOutputSerializer,
+    DeliveredTonnageSerializer,
+    DeliveredTonnageWriteSerializer,
+    DeliveredTonnageInputSerializer,
+    DeliveredTonnageOutputSerializer,
+    DeliveredTonnageDefinitionSerializer,
 )
 from .filters import (
     DailyAnalysisFilter,
     DeviceLogFilter,
     ProductionReportFilter,
     ActualAnalysisFilter,
+    DeliveredTonnageFilter,
 )
 from .reports import RANGE_LABELS
 from .analysis import build_schema, validate_and_compute, validate_formula_for_line
@@ -54,6 +65,11 @@ from .factory_analysis import (
     validate_and_compute as validate_and_compute_factory,
     validate_formula_for_factory,
     formula_variables_for_factory,
+)
+from .tonnage import (
+    build_schema as build_tonnage_schema,
+    validate_and_compute as validate_and_compute_tonnage,
+    validate_formula_for_tonnage,
 )
 from accounts.services import get_user_factory, log_activity
 from accounts.permissions import HasPermission, require_permission, user_has_permission
@@ -76,6 +92,10 @@ class FactoryDetailViewSet(viewsets.ReadOnlyModelViewSet):
             "lines__analysis_positions__definition__inputs",
             "lines__analysis_definition__additional_inputs",
             "lines__analysis_definition__outputs",
+            "lines__tonnage_definition__inputs",
+            "lines__tonnage_definition__outputs",
+            "factory_analysis_definition__inputs",
+            "factory_analysis_definition__outputs",
         )
         factory = get_user_factory(self.request.user)
         if factory is not None:
@@ -333,6 +353,137 @@ class ProductionReportViewSet(viewsets.ModelViewSet):
             "delete",
             "آنالیز خط تولید",
             f"{instance.line.name} - {instance.date_from}",
+            self.request,
+            factory=instance.line.factory,
+        )
+        instance.delete()
+
+
+class DeliveredTonnageViewSet(viewsets.ModelViewSet):
+    serializer_class = DeliveredTonnageSerializer
+    filterset_class = DeliveredTonnageFilter
+    pagination_class = StandardPagination
+    required_permission = "production.view"
+    action_permissions = {
+        "create": "production.create",
+        "update": "production.edit",
+        "partial_update": "production.edit",
+        "destroy": "production.delete",
+    }
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return DeliveredTonnageWriteSerializer
+        return DeliveredTonnageSerializer
+
+    def get_queryset(self):
+        qs = DeliveredTonnage.objects.all().select_related(
+            "line__factory", "contractor"
+        )
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(line__factory=factory)
+        return qs
+
+    def _make_record(self, request):
+        data = request.data
+        line_id = data.get("line_id") or (
+            data.get("line", {}).get("id") if isinstance(data.get("line"), dict) else None
+        )
+        if not line_id:
+            raise ValueError("خط تولید (line_id) الزامی است.")
+        line = _get_scoped_line(request, line_id)
+
+        raw_date = data.get("date")
+        if not raw_date:
+            raise ValueError("تاریخ تحویل الزامی است.")
+        try:
+            date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("فرمت تاریخ باید YYYY-MM-DD باشد.")
+
+        raw_hour = data.get("hour")
+        if not raw_hour:
+            raise ValueError("ساعت تحویل الزامی است.")
+        try:
+            hour = datetime.strptime(str(raw_hour)[:5], "%H:%M").time()
+        except ValueError:
+            raise ValueError("فرمت ساعت باید HH:MM باشد.")
+
+        contractor = None
+        contractor_id = data.get("contractor_id") or data.get("contractor")
+        if contractor_id:
+            contractor = Contractor.objects.filter(
+                pk=contractor_id, factory=line.factory_id
+            ).first()
+            if contractor is None:
+                raise ValueError(
+                    "پیمانکار انتخاب‌شده متعلق به کارخانه‌ی همین خط نیست یا غیرفعال است."
+                )
+
+        inputs, outputs = validate_and_compute_tonnage(line, data)
+        return line, contractor, date, hour, inputs, outputs
+
+    def create(self, request, *args, **kwargs):
+        try:
+            line, contractor, date, hour, inputs, outputs = self._make_record(request)
+        except ValueError as e:
+            return _error(e)
+        obj = DeliveredTonnage.objects.create(
+            line=line,
+            contractor=contractor,
+            date=date,
+            hour=hour,
+            inputs=inputs,
+            outputs=outputs,
+            note=request.data.get("note", ""),
+            created_by=request.user if hasattr(request, "user") else None,
+        )
+        log_activity(
+            request.user,
+            "create",
+            "ثبت تناژ تحویلی",
+            f"{line.name} - {date} - {hour}",
+            request,
+            factory=line.factory,
+        )
+        return Response(DeliveredTonnageSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            line, contractor, date, hour, inputs, outputs = self._make_record(request)
+        except ValueError as e:
+            return _error(e)
+        instance.line = line
+        instance.contractor = contractor
+        instance.date = date
+        instance.hour = hour
+        instance.inputs = inputs
+        instance.outputs = outputs
+        if request.data.get("note") is not None:
+            instance.note = request.data.get("note", "")
+        instance.save()
+        log_activity(
+            request.user,
+            "update",
+            "ثبت تناژ تحویلی",
+            f"{line.name} - {date} - {hour}",
+            request,
+            factory=line.factory,
+        )
+        return Response(DeliveredTonnageSerializer(instance).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        log_activity(
+            self.request.user,
+            "delete",
+            "ثبت تناژ تحویلی",
+            f"{instance.line.name} - {instance.date}",
             self.request,
             factory=instance.line.factory,
         )
@@ -1352,4 +1503,155 @@ def formula_validate_factory_view(request):
     else:
         return _error("factory_id یا line_id الزامی است.")
     errors = validate_formula_for_factory(factory, expression)
+    return Response({"ok": not errors, "errors": errors})
+
+# ═══════════════════ تناژ تحویلی خطوط تولید (تعریف‌محور) ═══════════════════
+
+
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("production.view")
+def tonnage_definition_view(request, line_id):
+    line = _get_scoped_line(request, line_id)
+    definition = getattr(line, "tonnage_definition", None)
+
+    if request.method == "DELETE":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        if definition is not None:
+            definition.delete()
+        return Response({"detail": "تعریف تناژ تحویلی خط حذف شد."})
+
+    if request.method == "PUT":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        data = request.data.copy()
+        data["line"] = line.id
+        serializer = DeliveredTonnageDefinitionSerializer(definition, data=data) if definition else DeliveredTonnageDefinitionSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.save()
+        except Exception as e:  # noqa: BLE001
+            from django.core.exceptions import ValidationError as _DVE
+            from rest_framework.exceptions import ValidationError as _RVE
+            if isinstance(e, (_DVE, _RVE)):
+                return _error(e)
+            raise
+        return Response(DeliveredTonnageDefinitionSerializer(serializer.instance).data)
+
+    if definition is None:
+        raise Http404
+    return Response(DeliveredTonnageDefinitionSerializer(definition).data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("production.view")
+def tonnage_inputs_view(request, line_id):
+    line = _get_scoped_line(request, line_id)
+    definition = getattr(line, "tonnage_definition", None)
+    if definition is None:
+        raise Http404
+    if request.method == "POST":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        serializer = DeliveredTonnageInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(definition=definition)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(DeliveredTonnageInputSerializer(definition.inputs.all(), many=True).data)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.manage")
+def tonnage_input_detail_view(request, line_id, pk):
+    line = _get_scoped_line(request, line_id)
+    definition = getattr(line, "tonnage_definition", None)
+    item = DeliveredTonnageInput.objects.filter(definition=definition, pk=pk).first() if definition else None
+    if item is None:
+        raise Http404
+    if request.method == "DELETE":
+        item.delete()
+        return Response({"detail": "حذف شد."})
+    serializer = DeliveredTonnageInputSerializer(item, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("production.view")
+def tonnage_outputs_view(request, line_id):
+    line = _get_scoped_line(request, line_id)
+    definition = getattr(line, "tonnage_definition", None)
+    if definition is None:
+        raise Http404
+    if request.method == "POST":
+        if not user_has_permission(request.user, "analysis.manage"):
+            return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        serializer = DeliveredTonnageOutputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.save(definition=definition)
+            definition.full_clean()
+        except Exception as e:  # noqa: BLE001
+            from django.core.exceptions import ValidationError as _DVE
+            from rest_framework.exceptions import ValidationError as _RVE
+            if isinstance(e, (_DVE, _RVE)):
+                return _error(e)
+            raise
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(DeliveredTonnageOutputSerializer(definition.outputs.all(), many=True).data)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("analysis.manage")
+def tonnage_output_detail_view(request, line_id, pk):
+    line = _get_scoped_line(request, line_id)
+    definition = getattr(line, "tonnage_definition", None)
+    item = DeliveredTonnageOutput.objects.filter(definition=definition, pk=pk).first() if definition else None
+    if item is None:
+        raise Http404
+    if request.method == "DELETE":
+        item.delete()
+        return Response({"detail": "حذف شد."})
+    serializer = DeliveredTonnageOutputSerializer(item, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    try:
+        serializer.save()
+        definition.full_clean()
+    except Exception as e:  # noqa: BLE001
+        from django.core.exceptions import ValidationError as _DVE
+        from rest_framework.exceptions import ValidationError as _RVE
+        if isinstance(e, (_DVE, _RVE)):
+            return _error(e)
+        raise
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@require_permission("production.view")
+def tonnage_schema_view(request):
+    """اسکیمای فرم داینامیک ثبت تناژ یک خط (از ?line)."""
+    line_id = request.query_params.get("line")
+    if not line_id:
+        return _error("?line الزامی است.")
+    line = _get_scoped_line(request, line_id)
+    return Response(build_tonnage_schema(line))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("production.view")
+def formula_validate_tonnage_view(request):
+    line_id = request.data.get("line_id")
+    expression = request.data.get("expression") or ""
+    if not line_id:
+        return _error("line_id الزامی است.")
+    line = _get_scoped_line(request, line_id)
+    errors = validate_formula_for_tonnage(line, expression)
     return Response({"ok": not errors, "errors": errors})

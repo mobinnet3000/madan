@@ -39,6 +39,13 @@ export interface ProductionLine {
   attributes_values: Record<string, number>
   attribute_defs: AttributeDef[]
   devices: Device[]
+  analysis_positions?: PositionSchema[]
+  tonnage_definition?: {
+    id: number
+    description: string
+    inputs: FactoryAnalysisInputDef[]
+    outputs: FactoryAnalysisOutputDef[]
+  } | null
 }
 
 export interface Factory {
@@ -49,6 +56,12 @@ export interface Factory {
   lines: ProductionLine[]
   failure_reasons: FailureReason[]
   contractors: Contractor[]
+  factory_analysis_definition?: {
+    id: number
+    description: string
+    inputs: FactoryAnalysisInputDef[]
+    outputs: FactoryAnalysisOutputDef[]
+  } | null
 }
 
 export interface DeviceLog {
@@ -227,6 +240,41 @@ export interface FactoryAnalysisSchema {
   defined: boolean
 }
 
+export interface FactoryAnalysisInputDef {
+  id?: number
+  key: string
+  name: string
+  input_type: 'number' | 'text'
+  unit: string
+  required: boolean
+  order: number
+}
+
+export interface FactoryAnalysisOutputDef {
+  id?: number
+  key: string
+  name: string
+  unit: string
+  formula: string
+  order: number
+}
+
+export interface FactoryAnalysisDefinitionFull {
+  id: number
+  factory: number
+  description: string
+  inputs: FactoryAnalysisInputDef[]
+  outputs: FactoryAnalysisOutputDef[]
+  created_at: string
+  updated_at: string
+}
+
+export interface FactoryAnalysisDefinitionPayload {
+  description: string
+  inputs: FactoryAnalysisInputDef[]
+  outputs: FactoryAnalysisOutputDef[]
+}
+
 // ── عملکرد بخش تولید (Actual Analysis داینامیک) ──
 export interface ContractorOpt {
   id: number
@@ -323,6 +371,46 @@ export interface ActualAnalysisFilters {
   line?: number
   lines?: string
   contractor?: number
+  date_from?: string
+  date_to?: string
+}
+
+// ── تناژ تحویلی خطوط تولید ──
+export interface TonnageSchema {
+  line: { id: number; name: string }
+  inputs: InputSchema[]
+  outputs: AnalysisOutputSchema[]
+  defined: boolean
+}
+
+export interface DeliveredTonnage {
+  id: number
+  line: { id: number; name: string; factory: { id: number; name: string } }
+  contractor: ContractorOpt | null
+  date: string
+  date_jalali?: string
+  hour: string
+  inputs: Record<string, number | string>
+  outputs: Record<string, number>
+  note: string
+  created_by: number | null
+  created_at: string
+}
+
+export interface DeliveredTonnagePayload {
+  line_id: number
+  contractor_id?: number | null
+  date: string
+  hour: string
+  inputs: Record<string, number | string>
+  note?: string
+}
+
+export interface DeliveredTonnageFilters {
+  line?: number
+  lines?: string
+  contractor?: number
+  date?: string
   date_from?: string
   date_to?: string
 }

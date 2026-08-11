@@ -31,6 +31,14 @@ from .views import (
     factory_analysis_output_detail_view,
     factory_analysis_schema_view,
     formula_validate_factory_view,
+    DeliveredTonnageViewSet,
+    tonnage_definition_view,
+    tonnage_inputs_view,
+    tonnage_input_detail_view,
+    tonnage_outputs_view,
+    tonnage_output_detail_view,
+    tonnage_schema_view,
+    formula_validate_tonnage_view,
 )
 
 router = DefaultRouter()
@@ -49,6 +57,9 @@ router.register(
     basename="analysis-type-definitions",
 )
 router.register(r"actual-analyses", ActualAnalysisViewSet, basename="actual-analyses")
+router.register(
+    r"delivered-tonnages", DeliveredTonnageViewSet, basename="delivered-tonnages"
+)
 
 urlpatterns = [
     path("api/", include(router.urls)),
@@ -155,5 +166,41 @@ urlpatterns = [
         "api/production-lines/<int:line_id>/outputs/<int:pk>/",
         line_output_detail_view,
         name="line-output-detail",
+    ),
+    # ── تناژ تحویلی خطوط تولید ──
+    path(
+        "api/tonnage/definition/schema/",
+        tonnage_schema_view,
+        name="tonnage-schema",
+    ),
+    path(
+        "api/production-lines/<int:line_id>/tonnage-definition/",
+        tonnage_definition_view,
+        name="tonnage-definition",
+    ),
+    path(
+        "api/production-lines/<int:line_id>/tonnage-definition/inputs/",
+        tonnage_inputs_view,
+        name="tonnage-inputs",
+    ),
+    path(
+        "api/production-lines/<int:line_id>/tonnage-definition/inputs/<int:pk>/",
+        tonnage_input_detail_view,
+        name="tonnage-input-detail",
+    ),
+    path(
+        "api/production-lines/<int:line_id>/tonnage-definition/outputs/",
+        tonnage_outputs_view,
+        name="tonnage-outputs",
+    ),
+    path(
+        "api/production-lines/<int:line_id>/tonnage-definition/outputs/<int:pk>/",
+        tonnage_output_detail_view,
+        name="tonnage-output-detail",
+    ),
+    path(
+        "api/formula/validate-tonnage/",
+        formula_validate_tonnage_view,
+        name="formula-validate-tonnage",
     ),
 ]

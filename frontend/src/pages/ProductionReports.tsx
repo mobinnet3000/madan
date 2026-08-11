@@ -1,12 +1,18 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Plus, Pencil, Trash2, X, Filter, FlaskConical, Loader2, AlertTriangle } from 'lucide-react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { Plus, Pencil, Trash2, X, Filter, FlaskConical, Loader2, AlertTriangle, Save, Settings2, ListChecks } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
+import { useAuth } from '../store/AuthContext'
 import { useToast } from '../components/ui/Toast'
+import { hasPerm } from '../constants'
 import {
   getProductionReports, createProductionReport, updateProductionReport, deleteProductionReport,
-  getFactoryAnalysisSchema,
+  getFactoryAnalysisSchema, getFactoryAnalysisDefinition, saveFactoryAnalysisDefinition,
+  deleteFactoryAnalysisDefinition, validateFactoryFormula,
 } from '../api/production'
-import type { ProductionReport, ProductionReportFilters, ProductionReportPayload, FactoryAnalysisSchema } from '../types'
+import type {
+  ProductionReport, ProductionReportFilters, ProductionReportPayload, FactoryAnalysisSchema,
+  FactoryAnalysisInputDef, FactoryAnalysisOutputDef,
+} from '../types'
 import { Loading, EmptyState, ErrorBanner, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
@@ -26,7 +32,7 @@ const emptyForm: FormState = {
   line: '', contractor: '', date_from: todayISO(), date_to: todayISO(), note: '', values: {},
 }
 
-function FactoryForm({ form, setForm, editing }: { form: FormState; setForm: (f: FormState) => void; editing: ProductionReport | null }) {
+function FactoryForm({ form, setForm, editing }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>>; editing: ProductionReport | null }) {
   const { selectedFactory } = useFactory()
   const [schema, setSchema] = useState<FactoryAnalysisSchema | null>(null)
   const [loadingSchema, setLoadingSchema] = useState(false)
@@ -126,7 +132,7 @@ function FactoryForm({ form, setForm, editing }: { form: FormState; setForm: (f:
                   step={inp.type === 'number' ? 'any' : undefined}
                   className="input"
                   value={form.values[inp.key] ?? ''}
-                  onChange={(e) => set('values', { ...form.values, [inp.key]: e.target.value })}
+                  onChange={(e) => setForm((prev) => ({ ...prev, values: { ...prev.values, [inp.key]: e.target.value } }))}
                   placeholder={inp.type === 'number' ? 'عدد...' : 'متن...'}
                 />
               </div>
@@ -154,10 +160,305 @@ function FactoryForm({ form, setForm, editing }: { form: FormState; setForm: (f:
   )
 }
 
+const emptyInput = (order: number): FactoryAnalysisInputDef => ({ key: '', name: '', input_type: 'number', unit: '', required: true, order })
+const emptyOutput = (order: number): FactoryAnalysisOutputDef => ({ key: '', name: '', unit: '', formula: '', order })
+
+function FactoryDefinitionPanel() {
+  const { selectedFactory } = useFactory()
+  const { user } = useAuth()
+  const { notify } = useToast()
+  const canEdit = hasPerm(user?.permissions, 'analysis.manage')
+
+  const [step, setStep] = useState<1 | 2>(1)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [description, setDescription] = useState('')
+  const [inputs, setInputs] = useState<FactoryAnalysisInputDef[]>([])
+  const [outputs, setOutputs] = useState<FactoryAnalysisOutputDef[]>([])
+  const [defined, setDefined] = useState(false)
+  const [checks, setChecks] = useState<Record<string, { ok: boolean; errors: string[] }>>({})
+  const [checking, setChecking] = useState<Record<string, boolean>>({})
+  const [focusIdx, setFocusIdx] = useState<number | null>(null)
+  const formulaRefs = useRef<Record<number, HTMLTextAreaElement | null>>({})
+
+  const factoryId = selectedFactory?.id
+
+  const load = useCallback(async () => {
+    if (!factoryId) { setLoading(false); return }
+    setLoading(true)
+    setChecks({})
+    try {
+      const def = await getFactoryAnalysisDefinition(factoryId)
+      if (def) {
+        setDescription(def.description)
+        setInputs(def.inputs.map((i) => ({ ...i })))
+        setOutputs(def.outputs.map((o) => ({ ...o })))
+        setDefined(true)
+      } else {
+        setDescription('')
+        setInputs([emptyInput(0)])
+        setOutputs([emptyOutput(0)])
+        setDefined(false)
+      }
+    } catch (e: any) {
+      notify(e.message || 'خطا در دریافت تعریف آنالیز کارخانه', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [factoryId, notify])
+
+  useEffect(() => { load() }, [load])
+
+  const setInput = (idx: number, patch: Partial<FactoryAnalysisInputDef>) =>
+    setInputs((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
+  const setOutput = (idx: number, patch: Partial<FactoryAnalysisOutputDef>) =>
+    setOutputs((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
+
+  const variables = useMemo(() => {
+    const vars: { var: string; label: string }[] = []
+    inputs.forEach((i) => { if (i.key.trim()) vars.push({ var: i.key.trim(), label: i.name || i.key }) })
+    outputs.forEach((o) => { if (o.key.trim()) vars.push({ var: o.key.trim(), label: o.name || o.key }) })
+    return vars
+  }, [inputs, outputs])
+
+  const insertVar = (v: string) => {
+    if (focusIdx == null) return
+    const ta = formulaRefs.current[focusIdx]
+    if (!ta) return
+    const start = ta.selectionStart ?? ta.value.length
+    const end = ta.selectionEnd ?? ta.value.length
+    const next = ta.value.slice(0, start) + v + ta.value.slice(end)
+    setOutput(focusIdx, { formula: next })
+    requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(start + v.length, start + v.length) })
+  }
+
+  const checkFormula = async (idx: number) => {
+    const o = outputs[idx]
+    if (!factoryId) return
+    if (!o.formula.trim()) { notify('فرمول خالی است', 'error'); return }
+    setChecking((p) => ({ ...p, [idx]: true }))
+    try {
+      const res = await validateFactoryFormula(factoryId, o.formula)
+      setChecks((p) => ({ ...p, [idx]: res }))
+    } catch (e: any) { notify(e.message || 'خطا در اعتبارسنجی', 'error') }
+    finally { setChecking((p) => ({ ...p, [idx]: false })) }
+  }
+
+  const save = async () => {
+    if (!factoryId) return
+    const cleanInputs = inputs.filter((i) => i.key.trim() || i.name.trim())
+    const cleanOutputs = outputs.filter((o) => o.key.trim() || o.name.trim())
+    const seen = new Set<string>()
+    for (const i of cleanInputs) {
+      if (!i.key.trim()) { notify('همه ورودیها باید کلید (key) داشته باشند', 'error'); return }
+      if (seen.has(i.key)) { notify(`کلید ورودی تکراری «${i.key}»`, 'error'); return }
+      seen.add(i.key)
+    }
+    seen.clear()
+    for (const o of cleanOutputs) {
+      if (!o.key.trim()) { notify('همه خروجیها باید کلید (key) داشته باشند', 'error'); return }
+      if (seen.has(o.key)) { notify(`کلید خروجی تکراری «${o.key}»`, 'error'); return }
+      seen.add(o.key)
+      if (!o.formula.trim()) { notify(`فرمول خروجی «${o.key}» خالی است`, 'error'); return }
+    }
+    setSaving(true)
+    try {
+      await saveFactoryAnalysisDefinition(factoryId, { description, inputs: cleanInputs, outputs: cleanOutputs })
+      notify('تعریف آنالیز کارخانه ذخیره شد')
+      setDefined(true)
+    } catch (e: any) { notify(e.message || 'خطا در ذخیره تعریف', 'error') }
+    finally { setSaving(false) }
+  }
+
+  const removeDefinition = async () => {
+    if (!factoryId || !window.confirm('تعریف آنالیز کارخانه حذف شود؟')) return
+    setSaving(true)
+    try {
+      await deleteFactoryAnalysisDefinition(factoryId)
+      notify('تعریف حذف شد')
+      setDescription('')
+      setInputs([emptyInput(0)])
+      setOutputs([emptyOutput(0)])
+      setDefined(false)
+      setStep(1)
+    } catch (e: any) { notify(e.message || 'خطا در حذف', 'error') }
+    finally { setSaving(false) }
+  }
+
+  if (!factoryId) {
+    return (
+      <div className="card p-6 text-center text-sm text-ink-500 dark:text-slate-400">
+        ابتدا یک کارخانه را از نوار بالا انتخاب کنید تا ورودیها و خروجیهای آن را تعریف کنید.
+      </div>
+    )
+  }
+
+  return (
+    <div className="card p-4">
+      <div className="mb-1 text-sm font-bold text-ink-700 dark:text-slate-200">
+        تعریف آنالیز کارخانه: {selectedFactory.name}
+      </div>
+      {!canEdit && (
+        <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          شما دسترسی مدیریت تعریفها (analysis.manage) را ندارید — فقط مشاهده.
+        </div>
+      )}
+
+      <div className="mt-3 flex gap-1.5">
+        {([1, 2] as const).map((s) => (
+          <button key={s} type="button" onClick={() => setStep(s)}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${step === s ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-900/50' : 'bg-ink-50 text-ink-500 dark:bg-slate-800/60 dark:text-slate-400'}`}>
+            {s === 1 ? '۱. ورودیها' : '۲. خروجیها و فرمولها'}
+          </button>
+        ))}
+      </div>
+
+      {defined && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-emerald-600 dark:text-emerald-400">
+            تعریف ثبت شده است ({inputs.filter((i) => i.key).length} ورودی، {outputs.filter((o) => o.key).length} خروجی)
+          </span>
+          {canEdit && (
+            <button className="btn-ghost !h-8 !px-2 text-xs" onClick={removeDefinition} disabled={saving}>
+              <Trash2 className="h-3.5 w-3.5" /> حذف تعریف
+            </button>
+          )}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-8"><TableSkeleton columns={3} /></div>
+      ) : step === 1 ? (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="label">توضیحات تعریف (اختیاری)</label>
+            <textarea className="input min-h-[60px]" disabled={!canEdit} value={description}
+              onChange={(e) => setDescription(e.target.value)} placeholder="مثلاً: آنالیز خطوط فرآوری کارخانه" />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ink-600 dark:text-slate-300">ورودیهای کارخانه (متغیرهای فرمول)</span>
+            {canEdit && (
+              <button className="btn-ghost !h-8 !px-2 text-xs" onClick={() => setInputs((p) => [...p, emptyInput(p.length)])}>
+                <Plus className="h-3.5 w-3.5" /> افزودن ورودی
+              </button>
+            )}
+          </div>
+          {inputs.length === 0 && (
+            <div className="rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-400 dark:bg-slate-800/60 dark:text-slate-500">ورودیای تعریف نشده است.</div>
+          )}
+          <div className="space-y-2">
+            {inputs.map((inp, idx) => (
+              <div key={idx} className="flex flex-wrap items-center gap-2 rounded-xl border border-ink-100 p-2 dark:border-slate-700">
+                <input className="input !h-9 w-32 !py-0" disabled={!canEdit} placeholder="کلید (key)" value={inp.key}
+                  onChange={(e) => setInput(idx, { key: e.target.value.replace(/\s+/g, '_') })} />
+                <input className="input !h-9 w-40 !py-0" disabled={!canEdit} placeholder="نام نمایشی" value={inp.name}
+                  onChange={(e) => setInput(idx, { name: e.target.value })} />
+                <select className="input !h-9 w-28 !py-0" disabled={!canEdit} value={inp.input_type}
+                  onChange={(e) => setInput(idx, { input_type: e.target.value as 'number' | 'text' })}>
+                  <option value="number">عدد</option>
+                  <option value="text">متن</option>
+                </select>
+                <input className="input !h-9 w-24 !py-0" disabled={!canEdit} placeholder="واحد" value={inp.unit}
+                  onChange={(e) => setInput(idx, { unit: e.target.value })} />
+                <label className="flex items-center gap-1 text-xs text-ink-500 dark:text-slate-400">
+                  <input type="checkbox" disabled={!canEdit} checked={inp.required} onChange={(e) => setInput(idx, { required: e.target.checked })} /> الزامی
+                </label>
+                <input type="number" className="input !h-9 w-16 !py-0" disabled={!canEdit} title="ترتیب" value={inp.order}
+                  onChange={(e) => setInput(idx, { order: Number(e.target.value) })} />
+                {canEdit && (
+                  <button className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
+                    onClick={() => setInputs((p) => p.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <button className="btn-primary" onClick={() => setStep(2)} disabled={!canEdit}>مرحله بعد: خروجیها و فرمولها</button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ink-600 dark:text-slate-300">خروجیهای محاسبهشده (با فرمول)</span>
+            {canEdit && (
+              <button className="btn-ghost !h-8 !px-2 text-xs" onClick={() => { setOutputs((p) => [...p, emptyOutput(p.length)]) }}>
+                <Plus className="h-3.5 w-3.5" /> افزودن خروجی
+              </button>
+            )}
+          </div>
+          {outputs.length === 0 && (
+            <div className="rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-400 dark:bg-slate-800/60 dark:text-slate-500">خروجیای تعریف نشده است.</div>
+          )}
+          <div className="space-y-2">
+            {outputs.map((out, idx) => (
+              <div key={idx} className="rounded-xl border border-ink-100 p-2 dark:border-slate-700">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input className="input !h-9 w-32 !py-0" disabled={!canEdit} placeholder="کلید (key)" value={out.key}
+                    onChange={(e) => setOutput(idx, { key: e.target.value.replace(/\s+/g, '_') })} />
+                  <input className="input !h-9 w-40 !py-0" disabled={!canEdit} placeholder="نام نمایشی" value={out.name}
+                    onChange={(e) => setOutput(idx, { name: e.target.value })} />
+                  <input className="input !h-9 w-24 !py-0" disabled={!canEdit} placeholder="واحد" value={out.unit}
+                    onChange={(e) => setOutput(idx, { unit: e.target.value })} />
+                  <input type="number" className="input !h-9 w-16 !py-0" disabled={!canEdit} title="ترتیب" value={out.order}
+                    onChange={(e) => setOutput(idx, { order: Number(e.target.value) })} />
+                  {canEdit && (
+                    <button className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
+                      onClick={() => { setOutputs((p) => p.filter((_, i) => i !== idx)); setChecks((p) => { const n = { ...p }; delete n[idx]; return n }) }}>
+                      <Trash2 className="h-4 w-4" /></button>
+                  )}
+                </div>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <textarea
+                    ref={(el) => { formulaRefs.current[idx] = el }}
+                    className="input min-h-[80px] flex-1 font-mono text-xs leading-relaxed"
+                    dir="ltr" rows={3} disabled={!canEdit}
+                    value={out.formula}
+                    onFocus={() => setFocusIdx(idx)}
+                    onChange={(e) => setOutput(idx, { formula: e.target.value })}
+                    placeholder="مثال: (feed - tail) / (product - tail) * 100"
+                  />
+                  {canEdit && (
+                    <div className="w-full shrink-0 sm:w-56">
+                      <button className="btn-ghost !h-8 w-full !px-2 text-xs" onClick={() => checkFormula(idx)} disabled={checking[idx]}>
+                        {checking[idx] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'اعتبارسنجی فرمول'}
+                      </button>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {variables.map((v) => (
+                          <button key={v.var} type="button" className="chip" onClick={() => insertVar(v.var)} title={`افزودن ${v.var}`}>
+                            {v.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-1 text-[10px] text-ink-400 dark:text-slate-500">کلیک روی چیپ = افزودن متغیر به فرمول</div>
+                    </div>
+                  )}
+                </div>
+                {checks[idx] && (
+                  <div className={`mt-1.5 rounded-lg px-3 py-1.5 text-xs ${checks[idx].ok ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'}`}>
+                    {checks[idx].ok ? 'فرمول معتبر است' : checks[idx].errors.join(' · ')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button className="btn-ghost" onClick={() => setStep(1)} disabled={saving}>مرحله قبل: ورودیها</button>
+            <button className="btn-primary" onClick={save} disabled={saving || !canEdit}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} ذخیره تعریف
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ProductionReports() {
   const { selectedFactory } = useFactory()
   const { notify } = useToast()
 
+  const [tab, setTab] = useState<'records' | 'definition'>('records')
   const [items, setItems] = useState<ProductionReport[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -251,9 +552,28 @@ export default function ProductionReports() {
             ثبت آنالیز داینامیک خطوط تولید بر اساس ورودی/خروجیهای تعریفشده برای کارخانه
           </p>
         </div>
-        <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت آنالیز جدید</button>
+        {tab === 'records' && <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت آنالیز جدید</button>}
       </div>
 
+      <div className="flex gap-1 rounded-xl bg-ink-100/60 p-1 dark:bg-slate-800">
+        <button
+          onClick={() => setTab('records')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'records' ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400' : 'text-ink-500 dark:text-slate-400'}`}
+        >
+          <ListChecks className="h-4 w-4" /> ثبت / مدیریت آنالیزها
+        </button>
+        <button
+          onClick={() => setTab('definition')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'definition' ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400' : 'text-ink-500 dark:text-slate-400'}`}
+        >
+          <Settings2 className="h-4 w-4" /> تعریف ورودیها / خروجیها
+        </button>
+      </div>
+
+      {tab === 'definition' ? (
+        <FactoryDefinitionPanel />
+      ) : (
+        <>
       {error && <ErrorBanner message={error} onRetry={load} />}
 
       <div className="card flex flex-wrap items-end gap-3 p-4">
@@ -344,6 +664,8 @@ export default function ProductionReports() {
         footer={<><button className="btn-ghost" onClick={() => setConfirmId(null)}>انصراف</button><button className="btn-danger" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> حذف قطعی</button></>}>
         <p className="text-sm text-ink-700 dark:text-slate-300">آیا از حذف این آنالیز خط اطمینان دارید؟</p>
       </Modal>
+        </>
+      )}
     </div>
   )
 }

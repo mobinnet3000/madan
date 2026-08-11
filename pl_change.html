@@ -1,0 +1,1862 @@
+<!DOCTYPE html>
+
+<html lang="fa" dir="rtl">
+<head>
+<title>Line1 (TestFac) | تغییر خط تولید | مدیریت</title>
+<link rel="stylesheet" href="/static/admin/css/base.css">
+
+  <link rel="stylesheet" href="/static/admin/css/dark_mode.css">
+  <script src="/static/admin/js/theme.js"></script>
+
+
+  <link rel="stylesheet" href="/static/admin/css/nav_sidebar.css">
+  <script src="/static/admin/js/nav_sidebar.js" defer></script>
+
+<link rel="stylesheet" href="/static/admin/css/forms.css">
+<link rel="stylesheet" href="/static/admin/css/rtl.css">
+
+<script src="/admin/jsi18n/"></script>
+<script src="/static/admin/js/vendor/jquery/jquery.js"></script>
+<script src="/static/admin/js/calendar.js"></script>
+<script src="/static/admin/js/jquery.init.js"></script>
+<script src="/static/admin/js/admin/DateTimeShortcuts.js"></script>
+<script src="/static/admin/js/core.js"></script>
+<script src="/static/admin/js/inlines.js"></script>
+<script src="/static/admin/js/admin/RelatedObjectLookups.js"></script>
+<script src="/static/admin/js/actions.js"></script>
+<script src="/static/admin/js/urlify.js"></script>
+<script src="/static/admin/js/prepopulate.js"></script>
+<script src="/static/admin/js/vendor/xregexp/xregexp.js"></script>
+
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/admin/css/responsive.css">
+    <link rel="stylesheet" href="/static/admin/css/responsive_rtl.css">
+
+<meta name="robots" content="NONE,NOARCHIVE">
+</head>
+
+<body class=" app-machines model-productionline change-form"
+  data-admin-utc-offset="12600">
+<a href="#content-start" class="skip-to-content-link">انتقال به محتوای اصلی</a>
+<!-- Container -->
+<div id="container">
+
+    
+    <!-- Header -->
+    
+      <header id="header">
+        <div id="branding">
+        
+<div id="site-name"><a href="/admin/">پنل مدیریت — خط فرآوری معدن</a></div>
+
+
+        </div>
+        
+        
+        <div id="user-tools">
+            
+                خوش آمدید،
+                <strong>admin</strong>.
+            
+            
+                
+                    <a href="/">نمایش وبگاه</a> /
+                
+                
+                    
+                    
+                
+                
+                <a href="/admin/password_change/">تغییر گذرواژه</a> /
+                
+                <form id="logout-form" method="post" action="/admin/logout/">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="lk7SViKparOLY7xYcLorbucYMvaDdG9Lv7u12b0pcUZ6siCR3yUEEvoUL6MsWZB3">
+                    <button type="submit">خروج</button>
+                </form>
+                
+<button class="theme-toggle">
+  <span class="visually-hidden theme-label-when-auto">تغییر رنگ پوسته (حالت کنونی: خودکار)</span>
+  <span class="visually-hidden theme-label-when-light">تغییر رنگ پوسته (حالت کنونی: روشن)</span>
+  <span class="visually-hidden theme-label-when-dark">تغییر رنگ پوسته (حالت کنونی: تیره)</span>
+  <svg aria-hidden="true" class="theme-icon-when-auto">
+    <use xlink:href="#icon-auto" />
+  </svg>
+  <svg aria-hidden="true" class="theme-icon-when-dark">
+    <use xlink:href="#icon-moon" />
+  </svg>
+  <svg aria-hidden="true" class="theme-icon-when-light">
+    <use xlink:href="#icon-sun" />
+  </svg>
+</button>
+
+            
+        </div>
+        
+        
+        
+      </header>
+    
+    <!-- END Header -->
+    
+      <nav aria-label="Breadcrumbs">
+        
+<div class="breadcrumbs">
+<a href="/admin/">شروع</a>
+&rsaquo; <a href="/admin/machines/">Machines</a>
+&rsaquo; <a href="/admin/machines/productionline/">خطوط تولید</a>
+&rsaquo; Line1 (TestFac)
+</div>
+
+      </nav>
+    
+    
+
+    <div class="main" id="main">
+      
+        
+          
+<button class="sticky toggle-nav-sidebar" id="toggle-nav-sidebar" aria-label="تعویض جهت یابی"></button>
+<nav class="sticky" id="nav-sidebar" aria-label="ستون کناری">
+  <input type="search" id="nav-filter"
+         placeholder="آغار به کار نوشتن برای فیلترکردن ..."
+         aria-label="فیلتر کردن آیتم های مسیریابی">
+  
+
+
+  
+    <div class="app-accounts module">
+      <table>
+        <caption>
+          <a href="/admin/accounts/" class="section" title="مدلها در برنامه Accounts ">Accounts</a>
+        </caption>
+        <thead class="visually-hidden">
+          <tr>
+            <th scope="col">Model name</th>
+            <th scope="col">اضافه‌کردن پیوند</th>
+            <th scope="col">تغییر یا مشاهده لیست پیوند</th>
+          </tr>
+        </thead>
+        
+          
+            <tr class="model-rolepermissionconfig">
+              <th scope="row" id="accounts-rolepermissionconfig">
+                
+                  <a href="/admin/accounts/rolepermissionconfig/">دسترسی‌های نقش‌ها</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/accounts/rolepermissionconfig/add/" class="addlink" aria-describedby="accounts-rolepermissionconfig">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-activitylog">
+              <th scope="row" id="accounts-activitylog">
+                
+                  <a href="/admin/accounts/activitylog/">لاگ‌های فعالیت</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/accounts/activitylog/add/" class="addlink" aria-describedby="accounts-activitylog">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-userprofile">
+              <th scope="row" id="accounts-userprofile">
+                
+                  <a href="/admin/accounts/userprofile/">پروفایل‌های کاربران</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/accounts/userprofile/add/" class="addlink" aria-describedby="accounts-userprofile">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+      </table>
+    </div>
+  
+    <div class="app-machines module current-app">
+      <table>
+        <caption>
+          <a href="/admin/machines/" class="section" title="مدلها در برنامه Machines ">Machines</a>
+        </caption>
+        <thead class="visually-hidden">
+          <tr>
+            <th scope="col">Model name</th>
+            <th scope="col">اضافه‌کردن پیوند</th>
+            <th scope="col">تغییر یا مشاهده لیست پیوند</th>
+          </tr>
+        </thead>
+        
+          
+            <tr class="model-productionreport">
+              <th scope="row" id="machines-productionreport">
+                
+                  <a href="/admin/machines/productionreport/">آنالیز خطوط تولید</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/productionreport/add/" class="addlink" aria-describedby="machines-productionreport">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-devicedailyanalysis">
+              <th scope="row" id="machines-devicedailyanalysis">
+                
+                  <a href="/admin/machines/devicedailyanalysis/">آنالیزهای روزانه دستگاه</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/devicedailyanalysis/add/" class="addlink" aria-describedby="machines-devicedailyanalysis">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-actualanalysis">
+              <th scope="row" id="machines-actualanalysis">
+                
+                  <a href="/admin/machines/actualanalysis/">آنالیزهای واقعی</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/actualanalysis/add/" class="addlink" aria-describedby="machines-actualanalysis">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-productionlinetemplate">
+              <th scope="row" id="machines-productionlinetemplate">
+                
+                  <a href="/admin/machines/productionlinetemplate/">الگوهای خط تولید</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/productionlinetemplate/add/" class="addlink" aria-describedby="machines-productionlinetemplate">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-devicetemplate">
+              <th scope="row" id="machines-devicetemplate">
+                
+                  <a href="/admin/machines/devicetemplate/">الگوهای دستگاه</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/devicetemplate/add/" class="addlink" aria-describedby="machines-devicetemplate">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-lineanalysisdefinition">
+              <th scope="row" id="machines-lineanalysisdefinition">
+                
+                  <a href="/admin/machines/lineanalysisdefinition/">تعریف‌های آنالیز خط</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/lineanalysisdefinition/add/" class="addlink" aria-describedby="machines-lineanalysisdefinition">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-factoryanalysisdefinition">
+              <th scope="row" id="machines-factoryanalysisdefinition">
+                
+                  <a href="/admin/machines/factoryanalysisdefinition/">تعریف‌های آنالیز کارخانه</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/factoryanalysisdefinition/add/" class="addlink" aria-describedby="machines-factoryanalysisdefinition">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-deliveredtonnagedefinition">
+              <th scope="row" id="machines-deliveredtonnagedefinition">
+                
+                  <a href="/admin/machines/deliveredtonnagedefinition/">تعریف‌های تناژ تحویلی خط</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/deliveredtonnagedefinition/add/" class="addlink" aria-describedby="machines-deliveredtonnagedefinition">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-analysistypedefinition">
+              <th scope="row" id="machines-analysistypedefinition">
+                
+                  <a href="/admin/machines/analysistypedefinition/">تعریف‌های نوع آنالیز</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/analysistypedefinition/add/" class="addlink" aria-describedby="machines-analysistypedefinition">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-deliveredtonnage">
+              <th scope="row" id="machines-deliveredtonnage">
+                
+                  <a href="/admin/machines/deliveredtonnage/">ثبت‌های تناژ تحویلی</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/deliveredtonnage/add/" class="addlink" aria-describedby="machines-deliveredtonnage">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-productionline current-model">
+              <th scope="row" id="machines-productionline">
+                
+                  <a href="/admin/machines/productionline/" aria-current="page">خطوط تولید</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/productionline/add/" class="addlink" aria-describedby="machines-productionline">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-device">
+              <th scope="row" id="machines-device">
+                
+                  <a href="/admin/machines/device/">دستگاه‌ها</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/device/add/" class="addlink" aria-describedby="machines-device">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-shift">
+              <th scope="row" id="machines-shift">
+                
+                  <a href="/admin/machines/shift/">شیفت‌های کاری</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/shift/add/" class="addlink" aria-describedby="machines-shift">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-failurereason">
+              <th scope="row" id="machines-failurereason">
+                
+                  <a href="/admin/machines/failurereason/">لیست علل خرابی</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/failurereason/add/" class="addlink" aria-describedby="machines-failurereason">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-analysisposition">
+              <th scope="row" id="machines-analysisposition">
+                
+                  <a href="/admin/machines/analysisposition/">موقعیت‌های آنالیز خط</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/analysisposition/add/" class="addlink" aria-describedby="machines-analysisposition">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-attribute">
+              <th scope="row" id="machines-attribute">
+                
+                  <a href="/admin/machines/attribute/">ویژگی‌های فنی</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/attribute/add/" class="addlink" aria-describedby="machines-attribute">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-productionlineattribute">
+              <th scope="row" id="machines-productionlineattribute">
+                
+                  <a href="/admin/machines/productionlineattribute/">ویژگی‌های فنی خط تولید</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/productionlineattribute/add/" class="addlink" aria-describedby="machines-productionlineattribute">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-contractor">
+              <th scope="row" id="machines-contractor">
+                
+                  <a href="/admin/machines/contractor/">پیمانکاران</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/contractor/add/" class="addlink" aria-describedby="machines-contractor">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-factory">
+              <th scope="row" id="machines-factory">
+                
+                  <a href="/admin/machines/factory/">کارخانه‌ها</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/factory/add/" class="addlink" aria-describedby="machines-factory">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-devicelog">
+              <th scope="row" id="machines-devicelog">
+                
+                  <a href="/admin/machines/devicelog/">گزارشات عملکرد روزانه</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/machines/devicelog/add/" class="addlink" aria-describedby="machines-devicelog">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+      </table>
+    </div>
+  
+    <div class="app-auth module">
+      <table>
+        <caption>
+          <a href="/admin/auth/" class="section" title="مدلها در برنامه بررسی اصالت و اجازه‌ها ">بررسی اصالت و اجازه‌ها</a>
+        </caption>
+        <thead class="visually-hidden">
+          <tr>
+            <th scope="col">Model name</th>
+            <th scope="col">اضافه‌کردن پیوند</th>
+            <th scope="col">تغییر یا مشاهده لیست پیوند</th>
+          </tr>
+        </thead>
+        
+          
+            <tr class="model-user">
+              <th scope="row" id="auth-user">
+                
+                  <a href="/admin/auth/user/">کاربرها</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/auth/user/add/" class="addlink" aria-describedby="auth-user">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+          
+            <tr class="model-group">
+              <th scope="row" id="auth-group">
+                
+                  <a href="/admin/auth/group/">گروه‌ها</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/auth/group/add/" class="addlink" aria-describedby="auth-group">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+      </table>
+    </div>
+  
+    <div class="app-authtoken module">
+      <table>
+        <caption>
+          <a href="/admin/authtoken/" class="section" title="مدلها در برنامه توکن اعتبار‌سنجی ">توکن اعتبار‌سنجی</a>
+        </caption>
+        <thead class="visually-hidden">
+          <tr>
+            <th scope="col">Model name</th>
+            <th scope="col">اضافه‌کردن پیوند</th>
+            <th scope="col">تغییر یا مشاهده لیست پیوند</th>
+          </tr>
+        </thead>
+        
+          
+            <tr class="model-tokenproxy">
+              <th scope="row" id="authtoken-tokenproxy">
+                
+                  <a href="/admin/authtoken/tokenproxy/">توکن‌ها</a>
+                
+              </th>
+
+              
+                <td><a href="/admin/authtoken/tokenproxy/add/" class="addlink" aria-describedby="authtoken-tokenproxy">اضافه کردن</a></td>
+              
+
+              
+            </tr>
+          
+        
+      </table>
+    </div>
+  
+
+
+</nav>
+
+        
+      
+      <main id="content-start" class="content" tabindex="-1">
+        
+          
+        
+        <!-- Content -->
+        <div id="content" class="colM">
+          
+          <h1>تغییر خط تولید</h1>
+          <h2>Line1 (TestFac)</h2>
+          <div id="content-main">
+
+
+  <ul class="object-tools">
+    
+      
+
+<li>
+    
+    <a href="/admin/machines/productionline/91/history/" class="historylink">تاریخچه</a>
+</li>
+
+
+
+    
+  </ul>
+
+
+<form method="post" id="productionline_form" novalidate><input type="hidden" name="csrfmiddlewaretoken" value="lk7SViKparOLY7xYcLorbucYMvaDdG9Lv7u12b0pcUZ6siCR3yUEEvoUL6MsWZB3">
+<div>
+
+
+
+
+
+
+
+  <fieldset class="module aligned ">
+    
+    
+    
+        <div class="form-row field-factory">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label class="required" for="id_factory">کارخانه مربوطه:</label>
+                                
+                                    <div class="related-widget-wrapper" data-model-ref="factory">
+    <select name="factory" data-context="available-source" required id="id_factory">
+  <option value="">---------</option>
+
+  <option value="33">مجتمع معدنی سنگ‌آهن مرکزی</option>
+
+  <option value="34">کارخانه فرآوری مس سرچشمه</option>
+
+  <option value="35">کارخانه کنسانتره زغال‌سنگ</option>
+
+  <option value="36">کارخانه فلوتاسیون سرب و روی</option>
+
+  <option value="37" selected>TestFac</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_factory"
+            data-href-template="/admin/machines/factory/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن کارخانه انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_factory"
+            data-popup="yes"
+            href="/admin/machines/factory/add/?_to_field=id&amp;_popup=1"
+            title="افزدون کارخانه دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_factory"
+             data-href-template="/admin/machines/factory/__fk__/change/?_to_field=id"
+             title="نمایش کارخانههای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+                                
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+        <div class="form-row field-template">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label class="required" for="id_template">الگوی خط:</label>
+                                
+                                    <div class="related-widget-wrapper" data-model-ref="productionlinetemplate">
+    <select name="template" data-context="available-source" required id="id_template">
+  <option value="">---------</option>
+
+  <option value="17">الگوی خط خردایش</option>
+
+  <option value="18">الگوی خط فرآوری</option>
+
+  <option value="19" selected>TPL</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_template"
+            data-href-template="/admin/machines/productionlinetemplate/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن الگوی خط تولید انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_template"
+            data-popup="yes"
+            href="/admin/machines/productionlinetemplate/add/?_to_field=id&amp;_popup=1"
+            title="افزدون الگوی خط تولید دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_template"
+            data-href-template="/admin/machines/productionlinetemplate/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن الگوی خط تولید انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_template"
+             data-href-template="/admin/machines/productionlinetemplate/__fk__/change/?_to_field=id"
+             title="نمایش الگوی خط تولیدهای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+                                
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+        <div class="form-row field-name">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label class="required" for="id_name">نام خط تولید:</label>
+                                
+                                    <input type="text" name="name" value="Line1" class="vTextField" maxlength="255" required id="id_name">
+                                
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+        <div class="form-row field-description">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label for="id_description">توضیحات خط تولید:</label>
+                                
+                                    <textarea name="description" cols="40" rows="10" class="vLargeTextField" id="id_description">
+</textarea>
+                                
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+        <div class="form-row hidden field-attributes_values">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label for="id_attributes_values">مقادیر ویژگی‌های فنی خط:</label>
+                                
+                                    <input type="hidden" name="attributes_values" value="{}" id="id_attributes_values"><input type="hidden" name="initial-attributes_values" value="{}" id="initial-id_attributes_values">
+                                
+                            
+                        </div>
+                    
+                        <div class="help hidden" id="id_attributes_values_helptext">
+                            <div>مثال: {"ظرفیت": 1500, "طول": 75}</div>
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+    
+</fieldset>
+
+
+
+
+
+
+
+
+    
+<div class="js-inline-admin-formset inline-group"
+     id="analysis_definition-group"
+     data-inline-type="stacked"
+     data-inline-formset="{&quot;name&quot;: &quot;#analysis_definition&quot;, &quot;options&quot;: {&quot;prefix&quot;: &quot;analysis_definition&quot;, &quot;addText&quot;: &quot;\u0627\u0641\u0632\u0648\u062f\u0646 \u06cc\u06a9 \u062a\u0639\u0631\u06cc\u0641 \u0622\u0646\u0627\u0644\u06cc\u0632 \u062e\u0637 \u062f\u06cc\u06af\u0631&quot;, &quot;deleteText&quot;: &quot;\u062d\u0630\u0641&quot;}}">
+<fieldset class="module " aria-labelledby="analysis_definition-heading">
+  
+  <h2 id="analysis_definition-heading" class="inline-heading">
+  
+    تعریف آنالیز خط
+  
+  </h2>
+  
+<input type="hidden" name="analysis_definition-TOTAL_FORMS" value="0" id="id_analysis_definition-TOTAL_FORMS"><input type="hidden" name="analysis_definition-INITIAL_FORMS" value="0" id="id_analysis_definition-INITIAL_FORMS"><input type="hidden" name="analysis_definition-MIN_NUM_FORMS" value="0" id="id_analysis_definition-MIN_NUM_FORMS"><input type="hidden" name="analysis_definition-MAX_NUM_FORMS" value="1" id="id_analysis_definition-MAX_NUM_FORMS">
+
+
+<div class="inline-related empty-form last-related" id="analysis_definition-empty">
+  <h3><b>تعریف آنالیز خط:</b> <span class="inline_label">#1</span>
+      
+    
+  </h3>
+  
+
+  
+    
+      <fieldset class="module aligned ">
+    
+    
+    
+        <div class="form-row field-contractor_required">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container checkbox-row">
+                            
+                                <input type="checkbox" name="analysis_definition-__prefix__-contractor_required" id="id_analysis_definition-__prefix__-contractor_required" checked><label class="vCheckboxLabel" for="id_analysis_definition-__prefix__-contractor_required">انتخاب پیمانکار الزامی است</label>
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+        <div class="form-row field-notes">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label for="id_analysis_definition-__prefix__-notes">توضیحات:</label>
+                                
+                                    <textarea name="analysis_definition-__prefix__-notes" cols="40" rows="10" class="vLargeTextField" id="id_analysis_definition-__prefix__-notes">
+</textarea>
+                                
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+        <div class="form-row field-definition_link">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label>فرمول‌ها و خروجی‌ها:</label>
+                                
+                                    <div class="readonly">—</div>
+                                
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+        <div class="form-row field-updated_at">
+            
+            
+                
+                <div>
+                    
+                        <div class="flex-container">
+                            
+                                <label>آخرین ویرایش:</label>
+                                
+                                    <div class="readonly">-</div>
+                                
+                            
+                        </div>
+                    
+                </div>
+                
+            
+            
+        </div>
+    
+    
+</fieldset>
+
+    
+  
+
+  <input type="hidden" name="analysis_definition-__prefix__-id" id="id_analysis_definition-__prefix__-id">
+  <input type="hidden" name="analysis_definition-__prefix__-line" value="91" id="id_analysis_definition-__prefix__-line">
+</div>
+  
+</fieldset>
+</div>
+
+
+    
+<div class="js-inline-admin-formset inline-group" id="devices-group"
+     data-inline-type="tabular"
+     data-inline-formset="{&quot;name&quot;: &quot;#devices&quot;, &quot;options&quot;: {&quot;prefix&quot;: &quot;devices&quot;, &quot;addText&quot;: &quot;\u0627\u0641\u0632\u0648\u062f\u0646 \u06cc\u06a9 \u062f\u0633\u062a\u06af\u0627\u0647 \u062f\u06cc\u06af\u0631&quot;, &quot;deleteText&quot;: &quot;\u062d\u0630\u0641&quot;}}">
+  <div class="tabular inline-related ">
+<input type="hidden" name="devices-TOTAL_FORMS" value="1" id="id_devices-TOTAL_FORMS"><input type="hidden" name="devices-INITIAL_FORMS" value="1" id="id_devices-INITIAL_FORMS"><input type="hidden" name="devices-MIN_NUM_FORMS" value="0" id="id_devices-MIN_NUM_FORMS"><input type="hidden" name="devices-MAX_NUM_FORMS" value="1000" id="id_devices-MAX_NUM_FORMS">
+<fieldset class="module " aria-labelledby="devices-heading">
+  
+  <h2 id="devices-heading" class="inline-heading">
+  
+    دستگاه‌ها
+  
+  </h2>
+  
+   
+  <div class="wrapper">
+    <table>
+     <thead><tr>
+       <th class="original"></th>
+     
+       <th class="column-order required">ترتیب در خط
+       
+       </th>
+     
+       <th class="column-code">کد دستگاه
+       <img src="/static/admin/img/icon-unknown.svg" class="help help-tooltip" width="10" height="10" alt="(کد/شماره فنی دستگاه (جدا از نام))" title="کد/شماره فنی دستگاه (جدا از نام)">
+       </th>
+     
+       <th class="column-name required">نام دستگاه
+       
+       </th>
+     
+       <th class="column-template required">الگوی مدل
+       
+       </th>
+     
+     <th>حذف؟</th>
+     </tr></thead>
+
+     <tbody>
+     
+        
+        <tr class="form-row has_original"
+             id="devices-0">
+        <td class="original">
+          <p>
+          
+          Dev1 (خط Line1 - TestFac)
+          
+          
+          
+            </p>
+          <input type="hidden" name="devices-0-id" value="334" id="id_devices-0-id">
+          <input type="hidden" name="devices-0-line" value="91" id="id_devices-0-line">
+        </td>
+        
+          
+            
+              <td class="field-order">
+              
+                  
+                  <input type="number" name="devices-0-order" value="1" class="vIntegerField" min="0" id="id_devices-0-order">
+              
+              </td>
+            
+          
+            
+              <td class="field-code">
+              
+                  
+                  <input type="text" name="devices-0-code" value="D1" class="vTextField" maxlength="100" aria-describedby="id_devices-0-code_helptext" id="id_devices-0-code">
+              
+              </td>
+            
+          
+            
+              <td class="field-name">
+              
+                  
+                  <input type="text" name="devices-0-name" value="Dev1" class="vTextField" maxlength="255" id="id_devices-0-name">
+              
+              </td>
+            
+          
+            
+              <td class="field-template">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="devicetemplate">
+    <select name="devices-0-template" data-context="available-source" id="id_devices-0-template">
+  <option value="">---------</option>
+
+  <option value="89">سنگ‌شکن</option>
+
+  <option value="90">آسیای گلوله‌ای</option>
+
+  <option value="91">سرند ارتعاشی</option>
+
+  <option value="92">سپراتور مغناطیسی</option>
+
+  <option value="93">نوار نقاله</option>
+
+  <option value="94">فیلتر پرس</option>
+
+  <option value="95">تیکنر</option>
+
+  <option value="96">سلول فلوتاسیون</option>
+
+  <option value="97">هیدروسیکلون</option>
+
+  <option value="98">خشک‌کن</option>
+
+  <option value="99">آنالایزر پرتونگاری</option>
+
+  <option value="100" selected>DTL</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_devices-0-template"
+            data-href-template="/admin/machines/devicetemplate/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن الگوی دستگاه انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_devices-0-template"
+            data-popup="yes"
+            href="/admin/machines/devicetemplate/add/?_to_field=id&amp;_popup=1"
+            title="افزدون الگوی دستگاه دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_devices-0-template"
+            data-href-template="/admin/machines/devicetemplate/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن الگوی دستگاه انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_devices-0-template"
+             data-href-template="/admin/machines/devicetemplate/__fk__/change/?_to_field=id"
+             title="نمایش الگوی دستگاههای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+        
+        <td class="delete"><input type="checkbox" name="devices-0-DELETE" id="id_devices-0-DELETE"></td>
+        </tr>
+     
+        
+        <tr class="form-row  empty-form"
+             id="devices-empty">
+        <td class="original">
+          
+          <input type="hidden" name="devices-__prefix__-id" id="id_devices-__prefix__-id">
+          <input type="hidden" name="devices-__prefix__-line" value="91" id="id_devices-__prefix__-line">
+        </td>
+        
+          
+            
+              <td class="field-order">
+              
+                  
+                  <input type="number" name="devices-__prefix__-order" value="0" class="vIntegerField" min="0" id="id_devices-__prefix__-order">
+              
+              </td>
+            
+          
+            
+              <td class="field-code">
+              
+                  
+                  <input type="text" name="devices-__prefix__-code" class="vTextField" maxlength="100" aria-describedby="id_devices-__prefix__-code_helptext" id="id_devices-__prefix__-code">
+              
+              </td>
+            
+          
+            
+              <td class="field-name">
+              
+                  
+                  <input type="text" name="devices-__prefix__-name" class="vTextField" maxlength="255" id="id_devices-__prefix__-name">
+              
+              </td>
+            
+          
+            
+              <td class="field-template">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="devicetemplate">
+    <select name="devices-__prefix__-template" data-context="available-source" id="id_devices-__prefix__-template">
+  <option value="" selected>---------</option>
+
+  <option value="89">سنگ‌شکن</option>
+
+  <option value="90">آسیای گلوله‌ای</option>
+
+  <option value="91">سرند ارتعاشی</option>
+
+  <option value="92">سپراتور مغناطیسی</option>
+
+  <option value="93">نوار نقاله</option>
+
+  <option value="94">فیلتر پرس</option>
+
+  <option value="95">تیکنر</option>
+
+  <option value="96">سلول فلوتاسیون</option>
+
+  <option value="97">هیدروسیکلون</option>
+
+  <option value="98">خشک‌کن</option>
+
+  <option value="99">آنالایزر پرتونگاری</option>
+
+  <option value="100">DTL</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_devices-__prefix__-template"
+            data-href-template="/admin/machines/devicetemplate/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن الگوی دستگاه انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_devices-__prefix__-template"
+            data-popup="yes"
+            href="/admin/machines/devicetemplate/add/?_to_field=id&amp;_popup=1"
+            title="افزدون الگوی دستگاه دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_devices-__prefix__-template"
+            data-href-template="/admin/machines/devicetemplate/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن الگوی دستگاه انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_devices-__prefix__-template"
+             data-href-template="/admin/machines/devicetemplate/__fk__/change/?_to_field=id"
+             title="نمایش الگوی دستگاههای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+        
+        <td class="delete"></td>
+        </tr>
+     
+     </tbody>
+    </table>
+  </div>
+  
+</fieldset>
+  </div>
+</div>
+
+
+    
+<div class="js-inline-admin-formset inline-group" id="logs-group"
+     data-inline-type="tabular"
+     data-inline-formset="{&quot;name&quot;: &quot;#logs&quot;, &quot;options&quot;: {&quot;prefix&quot;: &quot;logs&quot;, &quot;addText&quot;: &quot;\u0627\u0641\u0632\u0648\u062f\u0646 \u06cc\u06a9 \u06af\u0632\u0627\u0631\u0634 \u0639\u0645\u0644\u06a9\u0631\u062f \u0631\u0648\u0632\u0627\u0646\u0647 \u062f\u06cc\u06af\u0631&quot;, &quot;deleteText&quot;: &quot;\u062d\u0630\u0641&quot;}}">
+  <div class="tabular inline-related last-related">
+<input type="hidden" name="logs-TOTAL_FORMS" value="1" id="id_logs-TOTAL_FORMS"><input type="hidden" name="logs-INITIAL_FORMS" value="0" id="id_logs-INITIAL_FORMS"><input type="hidden" name="logs-MIN_NUM_FORMS" value="0" id="id_logs-MIN_NUM_FORMS"><input type="hidden" name="logs-MAX_NUM_FORMS" value="1000" id="id_logs-MAX_NUM_FORMS">
+<fieldset class="module collapse" aria-labelledby="logs-heading">
+  <details><summary>
+  <h2 id="logs-heading" class="inline-heading">
+  
+    گزارشات عملکرد روزانه
+  
+  </h2>
+  </summary>
+   
+  <div class="wrapper">
+    <table>
+     <thead><tr>
+       <th class="original"></th>
+     
+       <th class="column-date required">تاریخ گزارش
+       
+       </th>
+     
+       <th class="column-shift required">شیفت
+       
+       </th>
+     
+       <th class="column-device">دستگاه خراب/مورد نظر
+       <img src="/static/admin/img/icon-unknown.svg" class="help help-tooltip" width="10" height="10" alt="(اختیاری: اگر خرابی مربوط به دستگاه خاصی است)" title="اختیاری: اگر خرابی مربوط به دستگاه خاصی است">
+       </th>
+     
+       <th class="column-runtime_hours required">ساعت کارکرد خط
+       
+       </th>
+     
+       <th class="column-downtime_hours required">ساعت خرابی/توقف
+       
+       </th>
+     
+       <th class="column-failure_cause">علت خرابی (سیستمی)
+       
+       </th>
+     
+     <th>حذف؟</th>
+     </tr></thead>
+
+     <tbody>
+     
+        
+        <tr class="form-row "
+             id="logs-0">
+        <td class="original">
+          
+          <input type="hidden" name="logs-0-id" id="id_logs-0-id">
+          <input type="hidden" name="logs-0-line" value="91" id="id_logs-0-line">
+        </td>
+        
+          
+            
+              <td class="field-date">
+              
+                  
+                  <p class="date">
+  <input type="text" name="logs-0-date" class="vDateField" size="10" id="id_logs-0-date" aria-describedby="id_logs-0-date_timezone_warning_helptext">
+
+
+</p>
+              
+              </td>
+            
+          
+            
+              <td class="field-shift">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="shift">
+    <select name="logs-0-shift" data-context="available-source" id="id_logs-0-shift">
+  <option value="" selected>---------</option>
+
+  <option value="97">شیفت صبح - مجتمع معدنی سنگ‌آهن مرکزی</option>
+
+  <option value="98">شیفت عصر - مجتمع معدنی سنگ‌آهن مرکزی</option>
+
+  <option value="99">شیفت شب - مجتمع معدنی سنگ‌آهن مرکزی</option>
+
+  <option value="100">شیفت صبح - کارخانه فرآوری مس سرچشمه</option>
+
+  <option value="101">شیفت عصر - کارخانه فرآوری مس سرچشمه</option>
+
+  <option value="102">شیفت شب - کارخانه فرآوری مس سرچشمه</option>
+
+  <option value="103">شیفت صبح - کارخانه کنسانتره زغال‌سنگ</option>
+
+  <option value="104">شیفت عصر - کارخانه کنسانتره زغال‌سنگ</option>
+
+  <option value="105">شیفت شب - کارخانه کنسانتره زغال‌سنگ</option>
+
+  <option value="106">شیفت صبح - کارخانه فلوتاسیون سرب و روی</option>
+
+  <option value="107">شیفت عصر - کارخانه فلوتاسیون سرب و روی</option>
+
+  <option value="108">شیفت شب - کارخانه فلوتاسیون سرب و روی</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_logs-0-shift"
+            data-href-template="/admin/machines/shift/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن شیفت کاری انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_logs-0-shift"
+            data-popup="yes"
+            href="/admin/machines/shift/add/?_to_field=id&amp;_popup=1"
+            title="افزدون شیفت کاری دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_logs-0-shift"
+            data-href-template="/admin/machines/shift/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن شیفت کاری انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_logs-0-shift"
+             data-href-template="/admin/machines/shift/__fk__/change/?_to_field=id"
+             title="نمایش شیفت کاریهای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+            
+              <td class="field-device">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="device">
+    <select name="logs-0-device" data-context="available-source" aria-describedby="id_logs-0-device_helptext" id="id_logs-0-device">
+  <option value="" selected>---------</option>
+
+  <option value="297">سنگ‌شکن فکی (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="298">آسیای مخروطی (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="299">سرند اولیه (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="300">نوار نقاله ورودی (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="301">سنگ‌شکن ضربه‌ای (خط خط خردایش ۲ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="302">سرند ثانویه (خط خط خردایش ۲ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="303">نوار نقاله (خط خط خردایش ۲ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="304">آسیای گلوله‌ای (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="305">سپراتور مغناطیسی (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="306">تیکنر (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="307">فیلتر پرس (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="308">آنالایزر پرتونگاری (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="309">سنگ‌شکن فکی (خط خط خردایش - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="310">آسیای ژیراتوری (خط خط خردایش - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="311">سرند ارتعاشی (خط خط خردایش - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="312">آسیای گلوله‌ای (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="313">هیدروسیکلون (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="314">سلول فلوتاسیون (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="315">تیکنر (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="316">آنالایزر پرتونگاری (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="317">سنگ‌شکن فکی (خط خط خردایش - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="318">سرند ارتعاشی (خط خط خردایش - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="319">تیکنر (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="320">فیلتر پرس (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="321">خشک‌کن (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="322">آنالایزر پرتونگاری (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="323">سنگ‌شکن فکی (خط خط خردایش - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="324">آسیای مخروطی (خط خط خردایش - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="325">سرند ارتعاشی (خط خط خردایش - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="326">آسیای گلوله‌ای (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="327">سلول فلوتاسیون (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="328">تیکنر (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="329">آنالایزر پرتونگاری (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="330">آسیای گلوله‌ای (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="331">سلول فلوتاسیون (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="332">تیکنر (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="333">آنالایزر پرتونگاری (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="334">Dev1 (خط Line1 - TestFac)</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_logs-0-device"
+            data-href-template="/admin/machines/device/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن دستگاه انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_logs-0-device"
+            data-popup="yes"
+            href="/admin/machines/device/add/?_to_field=id&amp;_popup=1"
+            title="افزدون دستگاه دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_logs-0-device"
+            data-href-template="/admin/machines/device/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن دستگاه انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_logs-0-device"
+             data-href-template="/admin/machines/device/__fk__/change/?_to_field=id"
+             title="نمایش دستگاههای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+            
+              <td class="field-runtime_hours">
+              
+                  
+                  <input type="number" name="logs-0-runtime_hours" value="0" step="any" id="id_logs-0-runtime_hours">
+              
+              </td>
+            
+          
+            
+              <td class="field-downtime_hours">
+              
+                  
+                  <input type="number" name="logs-0-downtime_hours" value="0" step="any" id="id_logs-0-downtime_hours">
+              
+              </td>
+            
+          
+            
+              <td class="field-failure_cause">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="failurereason">
+    <select name="logs-0-failure_cause" data-context="available-source" id="id_logs-0-failure_cause">
+  <option value="" selected>---------</option>
+
+  <option value="193">برقی</option>
+
+  <option value="194">مکانیکی</option>
+
+  <option value="195">توقف تأمین مواد</option>
+
+  <option value="196">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="197">افت کیفیت محصول</option>
+
+  <option value="198">قطعی آب</option>
+
+  <option value="199">برقی</option>
+
+  <option value="200">مکانیکی</option>
+
+  <option value="201">توقف تأمین مواد</option>
+
+  <option value="202">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="203">افت کیفیت محصول</option>
+
+  <option value="204">قطعی آب</option>
+
+  <option value="205">برقی</option>
+
+  <option value="206">مکانیکی</option>
+
+  <option value="207">توقف تأمین مواد</option>
+
+  <option value="208">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="209">افت کیفیت محصول</option>
+
+  <option value="210">قطعی آب</option>
+
+  <option value="211">برقی</option>
+
+  <option value="212">مکانیکی</option>
+
+  <option value="213">توقف تأمین مواد</option>
+
+  <option value="214">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="215">افت کیفیت محصول</option>
+
+  <option value="216">قطعی آب</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_logs-0-failure_cause"
+            data-href-template="/admin/machines/failurereason/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن علت خرابی مرجع انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_logs-0-failure_cause"
+            data-popup="yes"
+            href="/admin/machines/failurereason/add/?_to_field=id&amp;_popup=1"
+            title="افزدون علت خرابی مرجع دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_logs-0-failure_cause"
+            data-href-template="/admin/machines/failurereason/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن علت خرابی مرجع انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_logs-0-failure_cause"
+             data-href-template="/admin/machines/failurereason/__fk__/change/?_to_field=id"
+             title="نمایش علت خرابی مرجعهای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+        
+        <td class="delete"></td>
+        </tr>
+     
+        
+        <tr class="form-row  empty-form"
+             id="logs-empty">
+        <td class="original">
+          
+          <input type="hidden" name="logs-__prefix__-id" id="id_logs-__prefix__-id">
+          <input type="hidden" name="logs-__prefix__-line" value="91" id="id_logs-__prefix__-line">
+        </td>
+        
+          
+            
+              <td class="field-date">
+              
+                  
+                  <p class="date">
+  <input type="text" name="logs-__prefix__-date" class="vDateField" size="10" id="id_logs-__prefix__-date" aria-describedby="id_logs-__prefix__-date_timezone_warning_helptext">
+
+
+</p>
+              
+              </td>
+            
+          
+            
+              <td class="field-shift">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="shift">
+    <select name="logs-__prefix__-shift" data-context="available-source" id="id_logs-__prefix__-shift">
+  <option value="" selected>---------</option>
+
+  <option value="97">شیفت صبح - مجتمع معدنی سنگ‌آهن مرکزی</option>
+
+  <option value="98">شیفت عصر - مجتمع معدنی سنگ‌آهن مرکزی</option>
+
+  <option value="99">شیفت شب - مجتمع معدنی سنگ‌آهن مرکزی</option>
+
+  <option value="100">شیفت صبح - کارخانه فرآوری مس سرچشمه</option>
+
+  <option value="101">شیفت عصر - کارخانه فرآوری مس سرچشمه</option>
+
+  <option value="102">شیفت شب - کارخانه فرآوری مس سرچشمه</option>
+
+  <option value="103">شیفت صبح - کارخانه کنسانتره زغال‌سنگ</option>
+
+  <option value="104">شیفت عصر - کارخانه کنسانتره زغال‌سنگ</option>
+
+  <option value="105">شیفت شب - کارخانه کنسانتره زغال‌سنگ</option>
+
+  <option value="106">شیفت صبح - کارخانه فلوتاسیون سرب و روی</option>
+
+  <option value="107">شیفت عصر - کارخانه فلوتاسیون سرب و روی</option>
+
+  <option value="108">شیفت شب - کارخانه فلوتاسیون سرب و روی</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_logs-__prefix__-shift"
+            data-href-template="/admin/machines/shift/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن شیفت کاری انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_logs-__prefix__-shift"
+            data-popup="yes"
+            href="/admin/machines/shift/add/?_to_field=id&amp;_popup=1"
+            title="افزدون شیفت کاری دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_logs-__prefix__-shift"
+            data-href-template="/admin/machines/shift/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن شیفت کاری انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_logs-__prefix__-shift"
+             data-href-template="/admin/machines/shift/__fk__/change/?_to_field=id"
+             title="نمایش شیفت کاریهای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+            
+              <td class="field-device">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="device">
+    <select name="logs-__prefix__-device" data-context="available-source" aria-describedby="id_logs-__prefix__-device_helptext" id="id_logs-__prefix__-device">
+  <option value="" selected>---------</option>
+
+  <option value="297">سنگ‌شکن فکی (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="298">آسیای مخروطی (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="299">سرند اولیه (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="300">نوار نقاله ورودی (خط خط خردایش ۱ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="301">سنگ‌شکن ضربه‌ای (خط خط خردایش ۲ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="302">سرند ثانویه (خط خط خردایش ۲ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="303">نوار نقاله (خط خط خردایش ۲ - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="304">آسیای گلوله‌ای (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="305">سپراتور مغناطیسی (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="306">تیکنر (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="307">فیلتر پرس (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="308">آنالایزر پرتونگاری (خط خط فرآوری - مجتمع معدنی سنگ‌آهن مرکزی)</option>
+
+  <option value="309">سنگ‌شکن فکی (خط خط خردایش - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="310">آسیای ژیراتوری (خط خط خردایش - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="311">سرند ارتعاشی (خط خط خردایش - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="312">آسیای گلوله‌ای (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="313">هیدروسیکلون (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="314">سلول فلوتاسیون (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="315">تیکنر (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="316">آنالایزر پرتونگاری (خط خط فلوتاسیون - کارخانه فرآوری مس سرچشمه)</option>
+
+  <option value="317">سنگ‌شکن فکی (خط خط خردایش - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="318">سرند ارتعاشی (خط خط خردایش - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="319">تیکنر (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="320">فیلتر پرس (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="321">خشک‌کن (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="322">آنالایزر پرتونگاری (خط خط شستشو و فرآوری - کارخانه کنسانتره زغال‌سنگ)</option>
+
+  <option value="323">سنگ‌شکن فکی (خط خط خردایش - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="324">آسیای مخروطی (خط خط خردایش - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="325">سرند ارتعاشی (خط خط خردایش - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="326">آسیای گلوله‌ای (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="327">سلول فلوتاسیون (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="328">تیکنر (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="329">آنالایزر پرتونگاری (خط خط فلوتاسیون ۱ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="330">آسیای گلوله‌ای (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="331">سلول فلوتاسیون (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="332">تیکنر (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="333">آنالایزر پرتونگاری (خط خط فلوتاسیون ۲ - کارخانه فلوتاسیون سرب و روی)</option>
+
+  <option value="334">Dev1 (خط Line1 - TestFac)</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_logs-__prefix__-device"
+            data-href-template="/admin/machines/device/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن دستگاه انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_logs-__prefix__-device"
+            data-popup="yes"
+            href="/admin/machines/device/add/?_to_field=id&amp;_popup=1"
+            title="افزدون دستگاه دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_logs-__prefix__-device"
+            data-href-template="/admin/machines/device/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن دستگاه انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_logs-__prefix__-device"
+             data-href-template="/admin/machines/device/__fk__/change/?_to_field=id"
+             title="نمایش دستگاههای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+            
+              <td class="field-runtime_hours">
+              
+                  
+                  <input type="number" name="logs-__prefix__-runtime_hours" value="0" step="any" id="id_logs-__prefix__-runtime_hours">
+              
+              </td>
+            
+          
+            
+              <td class="field-downtime_hours">
+              
+                  
+                  <input type="number" name="logs-__prefix__-downtime_hours" value="0" step="any" id="id_logs-__prefix__-downtime_hours">
+              
+              </td>
+            
+          
+            
+              <td class="field-failure_cause">
+              
+                  
+                  <div class="related-widget-wrapper" data-model-ref="failurereason">
+    <select name="logs-__prefix__-failure_cause" data-context="available-source" id="id_logs-__prefix__-failure_cause">
+  <option value="" selected>---------</option>
+
+  <option value="193">برقی</option>
+
+  <option value="194">مکانیکی</option>
+
+  <option value="195">توقف تأمین مواد</option>
+
+  <option value="196">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="197">افت کیفیت محصول</option>
+
+  <option value="198">قطعی آب</option>
+
+  <option value="199">برقی</option>
+
+  <option value="200">مکانیکی</option>
+
+  <option value="201">توقف تأمین مواد</option>
+
+  <option value="202">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="203">افت کیفیت محصول</option>
+
+  <option value="204">قطعی آب</option>
+
+  <option value="205">برقی</option>
+
+  <option value="206">مکانیکی</option>
+
+  <option value="207">توقف تأمین مواد</option>
+
+  <option value="208">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="209">افت کیفیت محصول</option>
+
+  <option value="210">قطعی آب</option>
+
+  <option value="211">برقی</option>
+
+  <option value="212">مکانیکی</option>
+
+  <option value="213">توقف تأمین مواد</option>
+
+  <option value="214">تعمیرات برنامه‌ریزی شده</option>
+
+  <option value="215">افت کیفیت محصول</option>
+
+  <option value="216">قطعی آب</option>
+
+</select>
+    
+        <a class="related-widget-wrapper-link change-related" id="change_id_logs-__prefix__-failure_cause"
+            data-href-template="/admin/machines/failurereason/__fk__/change/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="تغییر دادن علت خرابی مرجع انتخاب شده"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link add-related" id="add_id_logs-__prefix__-failure_cause"
+            data-popup="yes"
+            href="/admin/machines/failurereason/add/?_to_field=id&amp;_popup=1"
+            title="افزدون علت خرابی مرجع دیگر"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link delete-related" id="delete_id_logs-__prefix__-failure_cause"
+            data-href-template="/admin/machines/failurereason/__fk__/delete/?_to_field=id&amp;_popup=1"
+            data-popup="yes"
+            title="حذف کردن علت خرابی مرجع انتخاب شده"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a><a class="related-widget-wrapper-link view-related" id="view_id_logs-__prefix__-failure_cause"
+             data-href-template="/admin/machines/failurereason/__fk__/change/?_to_field=id"
+             title="نمایش علت خرابی مرجعهای انتخاب شده"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+              
+              </td>
+            
+          
+        
+        <td class="delete"></td>
+        </tr>
+     
+     </tbody>
+    </table>
+  </div>
+  </details>
+</fieldset>
+  </div>
+</div>
+
+
+
+
+
+
+
+<div class="submit-row">
+
+<input type="submit" value="ذخیره" class="default" name="_save">
+
+<input type="submit" value="ذخیره و ایجاد یکی دیگر" name="_addanother">
+<input type="submit" value="ذخیره و ادامهٔ ویرایش" name="_continue">
+
+
+    
+    <a role="button" href="/admin/machines/productionline/91/delete/" class="deletelink">حذف</a>
+
+
+</div>
+
+
+
+    <script id="django-admin-form-add-constants"
+            src="/static/admin/js/change_form.js"
+            
+            async>
+    </script>
+
+
+
+
+<script id="django-admin-prepopulated-fields-constants"
+        src="/static/admin/js/prepopulate_init.js"
+        data-prepopulated-fields="[]">
+</script>
+
+
+</div>
+</form></div>
+
+          
+          <br class="clear">
+        </div>
+        <!-- END Content -->
+      </main>
+    </div>
+    <footer id="footer"></footer>
+</div>
+<!-- END Container -->
+
+<!-- SVGs -->
+<svg xmlns="http://www.w3.org/2000/svg" class="base-svgs">
+  <symbol viewBox="0 0 24 24" id="icon-auto"><path d="M0 0h24v24H0z" fill="currentColor"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-2V4a8 8 0 1 0 0 16z"/></symbol>
+  <symbol viewBox="0 0 24 24" id="icon-moon"><path d="M0 0h24v24H0z" fill="currentColor"/><path d="M10 7a7 7 0 0 0 12 4.9v.1c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2h.1A6.979 6.979 0 0 0 10 7zm-6 5a8 8 0 0 0 15.062 3.762A9 9 0 0 1 8.238 4.938 7.999 7.999 0 0 0 4 12z"/></symbol>
+  <symbol viewBox="0 0 24 24" id="icon-sun"><path d="M0 0h24v24H0z" fill="currentColor"/><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.515 4.929l1.414-1.414L7.05 5.636 5.636 7.05 3.515 4.93zM16.95 18.364l1.414-1.414 2.121 2.121-1.414 1.414-2.121-2.121zm2.121-14.85l1.414 1.415-2.121 2.121-1.414-1.414 2.121-2.121zM5.636 16.95l1.414 1.414-2.121 2.121-1.414-1.414 2.121-2.121zM23 11v2h-3v-2h3zM4 11v2H1v-2h3z"/></symbol>
+</svg>
+<!-- END SVGs -->
+
+</body>
+</html>

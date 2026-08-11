@@ -4,7 +4,6 @@ from django.urls import reverse
 from django.http import HttpResponseRedirect
 from django.utils.html import format_html, escape
 from django.utils.safestring import mark_safe
-from django_jsonform.forms.fields import JSONFormField
 from .models import (
     DeviceDailyAnalysis,
     DeviceLog,
@@ -29,6 +28,10 @@ from .models import (
     FactoryAnalysisDefinition,
     FactoryAnalysisInput,
     FactoryAnalysisOutput,
+    DeliveredTonnageDefinition,
+    DeliveredTonnageInput,
+    DeliveredTonnageOutput,
+    DeliveredTonnage,
 )
 from .analysis import (
     build_schema as build_analysis_schema,
@@ -36,6 +39,7 @@ from .analysis import (
     formula_variables_for_line,
 )
 from .factory_analysis import formula_variables_for_factory
+from .tonnage import formula_variables_for_tonnage
 import json
 
 
@@ -48,54 +52,105 @@ def display_attributes_summary(self, obj):
 display_attributes_summary.short_description = "ویژگی‌های فنی"
 
 
-def build_schema(template_attr_field):
-    def make_schema(template):
-        properties = {
-            attr.name: {
-                "type": "number",
-                "default": 0,
-                "title": f"{attr.name} ({attr.unit if attr.unit else 'واحد ندارد'})",
-            }
-            for attr in template_attr_field(template).all()
-        }
-        return {"type": "object", "properties": properties}
+class AttributeValuesFormMixin:
+    """فرم ویژگی‌ها بر اساس الگو: یک فیلد عددی برای هر ویژگیِ الگو.
 
-    return make_schema
+    همراه با جریان دو مرحله‌ای ادمین:
+    مرحله ۱ (افزودن): اطلاعات پایه + انتخاب الگو.
+    مرحله ۲ (تغییر): مقداردهی ویژگی‌های خوانده‌شده از الگو.
+    """
 
-
-class DynamicJSONFormMixin:
-    json_field = "attributes_values"
-    schema_builder = None
+    template_model = None  # e.g. ProductionLineTemplate
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        inst = self.instance
-        if inst and inst.pk and self.schema_builder:
+        self._attr_map = {}
+        template = self._resolve_template()
+        if template is not None:
+            existing = self.instance.attributes_values or {}
+            for attr in template.available_attributes.all():
+                fname = f"attr_{attr.id}"
+                self._attr_map[fname] = attr
+                initial = existing.get(attr.name)
+                self.fields[fname] = forms.DecimalField(
+                    required=False,
+                    initial=initial if initial is not None else 0,
+                    label=attr.name + (f" ({attr.unit})" if attr.unit else ""),
+                    widget=forms.NumberInput(attrs={"step": "any"}),
+                )
+        if "attributes_values" in self.fields:
+            self.fields["attributes_values"].widget = forms.HiddenInput()
+            self.fields["attributes_values"].required = False
+
+    def _resolve_template(self):
+        raw = self.data.get("template") if self.data else None
+        if raw:
+            pk = raw[0] if isinstance(raw, list) else raw
             try:
-                template = getattr(inst, "template", None)
-                if template:
-                    self.fields[self.json_field] = JSONFormField(
-                        schema=self.schema_builder(template),
-                        label=self.fields[self.json_field].label,
-                        required=False,
-                    )
-                    return
-            except Exception:
+                return self.template_model.objects.get(pk=pk)
+            except (self.template_model.DoesNotExist, TypeError, ValueError):
                 pass
-        if self.json_field in self.fields:
-            self.fields[self.json_field].widget = forms.HiddenInput()
+        if self.instance and self.instance.pk and self.instance.template_id:
+            return self.instance.template
+        return None
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        values = dict(instance.attributes_values or {})
+        for fname, attr in self._attr_map.items():
+            raw = self.cleaned_data.get(fname)
+            values[attr.name] = float(raw) if raw not in (None, "") else 0
+        instance.attributes_values = values
+        if commit:
+            instance.save()
+        return instance
 
 
-class ProductionLineForm(DynamicJSONFormMixin, forms.ModelForm):
-    schema_builder = build_schema(lambda t: t.available_attributes)
+class AttributeFieldsAdminMixin:
+    """پشتیبانی ادمین از فیلدهای داینامیک ویژگی‌ها (مرحله ۲) در fieldsets."""
+
+    template_model = None
+    step1_fields = ()
+
+    def _template_from_request(self, request, obj):
+        raw = (request.POST or request.GET).get("template")
+        if raw:
+            try:
+                return self.template_model.objects.get(pk=raw)
+            except (self.template_model.DoesNotExist, TypeError, ValueError):
+                pass
+        if obj is not None and obj.template_id:
+            return obj.template
+        return None
+
+    def _attr_field_names(self, request, obj):
+        template = self._template_from_request(request, obj)
+        if template is None:
+            return []
+        return [f"attr_{a.id}" for a in template.available_attributes.all()]
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = [
+            ("مرحله ۱ — اطلاعات پایه و الگو", {"fields": list(self.step1_fields)}),
+        ]
+        attr_fields = self._attr_field_names(request, obj)
+        if attr_fields:
+            fieldsets.append(
+                ("مرحله ۲ — مقادیر ویژگی‌های الگو", {"fields": attr_fields})
+            )
+        return fieldsets
+
+
+class ProductionLineForm(AttributeValuesFormMixin, forms.ModelForm):
+    template_model = ProductionLineTemplate
 
     class Meta:
         model = ProductionLine
         fields = "__all__"
 
 
-class DeviceForm(DynamicJSONFormMixin, forms.ModelForm):
-    schema_builder = build_schema(lambda t: t.available_attributes)
+class DeviceForm(AttributeValuesFormMixin, forms.ModelForm):
+    template_model = DeviceTemplate
 
     class Meta:
         model = Device
@@ -160,9 +215,29 @@ class LineAnalysisDefinitionInline(admin.StackedInline):
 
 @admin.register(Factory)
 class FactoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "address")
+    list_display = ("name", "address", "analysis_definition_link")
+    list_display_links = ("name",)
     search_fields = ("name",)
     inlines = [ShiftInline]
+
+    def analysis_definition_link(self, obj):
+        try:
+            definition = obj.factory_analysis_definition
+        except FactoryAnalysisDefinition.DoesNotExist:
+            add_url = reverse("admin:machines_factoryanalysisdefinition_add")
+            return format_html(
+                '<a class="button" href="{}?factory={}">افزودن تعریف آنالیز کارخانه</a>',
+                add_url,
+                obj.pk,
+            )
+        url = reverse(
+            "admin:machines_factoryanalysisdefinition_change", args=[definition.pk]
+        )
+        return format_html(
+            '<a href="{}">تعریف آنالیز کارخانه ({})</a>', url, definition.pk
+        )
+
+    analysis_definition_link.short_description = "آنالیز کارخانه"
 
 
 @admin.register(Shift)
@@ -189,23 +264,21 @@ class ProductionLineTemplateAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductionLine)
-class ProductionLineAdmin(admin.ModelAdmin):
+class ProductionLineAdmin(AttributeFieldsAdminMixin, admin.ModelAdmin):
     form = ProductionLineForm
+    template_model = ProductionLineTemplate
+    step1_fields = ("factory", "template", "name", "description")
     list_display = (
         "name",
         "factory",
         "template",
         "analysis_definition_link",
+        "tonnage_definition_link",
         "display_attributes",
     )
     list_filter = ("factory", "template")
     inlines = [LineAnalysisDefinitionInline, DeviceInline, DeviceLogInline]
     search_fields = ("name",)
-
-    def get_fields(self, request, obj=None):
-        if not obj:
-            return ("factory", "template", "name", "description")
-        return ("factory", "template", "name", "description", "attributes_values")
 
     display_attributes = display_attributes_summary
 
@@ -220,6 +293,23 @@ class ProductionLineAdmin(admin.ModelAdmin):
         return format_html('<a href="{}">تعریف آنالیز خط ({})</a>', url, line_def.pk)
 
     analysis_definition_link.short_description = "لایه میانی آنالیز"
+
+    def tonnage_definition_link(self, obj):
+        try:
+            tonnage_def = obj.tonnage_definition
+        except DeliveredTonnageDefinition.DoesNotExist:
+            add_url = reverse("admin:machines_deliveredtonnagedefinition_add")
+            return format_html(
+                '<a class="button" href="{}?line={}">افزودن تعریف تناژ تحویلی</a>',
+                add_url,
+                obj.pk,
+            )
+        url = reverse(
+            "admin:machines_deliveredtonnagedefinition_change", args=[tonnage_def.pk]
+        )
+        return format_html('<a href="{}">تعریف تناژ تحویلی ({})</a>', url, tonnage_def.pk)
+
+    tonnage_definition_link.short_description = "تناژ تحویلی"
 
     def response_add(self, request, obj, post_url_continue=None):
         return HttpResponseRedirect(
@@ -245,8 +335,10 @@ class DeviceTemplateAdmin(admin.ModelAdmin):
 
 
 @admin.register(Device)
-class DeviceAdmin(admin.ModelAdmin):
+class DeviceAdmin(AttributeFieldsAdminMixin, admin.ModelAdmin):
     form = DeviceForm
+    template_model = DeviceTemplate
+    step1_fields = ("line", "template", "name", "code", "order", "is_analyzer")
     list_display = ("order", "code", "name", "line", "template", "display_attributes")
     display_attributes = display_attributes_summary
     list_editable = ("order",)
@@ -258,19 +350,6 @@ class DeviceAdmin(admin.ModelAdmin):
         if obj and obj.is_analyzer:
             return [DeviceDailyAnalysisInline(self.model, self.admin_site)]
         return []
-
-    def get_fields(self, request, obj=None):
-        if not obj:
-            return ("line", "template", "name", "code", "order", "is_analyzer")
-        return (
-            "line",
-            "template",
-            "name",
-            "code",
-            "order",
-            "is_analyzer",
-            "attributes_values",
-        )
 
     def response_add(self, request, obj, post_url_continue=None):
         return HttpResponseRedirect(
@@ -809,9 +888,32 @@ class FactoryAnalysisOutputInline(admin.StackedInline):
 
 @admin.register(FactoryAnalysisDefinition)
 class FactoryAnalysisDefinitionAdmin(admin.ModelAdmin):
+    """
+    جریان دو مرحله‌ای:
+    مرحله ۱ (افزودن): انتخاب کارخانه + تعریف ورودی‌ها.
+    مرحله ۲ (تغییر): تعریف خروجی‌ها با فرمول (متغیرهای ورودی/خروجی کارخانه).
+    """
+
     list_display = ("factory", "inputs_count", "outputs_count", "updated_at")
     search_fields = ("factory__name",)
-    inlines = [FactoryAnalysisInputInline, FactoryAnalysisOutputInline]
+
+    class Media:
+        css = {"all": ("madan_admin/css/formula_builder.css",)}
+
+    def get_inlines(self, request, obj):
+        # مرحله ۱: فقط ورودی‌ها؛ مرحله ۲: ورودی‌ها + خروجی‌ها
+        if obj is None:
+            return [FactoryAnalysisInputInline]
+        return [FactoryAnalysisInputInline, FactoryAnalysisOutputInline]
+
+    def response_add(self, request, obj, post_url_continue=None):
+        self.message_user(
+            request,
+            "مرحله ۱ ثبت شد؛ حالا در همین صفحه ورودی‌ها را بازبینی و خروجی‌ها را تعریف کنید (مرحله ۲).",
+        )
+        return HttpResponseRedirect(
+            reverse("admin:machines_factoryanalysisdefinition_change", args=(obj.pk,))
+        )
 
     def inputs_count(self, obj):
         return obj.inputs.count()
@@ -822,3 +924,108 @@ class FactoryAnalysisDefinitionAdmin(admin.ModelAdmin):
         return obj.outputs.count()
 
     outputs_count.short_description = "خروجی‌ها / فرمول‌ها"
+
+# ═══════════════════ تناژ تحویلی خطوط تولید ═══════════════════
+
+
+class DeliveredTonnageInputInline(admin.TabularInline):
+    model = DeliveredTonnageInput
+    extra = 1
+    fields = ("key", "name", "input_type", "unit", "required", "order")
+
+
+class DeliveredTonnageOutputInline(admin.StackedInline):
+    model = DeliveredTonnageOutput
+    extra = 1
+    fields = (("key", "name", "unit", "order"), "formula")
+
+    class Media:
+        js = ("madan_admin/js/formula_builder.js",)
+        css = {"all": ("madan_admin/css/formula_builder.css",)}
+
+    def get_formset(self, request, obj=None, **kwargs):
+        variables = []
+        line_id = ""
+        if obj is not None:
+            variables = formula_variables_for_tonnage(obj.line)
+            line_id = obj.line_id
+        validate_url = reverse("formula-validate-tonnage")
+        formset_cls = super().get_formset(request, obj, **kwargs)
+
+        class TonnageOutputFormSet(formset_cls):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                widget = FormulaInputWidget(
+                    variables=variables,
+                    validate_url=validate_url,
+                    line_id=line_id,
+                )
+                for form in self.forms:
+                    if "formula" in form.fields:
+                        form.fields["formula"].widget = widget
+                try:
+                    if "formula" in self.empty_form.fields:
+                        self.empty_form.fields["formula"].widget = widget
+                except Exception:  # noqa: BLE001
+                    pass
+
+        return TonnageOutputFormSet
+
+
+@admin.register(DeliveredTonnageDefinition)
+class DeliveredTonnageDefinitionAdmin(admin.ModelAdmin):
+    """
+    جریان دو مرحله‌ای:
+    مرحله ۱ (افزودن): انتخاب خط تولید + تعریف ورودی‌ها.
+    مرحله ۲ (تغییر): تعریف خروجی‌ها با فرمول.
+    """
+
+    list_display = ("line", "inputs_count", "outputs_count", "updated_at")
+    search_fields = ("line__name", "line__factory__name")
+
+    class Media:
+        css = {"all": ("madan_admin/css/formula_builder.css",)}
+
+    def get_inlines(self, request, obj):
+        if obj is None:
+            return [DeliveredTonnageInputInline]
+        return [DeliveredTonnageInputInline, DeliveredTonnageOutputInline]
+
+    def response_add(self, request, obj, post_url_continue=None):
+        self.message_user(
+            request,
+            "مرحله ۱ ثبت شد؛ حالا در همین صفحه ورودی‌ها را بازبینی و خروجی‌ها را تعریف کنید (مرحله ۲).",
+        )
+        return HttpResponseRedirect(
+            reverse("admin:machines_deliveredtonnagedefinition_change", args=(obj.pk,))
+        )
+
+    def inputs_count(self, obj):
+        return obj.inputs.count()
+
+    inputs_count.short_description = "ورودی‌ها"
+
+    def outputs_count(self, obj):
+        return obj.outputs.count()
+
+    outputs_count.short_description = "خروجی‌ها / فرمول‌ها"
+
+
+@admin.register(DeliveredTonnage)
+class DeliveredTonnageAdmin(admin.ModelAdmin):
+    list_display = ("line", "date", "hour", "contractor", "outputs_summary", "created_by", "created_at")
+    list_filter = ("line__factory", "line", "contractor", "date")
+    search_fields = ("line__name", "note")
+    readonly_fields = ("inputs", "outputs", "created_by", "created_at")
+    fieldsets = (
+        ("اطلاعات کلی", {"fields": ("line", "contractor", "date", "hour")}),
+        ("ورودی‌ها / خروجی‌های محاسبه‌شده", {"fields": ("inputs", "outputs")}),
+        ("سایر", {"fields": ("note", "created_by", "created_at")}),
+    )
+
+    def outputs_summary(self, obj):
+        if not obj.outputs:
+            return "—"
+        return ", ".join(f"{k}: {v}" for k, v in obj.outputs.items())
+
+    outputs_summary.short_description = "خروجی‌ها"

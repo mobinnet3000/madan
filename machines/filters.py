@@ -1,5 +1,11 @@
 import django_filters
-from .models import DeviceDailyAnalysis, DeviceLog, ProductionReport, ActualAnalysis
+from .models import (
+    DeviceDailyAnalysis,
+    DeviceLog,
+    ProductionReport,
+    ActualAnalysis,
+    DeliveredTonnage,
+)
 
 
 class DailyAnalysisFilter(django_filters.FilterSet):
@@ -51,3 +57,13 @@ class ActualAnalysisFilter(django_filters.FilterSet):
         if value is None:
             return queryset
         return queryset.filter(date_from__lte=value)
+
+
+class DeliveredTonnageFilter(django_filters.FilterSet):
+    date_from = django_filters.DateFilter(field_name="date", lookup_expr="gte")
+    date_to = django_filters.DateFilter(field_name="date", lookup_expr="lte")
+    lines = django_filters.BaseInFilter(field_name="line", lookup_expr="in")
+
+    class Meta:
+        model = DeliveredTonnage
+        fields = ["line", "lines", "contractor", "date"]

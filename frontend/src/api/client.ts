@@ -31,12 +31,24 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY)
     }
+    const data = error.response?.data
+    const pick = (v: unknown): string | null => {
+      if (typeof v === 'string') return v
+      if (Array.isArray(v)) return v.flat().filter(Boolean).join(' ')
+      if (v && typeof v === 'object') {
+        const inner = Object.values(v)
+          .flat()
+          .map((x) => (x && typeof x === 'object' ? JSON.stringify(x, null, 0) : x))
+          .filter(Boolean)
+        return inner.length ? inner.join(' · ') : null
+      }
+      return v ? String(v) : null
+    }
     const message =
-      error.response?.data?.detail ||
-      error.response?.data?.non_field_errors?.join(' ') ||
-      (typeof error.response?.data === 'object'
-        ? Object.values(error.response.data).flat().join(' ')
-        : null) ||
+      pick(data?.errors) ||
+      pick(data?.detail) ||
+      pick(data?.non_field_errors) ||
+      pick(data) ||
       error.message ||
       'خطا در ارتباط با سرور'
     return Promise.reject(new Error(message))

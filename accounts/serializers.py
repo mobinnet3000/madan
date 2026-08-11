@@ -77,8 +77,8 @@ class ActivityLogSerializer(serializers.ModelSerializer):
 
     def get_role(self, obj):
         if obj.user and hasattr(obj.user, 'profile'):
-            return obj.user.profile.get_role_display()
-        return '-'
+            return obj.user.profile.role
+        return None
 
     def get_timestamp_jalali(self, obj):
         if obj.timestamp is None:

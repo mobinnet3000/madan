@@ -803,3 +803,148 @@ class FactoryAnalysisOutput(models.Model):
 
     def __str__(self):
         return f"{self.definition.factory.name} - {self.name}"
+
+
+class DeliveredTonnageDefinition(models.Model):
+    """تعریف تناژ تحویلی خط تولید — ورودی‌های داینامیک مختص خط + خروجی‌ها با فرمول."""
+
+    line = models.OneToOneField(
+        ProductionLine,
+        on_delete=models.CASCADE,
+        related_name="tonnage_definition",
+        verbose_name="خط تولید",
+    )
+    description = models.TextField(blank=True, verbose_name="توضیحات")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین ویرایش")
+
+    class Meta:
+        verbose_name = "تعریف تناژ تحویلی خط"
+        verbose_name_plural = "تعریف‌های تناژ تحویلی خط"
+
+    def __str__(self):
+        return f"تعریف تناژ تحویلی {self.line.name}"
+
+    def clean(self):
+        super().clean()
+        if self.pk:
+            from .factory_analysis import (
+                validate_output_formula_for_factory,
+                validate_outputs_no_cycle_factory,
+            )
+
+            try:
+                validate_output_formula_for_factory(self)
+                validate_outputs_no_cycle_factory(self)
+            except ValueError as e:
+                raise ValidationError({"outputs": str(e)})
+
+
+class DeliveredTonnageInput(models.Model):
+    definition = models.ForeignKey(
+        DeliveredTonnageDefinition,
+        on_delete=models.CASCADE,
+        related_name="inputs",
+        verbose_name="تعریف تناژ تحویلی",
+    )
+    key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
+    name = models.CharField(max_length=100, verbose_name="نام نمایشی")
+    input_type = models.CharField(
+        max_length=20, choices=INPUT_TYPE_CHOICES, default="number", verbose_name="نوع ورودی"
+    )
+    unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
+    required = models.BooleanField(default=True, verbose_name="الزامی")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+
+    class Meta:
+        verbose_name = "ورودی تناژ تحویلی"
+        verbose_name_plural = "ورودی‌های تناژ تحویلی"
+        ordering = ["definition", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["definition", "key"], name="uniq_tonnage_input_key_per_def"),
+        ]
+
+    def __str__(self):
+        return f"{self.definition.line.name} - {self.name}"
+
+
+class DeliveredTonnageOutput(models.Model):
+    definition = models.ForeignKey(
+        DeliveredTonnageDefinition,
+        on_delete=models.CASCADE,
+        related_name="outputs",
+        verbose_name="تعریف تناژ تحویلی",
+    )
+    key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
+    name = models.CharField(max_length=100, verbose_name="نام نمایشی")
+    unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
+    formula = models.TextField(verbose_name="فرمول")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+
+    class Meta:
+        verbose_name = "خروجی تناژ تحویلی"
+        verbose_name_plural = "خروجی‌های تناژ تحویلی"
+        ordering = ["definition", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["definition", "key"], name="uniq_tonnage_output_key_per_def"),
+        ]
+
+    def __str__(self):
+        return f"{self.definition.line.name} - {self.name}"
+
+
+class DeliveredTonnage(models.Model):
+    """ثبت تناژ تحویلی خط تولید — امکان ثبت چند رکورد در یک روز."""
+
+    line = models.ForeignKey(
+        ProductionLine,
+        on_delete=models.PROTECT,
+        related_name="tonnage_records",
+        verbose_name="خط تولید",
+    )
+    contractor = models.ForeignKey(
+        Contractor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tonnage_records",
+        verbose_name="پیمانکار",
+    )
+    date = models.DateField(verbose_name="تاریخ تحویل", db_index=True)
+    hour = models.TimeField(verbose_name="ساعت تحویل")
+    inputs = models.JSONField(default=dict, blank=True, verbose_name="مقادیر ورودی")
+    outputs = models.JSONField(default=dict, blank=True, verbose_name="خروجی‌های محاسبه‌شده")
+    note = models.TextField(blank=True, verbose_name="توضیحات / ملاحظات")
+    created_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_tonnage_records",
+        verbose_name="ثبت‌کننده",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
+
+    class Meta:
+        verbose_name = "ثبت تناژ تحویلی"
+        verbose_name_plural = "ثبت‌های تناژ تحویلی"
+        ordering = ["-date", "-hour", "-created_at"]
+        indexes = [
+            models.Index(fields=["line", "date"]),
+            models.Index(fields=["contractor"]),
+        ]
+
+    def __str__(self):
+        return f"تناژ {self.line.name} - {self.date} - {self.hour}"
+
+    def clean(self):
+        super().clean()
+        if self.contractor_id and self.line_id:
+            if self.contractor.factory_id != self.line.factory_id:
+                raise ValidationError(
+                    {"contractor": "پیمانکار باید متعلق به کارخانه‌ی همین خط تولید باشد."}
+                )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

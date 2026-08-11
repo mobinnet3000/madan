@@ -5,8 +5,7 @@ import { useAuth } from '../store/AuthContext'
 import { api } from '../api/client'
 import type { ActivityLogEntry } from '../types'
 import { Loading, EmptyState, ErrorBanner } from '../components/ui/States'
-import { formatDate } from '../utils'
-import { ROLE_BADGE } from '../constants'
+import { ROLE_BADGE, ROLE_LABELS } from '../constants'
 
 const ACTION_LABELS: Record<string, string> = {
   login: 'ورود', logout: 'خروج', create: 'ایجاد', update: 'ویرایش', delete: 'حذف',
@@ -17,6 +16,8 @@ const ACTION_STYLE: Record<string, string> = {
   create: 'bg-brand-100 text-brand-700', update: 'bg-sky-100 text-sky-700',
   delete: 'bg-rose-100 text-rose-700',
 }
+
+type RoleKey = keyof typeof ROLE_BADGE
 
 export default function ActivityLog() {
   const { user } = useAuth()
@@ -33,7 +34,7 @@ export default function ActivityLog() {
     const params: Record<string, string> = {}
     if (action) params.action = action
     api.get('/activity-logs/', { params })
-      .then((res) => setLogs(res.data))
+      .then((res) => setLogs(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }
@@ -114,7 +115,7 @@ export default function ActivityLog() {
                   >
                     <td className="px-4 py-3 text-[11px] text-ink-600 dark:text-slate-400">{l.timestamp_jalali || new Date(l.timestamp).toLocaleString('fa-IR')}</td>
                     <td className="px-4 py-3"><div className="font-medium text-ink-800 dark:text-slate-200">{l.username}</div></td>
-                    <td className="px-4 py-3"><span className={`badge ${ROLE_BADGE[(l.role || 'operator') as keyof typeof ROLE_BADGE] || ROLE_BADGE.operator}`}>{l.role || 'اپراتور'}</span></td>
+                    <td className="px-4 py-3"><span className={`badge ${ROLE_BADGE[(l.role as RoleKey) || 'operator']}`}>{ROLE_LABELS[(l.role as RoleKey) || 'operator']}</span></td>
                     <td className="px-4 py-3"><span className={`badge ${ACTION_STYLE[l.action] || 'bg-ink-100 text-ink-600'}`}>{ACTION_LABELS[l.action] || l.action}</span></td>
                     <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-300">{l.model_name}</td>
                     <td className="max-w-[280px] truncate px-4 py-3 text-ink-600 dark:text-slate-400" title={l.description}>{l.description || l.object_repr || '—'}</td>

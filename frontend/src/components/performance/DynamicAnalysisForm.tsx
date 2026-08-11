@@ -6,6 +6,7 @@ import Modal from '../ui/Modal'
 import { getProductionLineDetail, createActualAnalysis, updateActualAnalysis } from '../../api/actual'
 import type { ActualAnalysis, ActualAnalysisPayload, AnalysisSchema } from '../../types'
 import { todayISO } from '../../utils'
+import JalaliDateInput from '../ui/JalaliDateInput'
 
 interface Props {
   open: boolean
@@ -189,11 +190,11 @@ export default function DynamicAnalysisForm({ open, editing, onClose, onSaved }:
           </div>
           <div>
             <label className="label">از تاریخ *</label>
-            <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <JalaliDateInput value={dateFrom} onChange={(iso) => setDateFrom(iso)} />
           </div>
           <div>
             <label className="label">تا تاریخ *</label>
-            <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <JalaliDateInput value={dateTo} onChange={(iso) => setDateTo(iso)} />
           </div>
         </div>
 
