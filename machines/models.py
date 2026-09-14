@@ -505,7 +505,7 @@ class LineAnalysisDefinition(models.Model):
                 validate_output_formula(self)
                 validate_outputs_no_cycle(self)
             except ValueError as e:
-                raise ValidationError({"outputs": str(e)})
+                raise ValidationError(str(e))
 
 
 class AdditionalInputDefinition(models.Model):
