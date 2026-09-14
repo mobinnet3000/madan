@@ -5,6 +5,7 @@ export interface FailureReason {
 
 export interface Shift {
   id: number
+  line: number
   name: string
   start_time: string
   end_time: string
@@ -38,6 +39,7 @@ export interface ProductionLine {
   attributes_values: Record<string, number>
   attribute_defs: AttributeDef[]
   devices: Device[]
+  shifts?: Shift[]
   analysis_positions?: PositionSchema[]
   tonnage_definition?: {
     id: number

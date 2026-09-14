@@ -17,6 +17,7 @@ const ProductionReports = lazy(() => import('./pages/ProductionReports'))
 const Tonnage = lazy(() => import('./pages/Tonnage'))
 const Performance = lazy(() => import('./pages/Performance'))
 const Reports = lazy(() => import('./pages/Reports'))
+const Settings = lazy(() => import('./pages/Settings'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
 
@@ -78,6 +79,7 @@ function AppInner() {
                     <Route path="/tonnage" element={<Page><Tonnage /></Page>} />
                     <Route path="/performance" element={<Page><Performance /></Page>} />
                     <Route path="/reports" element={<Page><Reports /></Page>} />
+                    <Route path="/settings" element={<Page><Settings /></Page>} />
                     <Route path="/users" element={<Page><UsersPage /></Page>} />
                     <Route path="/activity" element={<Page><ActivityLog /></Page>} />
                   </Routes>

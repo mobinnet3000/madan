@@ -39,7 +39,7 @@ export default function TonnageDefinitionPanel() {
   const [checks, setChecks] = useState<Record<number, { ok: boolean; errors: string[] }>>({})
   const [checking, setChecking] = useState<Record<number, boolean>>({})
   const [focusIdx, setFocusIdx] = useState<number | null>(null)
-  const refs = useRef<Record<number, HTMLTextAreaElement | null>>({})
+  const formulaRefs2 = useRef<Record<number, HTMLTextAreaElement | null>>({})
 
   useEffect(() => {
     if (!selectedFactory?.lines.length) return
@@ -81,7 +81,7 @@ export default function TonnageDefinitionPanel() {
 
   const insertVar = (v: string) => {
     if (focusIdx == null) return
-    const ta = refs.current[focusIdx]
+    const ta = formulaRefs2.current[focusIdx]
     if (!ta) return
     const s = ta.selectionStart ?? ta.value.length
     const e = ta.selectionEnd ?? ta.value.length
@@ -89,6 +89,7 @@ export default function TonnageDefinitionPanel() {
     setOutput(focusIdx, { formula: next })
     requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(s + v.length, s + v.length) })
   }
+  const insertCalc = (snippet: string) => insertVar(snippet)
 
   const validateFormula = async (idx: number) => {
     if (!lineId) return
@@ -192,8 +193,13 @@ export default function TonnageDefinitionPanel() {
                     {canEdit && <button className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => { setOutputs(p => p.filter((_, i) => i !== idx)); setChecks(p => { const n = { ...p }; delete n[idx]; return n }) }}><Trash2 className="h-4 w-4" /></button>}
                   </div>
                   <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                    <textarea ref={el => { refs.current[idx] = el }} className="input min-h-[80px] flex-1 font-mono text-xs" dir="ltr" rows={3} disabled={!canEdit} value={out.formula} onFocus={() => setFocusIdx(idx)} onChange={e => setOutput(idx, { formula: e.target.value })} placeholder="مثال: tonnage * (grade - tail) ..." />
-                    {canEdit && <div className="w-full shrink-0 sm:w-56"><button className="btn-ghost !h-8 w-full !px-2 text-xs" onClick={() => validateFormula(idx)} disabled={checking[idx]}>{checking[idx] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'اعتبارسنجی فرمول'}</button><div className="mt-1.5 flex flex-wrap gap-1">{variables.map(v => <button key={v.var} type="button" className="chip" onClick={() => insertVar(v.var)}>{v.label}</button>)}</div></div>}
+                    <textarea ref={el => { formulaRefs2.current[idx] = el }} className="input min-h-[80px] flex-1 font-mono text-xs" dir="ltr" rows={3} disabled={!canEdit} value={out.formula} onFocus={() => setFocusIdx(idx)} onChange={e => setOutput(idx, { formula: e.target.value })} placeholder="مثال: tonnage * (grade - tail) ..." />
+                    {canEdit && <div className="w-full shrink-0 sm:w-64 space-y-2">
+                      <div className="flex flex-wrap gap-1">{['+', '-', '*', '/', '(', ')', '%'].map(op => <button key={op} type="button" className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800" onClick={() => insertCalc(op)}>{op}</button>)}<button type="button" className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800" onClick={() => insertCalc('100')}>100</button></div>
+                      <button className="btn-ghost !h-8 w-full !px-2 text-xs" onClick={() => validateFormula(idx)} disabled={checking[idx]}>{checking[idx] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'اعتبارسنجی فرمول'}</button>
+                      <div className="flex flex-wrap gap-1">{variables.map(v => <button key={v.var} type="button" className="chip" onClick={() => insertVar(v.var)}>{v.label}</button>)}</div>
+                      <div className="text-[10px] text-slate-400">کلیک روی عملگر/عدد/متغیر = درج در فرمول</div>
+                    </div>}
                   </div>
                   {checks[idx] && <div className={`mt-1.5 rounded-lg px-3 py-1.5 text-xs ${checks[idx].ok ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'}`}>{checks[idx].ok ? 'فرمول معتبر است' : checks[idx].errors.join(' · ')}</div>}
                 </div>

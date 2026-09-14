@@ -204,9 +204,9 @@ random.seed(7)
 factories = []
 for fd in factories_data:
     fac = Factory.objects.create(name=fd['name'], address=fd['address'])
-    shifts = [Shift.objects.create(factory=fac, name=n, start_time=s, end_time=e, is_active=True) for n, s, e in shifts_def]
     failures = [FailureReason.objects.create(title=t) for t in failures_def]
     analyzers = []
+    shifts = []
     for lname, ltype, lattrs, devs in fd['lines']:
         line = ProductionLine.objects.create(
             name=lname, factory=fac, line_type=ltype,
@@ -221,6 +221,8 @@ for fd in factories_data:
                 name=dname, code='L%d-D%02d' % (line.id, order), line=line, template=dtpl, order=order,
                 attributes_values=dattrs, image=img,
             )
+        for n, s, e in shifts_def:
+            shifts.append(Shift.objects.create(line=line, name=n, start_time=s, end_time=e, is_active=True))
     factories.append((fac, shifts, failures, analyzers))
 
 # گزارش‌های ۹۲ روزه با حالات متنوع
@@ -236,14 +238,16 @@ for fac, shifts, failures, analyzers in factories:
     lines = list(fac.lines.all())
     for line in lines:
         devices = list(line.devices.all())
+        line_shifts = [s for s in shifts if s.line_id == line.id]
+        if not line_shifts:
+            line_shifts = list(Shift.objects.filter(line=line))
         down_until = None
         for i in range(92):
             d = today - timedelta(days=i)
-            # دوره خاموشي برنامه‌ريزي شده
             if down_until is None and random.random() < 0.05:
                 down_until = d - timedelta(days=random.randint(1, 3))
             line_down = (down_until is not None and d <= down_until)
-            for s in shifts:
+            for s in line_shifts:
                 if line_down:
                     reason, repair = random.choice(down_reasons)
                     fr = random.choice(failures)

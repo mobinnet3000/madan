@@ -12,6 +12,7 @@ export interface PerformanceReportInput {
   records: ActualAnalysis[]
   chips?: AppliedFilterChip[]
   branding?: { logoUrl?: string; primaryColor?: string }
+  outputLabelMap?: Record<string, string>
 }
 
 function uniqOutputs(records: ActualAnalysis[]): string[] {

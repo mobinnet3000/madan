@@ -22,6 +22,9 @@ api.interceptors.request.use((config) => {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Token ${token}`
   }
+  if (config.data instanceof FormData) {
+    delete (config.headers as any)['Content-Type']
+  }
   return config
 })
 

@@ -215,7 +215,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
             <tbody className="divide-y divide-ink-100 dark:divide-slate-700">
               {computed.outputKeys.map(k => (
                 <tr key={k} className="transition hover:bg-ink-50/50 dark:hover:bg-slate-800/50">
-                  <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{k}</td>
+                  <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200" title={k}>{k}</td>
                   <td className="px-4 py-3 text-ink-600 dark:text-slate-400">{formatNumber(computed.cnts[k] ?? 0)}</td>
                   <td className="px-4 py-3 font-semibold text-ink-800 dark:text-slate-100">{formatNumber(Math.round(computed.sums[k] * 10) / 10)}</td>
                   <td className="px-4 py-3 text-emerald-700 dark:text-emerald-400">{formatNumber(Math.round(computed.avgs[k] * 10) / 10)}</td>

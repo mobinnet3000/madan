@@ -56,6 +56,8 @@ ALL_PERMISSIONS = [
     "users.manage",
     "roles.view",
     "roles.manage",
+    "settings.view",
+    "settings.manage",
 ]
 ALL_SET = frozenset(ALL_PERMISSIONS)
 
@@ -128,6 +130,8 @@ PERMISSIONS_CATALOG = [
     },
     {"code": "roles.view", "label": "مشاهده نقش‌ها و دسترسی‌ها", "group": "مدیریت"},
     {"code": "roles.manage", "label": "تعریف دسترسی‌های نقش‌ها", "group": "مدیریت"},
+    {"code": "settings.view", "label": "مشاهده تنظیمات کارخانه و خط", "group": "تنظیمات"},
+    {"code": "settings.manage", "label": "مدیریت تنظیمات کارخانه و خط", "group": "تنظیمات"},
 ]
 
 
@@ -167,6 +171,8 @@ def permissions_for_role(role):
             "activity.view",
             "users.view",
             "users.manage",
+            "settings.view",
+            "settings.manage",
         }
     if role == ROLE_OPERATOR:
         return {

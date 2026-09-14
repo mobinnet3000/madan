@@ -26,22 +26,33 @@ type ViewMode = 'flow' | 'grid'
 function imgUrl(path: string | null): string | null {
   if (!path) return null
   if (path.startsWith('http://') || path.startsWith('https://')) return path
-  if (path.startsWith('/media/')) return `https://mback.ba3tani.ir${path}`
-  if (path.startsWith('media/')) return `https://mback.ba3tani.ir/${path}`
-  return `https://mback.ba3tani.ir/media/${path}`
+  if (path.startsWith('/media/')) return path
+  if (path.startsWith('media/')) return `/${path}`
+  if (path.startsWith('/')) return path
+  return `/media/${path}`
 }
 
 function DeviceThumb({ device, size = 64 }: { device: Device; size?: number }) {
   const [err, setErr] = useState(false)
   const src = useMemo(() => imgUrl(device.image), [device.image])
   if (src && !err) {
-    return <img src={src} alt={device.name} onError={() => setErr(true)} className="h-full w-full object-cover" loading="lazy" style={{ height: size }} />
+    return <img src={src} alt={device.name} onError={() => setErr(true)} className="aspect-[3/2] w-full bg-slate-50 object-contain dark:bg-slate-700/40" loading="lazy" style={{ maxHeight: size * 1.6 }} />
   }
   return (
-    <div className="flex w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400 dark:from-slate-800 dark:to-slate-700 dark:text-slate-500" style={{ height: size }}>
+    <div className="flex aspect-[3/2] w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400 dark:from-slate-800 dark:to-slate-700 dark:text-slate-500">
       <ImageOff className="h-6 w-6" />
     </div>
   )
+}
+
+function groupByOrder(devices: Device[]): Device[][] {
+  const groups = new Map<number, Device[]>()
+  for (const d of devices) {
+    const k = d.order ?? 0
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k)!.push(d)
+  }
+  return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v)
 }
 
 export default function Lines() {
@@ -95,12 +106,10 @@ export default function Lines() {
     setDeviceImagePreview(null)
   }, [deviceImageFile])
 
-  if (loading) return <Loading />
-  if (!selectedFactory) return <EmptyState title="کارخانه‌ای انتخاب نشده" description="لطفاً از بالا یک کارخانه انتخاب کنید یا در پنل ادمین بسازید." />
-
-  const factory = selectedFactory
+  const factory = selectedFactory ?? null
 
   const stats = useMemo(() => {
+    if (!factory) return { totalLines: 0, totalDevices: 0, byType: [] as { type: LineType; count: number; devices: number }[] }
     const totalLines = factory.lines.length
     const totalDevices = factory.lines.reduce((s, l) => s + l.devices.length, 0)
     const byType = (['crushing', 'processing', 'conveying', 'other'] as LineType[]).map(t => ({
@@ -111,23 +120,30 @@ export default function Lines() {
     return { totalLines, totalDevices, byType }
   }, [factory])
 
-  const groups: { type: LineType; lines: ProductionLine[] }[] = []
-  ;(['crushing', 'processing', 'conveying', 'other'] as LineType[]).forEach(t => {
-    let lines = factory.lines.filter(l => l.line_type === t)
-    if (typeFilter && t !== typeFilter) lines = []
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      lines = lines.filter(l =>
-        l.name.toLowerCase().includes(q) ||
-        l.description.toLowerCase().includes(q) ||
-        l.template_name.toLowerCase().includes(q) ||
-        l.devices.some(d => d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q))
-      )
-    }
-    if (lines.length) groups.push({ type: t, lines: [...lines].sort((a, b) => a.name.localeCompare(b.name, 'fa')) })
-  })
+  const groups: { type: LineType; lines: ProductionLine[] }[] = useMemo(() => {
+    if (!factory) return []
+    const g: { type: LineType; lines: ProductionLine[] }[] = []
+    ;(['crushing', 'processing', 'conveying', 'other'] as LineType[]).forEach(t => {
+      let lines = factory.lines.filter(l => l.line_type === t)
+      if (typeFilter && t !== typeFilter) lines = []
+      if (search.trim()) {
+        const q = search.trim().toLowerCase()
+        lines = lines.filter(l =>
+          l.name.toLowerCase().includes(q) ||
+          l.description.toLowerCase().includes(q) ||
+          l.template_name.toLowerCase().includes(q) ||
+          l.devices.some(d => d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q))
+        )
+      }
+      if (lines.length) g.push({ type: t, lines: [...lines].sort((a, b) => a.name.localeCompare(b.name, 'fa')) })
+    })
+    return g
+  }, [factory, typeFilter, search])
 
-  const hasAny = groups.some(g => g.lines.length > 0)
+  const hasAny = useMemo(() => groups.some(g => g.lines.length > 0), [groups])
+
+  if (loading) return <Loading />
+  if (!selectedFactory || !factory) return <EmptyState title="کارخانه‌ای انتخاب نشده" description="لطفاً از بالا یک کارخانه انتخاب کنید یا در پنل ادمین بسازید." />
 
   const openCreateLine = () => {
     setEditingLineMeta(null)
@@ -201,26 +217,42 @@ export default function Lines() {
     setSaving(true)
     try {
       if (editingDeviceMeta) {
-        const payload: any = { name: deviceForm.name.trim(), code: deviceForm.code.trim(), order: Number(deviceForm.order) || 0 }
-        if (deviceForm.template) payload.template = Number(deviceForm.template)
-        await updateDevice(editingDeviceMeta.id, payload)
         if (deviceImageFile) {
-          try { await uploadDeviceImage(editingDeviceMeta.id, deviceImageFile) } catch (e: any) { notify('دستگاه ذخیره شد اما تصویر آپلود نشد: ' + (e.message || ''), 'error') }
+          const fd = new FormData()
+          fd.append('name', deviceForm.name.trim())
+          fd.append('code', deviceForm.code.trim())
+          fd.append('order', String(Number(deviceForm.order) || 0))
+          if (deviceForm.template) fd.append('template', String(Number(deviceForm.template)))
+          fd.append('image', deviceImageFile)
+          const { api } = await import('../api/client')
+          await api.patch(`/devices/${editingDeviceMeta.id}/`, fd)
+        } else {
+          const payload: any = { name: deviceForm.name.trim(), code: deviceForm.code.trim(), order: Number(deviceForm.order) || 0 }
+          if (deviceForm.template) payload.template = Number(deviceForm.template)
+          await updateDevice(editingDeviceMeta.id, payload)
         }
         notify('دستگاه ویرایش شد')
       } else {
         if (!deviceForm.template && deviceTemplates.length) { notify('الگوی دستگاه را انتخاب کنید', 'error'); setSaving(false); return }
-        const payload: any = {
-          line: targetLineId,
-          name: deviceForm.name.trim(),
-          code: deviceForm.code.trim(),
-          order: Number(deviceForm.order) || 0,
-          template: deviceForm.template ? Number(deviceForm.template) : deviceTemplates[0]?.id,
-        }
-        const created = await createDevice(payload)
-        const newId = created?.id
-        if (newId && deviceImageFile) {
-          try { await uploadDeviceImage(newId, deviceImageFile) } catch (e: any) { notify('دستگاه ساخته شد اما تصویر آپلود نشد', 'error') }
+        if (deviceImageFile) {
+          const fd = new FormData()
+          fd.append('line', String(targetLineId))
+          fd.append('name', deviceForm.name.trim())
+          fd.append('code', deviceForm.code.trim())
+          fd.append('order', String(Number(deviceForm.order) || 0))
+          fd.append('template', String(deviceForm.template ? Number(deviceForm.template) : deviceTemplates[0]?.id))
+          fd.append('image', deviceImageFile)
+          const { api } = await import('../api/client')
+          await api.post('/devices/', fd)
+        } else {
+          const payload: any = {
+            line: targetLineId,
+            name: deviceForm.name.trim(),
+            code: deviceForm.code.trim(),
+            order: Number(deviceForm.order) || 0,
+            template: deviceForm.template ? Number(deviceForm.template) : deviceTemplates[0]?.id,
+          }
+          await createDevice(payload)
         }
         notify('دستگاه جدید افزوده شد')
       }
@@ -383,11 +415,13 @@ export default function Lines() {
                             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-xs font-bold text-white">{line.id}</span>
                             <div>
                               <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{line.name}</div>
-                              <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
                                 <span className={`badge ${style.badge}`}>{LINE_TYPE_LABELS[line.line_type]}</span>
                                 <span>الگو: {line.template_name}</span>
                                 <span className="hidden sm:inline">· {formatNumber(line.devices.length)} دستگاه</span>
+                                {(line as any).shifts?.length ? <span className="hidden sm:inline">· {(line as any).shifts.length} شیفت</span> : null}
                               </div>
+                              {(line as any).shifts?.length ? <div className="mt-1 flex flex-wrap gap-1">{(line as any).shifts.map((s: any) => <span key={s.id} className="chip !px-1.5 !py-0.5 text-[10px]">{s.name} {s.start_time.slice(0,5)}-{s.end_time.slice(0,5)}</span>)}</div> : null}
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-1">
@@ -437,61 +471,68 @@ export default function Lines() {
                               {canManageDevices && <button className="btn-primary mt-3 !h-9 !px-4 text-xs" onClick={() => openCreateDevice(line.id)}><Plus className="h-4 w-4" /> افزودن دستگاه</button>}
                             </div>
                           ) : viewMode === 'flow' ? (
-                            <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
-                              {devicesSorted.map((d, i) => (
-                                <div key={d.id} className="flex items-center">
-                                  <div className="group relative flex w-52 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl hover:ring-2 hover:ring-orange-200 dark:border-slate-700 dark:bg-slate-800">
-                                    <div className="relative">
-                                      <DeviceThumb device={d} size={72} />
-                                      <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/80 text-[11px] font-bold text-white backdrop-blur">{i + 1}</span>
-                                    </div>
-                                    <div className="flex flex-1 flex-col p-3">
-                                      <div className="truncate text-sm font-bold text-slate-800 dark:text-slate-100" title={d.name}>{d.name}</div>
-                                      <div className="text-[11px] text-slate-400">{d.code ? `${d.code} · ` : ''}{d.template_name}</div>
-                                      <div className="mt-2 flex flex-wrap gap-1">
-                                        {Object.entries(d.attributes_values || {}).slice(0, 2).map(([k, v]) => <span key={k} className="chip !px-1.5 !py-0.5 text-[10px]">{k}: {formatNumber(v as number)}</span>)}
+                            (() => {
+                              const levels = groupByOrder(devicesSorted)
+                              return (
+                                <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
+                                  {levels.map((level, li) => (
+                                    <div key={li} className="flex items-center">
+                                      <div className="flex flex-col gap-3">
+                                        {level.map((d) => (
+                                          <div key={d.id} className="group relative flex w-52 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl hover:ring-2 hover:ring-orange-200 dark:border-slate-700 dark:bg-slate-800">
+                                            <div className="relative w-full">
+                                              <DeviceThumb device={d} size={72} />
+                                              <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/80 text-[11px] font-bold text-white backdrop-blur">#{d.order}</span>
+                                            </div>
+                                            <div className="flex flex-1 flex-col p-3">
+                                              <div className="truncate text-sm font-bold text-slate-800 dark:text-slate-100" title={d.name}>{d.name}</div>
+                                              <div className="truncate text-[11px] text-slate-400">{d.code ? `${d.code} · ` : ''}{d.template_name}</div>
+                                              <div className="mt-2 flex min-h-[40px] flex-wrap content-start gap-1 overflow-hidden">
+                                                {Object.entries(d.attributes_values || {}).slice(0, 2).map(([k, v]) => <span key={k} className="chip !px-1.5 !py-0.5 text-[10px]">{k}: {formatNumber(v as number)}</span>)}
+                                                {Object.keys(d.attributes_values || {}).length > 2 && <span className="text-[10px] text-slate-400">+{Object.keys(d.attributes_values || {}).length - 2}</span>}
+                                              </div>
+                                              <div className="mt-auto flex items-center gap-1 pt-3">
+                                                <button onClick={() => setEditDevice(d)} className="flex-1 rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-bold text-white hover:bg-black dark:bg-white dark:text-slate-900"><Settings2 className="mr-1 inline h-3 w-3" /> ویژگی</button>
+                                                {canManageDevices && <><button onClick={() => openEditDeviceMeta(d, line.id)} className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300" title="ویرایش"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => setConfirmDeleteDevice(d)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button></>}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
                                       </div>
-                                      <div className="mt-3 flex items-center gap-1">
-                                        <button onClick={() => setEditDevice(d)} className="flex-1 rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-bold text-white hover:bg-black dark:bg-white dark:text-slate-900"><Settings2 className="mr-1 inline h-3 w-3" /> ویژگی</button>
-                                        {canManageDevices && <><button onClick={() => openEditDeviceMeta(d, line.id)} className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300" title="ویرایش"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => setConfirmDeleteDevice(d)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button></>}
-                                      </div>
+                                      {li < levels.length - 1 && <div className="flex w-10 shrink-0 items-center justify-center text-slate-300"><svg width="36" height="20" viewBox="0 0 36 20" fill="none"><path d="M36 10 H8" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" /><path d="M10 4 L2 10 L10 16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg></div>}
                                     </div>
-                                  </div>
-                                  {i < devicesSorted.length - 1 && <div className="flex w-10 shrink-0 items-center justify-center text-slate-300"><svg width="36" height="20" viewBox="0 0 36 20" fill="none"><path d="M0 10 H28" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" /><path d="M26 4 L34 10 L26 16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg></div>}
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
+                              )
+                            })()
                           ) : (
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                              {devicesSorted.map((d, i) => (
-                                <div key={d.id} className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-lg dark:border-slate-700 dark:bg-slate-800">
-                                  <div className="relative overflow-hidden">
-                                    <DeviceThumb device={d} size={96} />
+                              {devicesSorted.map((d) => (
+                                <div key={d.id} className="group relative flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                                  <div className="relative w-full overflow-hidden bg-slate-50 dark:bg-slate-700/30">
+                                    <DeviceThumb device={d} size={104} />
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
-                                    <span className="absolute right-2 top-2 rounded-full bg-slate-900/80 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur">#{d.order || i + 1}</span>
+                                    <span className="absolute right-2 top-2 rounded-full bg-slate-900/80 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur">#{d.order}</span>
                                     {canManageDevices && (
                                       <div className="absolute bottom-1 left-1 flex gap-1 opacity-0 transition group-hover:opacity-100">
-                                        <button onClick={() => moveDevice(line, d.id, 'up')} disabled={i === 0 || lineActionId === line.id} className="rounded-lg bg-white/90 p-1 text-slate-700 shadow hover:bg-white disabled:opacity-40"><ArrowUp className="h-3.5 w-3.5" /></button>
-                                        <button onClick={() => moveDevice(line, d.id, 'down')} disabled={i === devicesSorted.length - 1 || lineActionId === line.id} className="rounded-lg bg-white/90 p-1 text-slate-700 shadow hover:bg-white disabled:opacity-40"><ArrowDown className="h-3.5 w-3.5" /></button>
+                                        <button onClick={() => moveDevice(line, d.id, 'up')} disabled={lineActionId === line.id} className="rounded-lg bg-white/90 p-1 text-slate-700 shadow hover:bg-white disabled:opacity-40"><ArrowUp className="h-3.5 w-3.5" /></button>
+                                        <button onClick={() => moveDevice(line, d.id, 'down')} disabled={lineActionId === line.id} className="rounded-lg bg-white/90 p-1 text-slate-700 shadow hover:bg-white disabled:opacity-40"><ArrowDown className="h-3.5 w-3.5" /></button>
                                       </div>
                                     )}
                                   </div>
                                   <div className="flex flex-1 flex-col p-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <div className="truncate text-sm font-bold leading-tight text-slate-800 dark:text-slate-100" title={d.name}>{d.name}</div>
-                                        <div className="truncate text-[11px] text-slate-400">{d.code ? <span className="font-mono font-medium text-slate-500">{d.code} · </span> : null}{d.template_name}</div>
-                                      </div>
-                                      <span className="shrink-0 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white dark:bg-white dark:text-slate-900">{i + 1}</span>
+                                    <div className="min-h-[40px]">
+                                      <div className="truncate text-sm font-bold leading-tight text-slate-800 dark:text-slate-100" title={d.name}>{d.name}</div>
+                                      <div className="truncate text-[11px] text-slate-400">{d.code ? <span className="font-mono font-medium text-slate-500">{d.code} · </span> : null}{d.template_name}</div>
                                     </div>
-                                    <div className="mt-2 flex flex-wrap gap-1">
+                                    <div className="mt-2 flex min-h-[52px] flex-wrap content-start gap-1 overflow-hidden">
                                       {Object.entries(d.attributes_values || {}).length === 0 ? <span className="text-[11px] text-slate-400">بدون ویژگی</span> : Object.entries(d.attributes_values || {}).slice(0, 3).map(([k, v]) => {
                                         const unit = d.attribute_defs.find(a => a.name === k)?.unit || ''
                                         return <span key={k} className="chip !px-1.5 !py-0.5 text-[10px]">{k} {formatNumber(v as number)} {unit && <span className="text-slate-400">{unit}</span>}</span>
                                       })}
                                       {Object.keys(d.attributes_values || {}).length > 3 && <span className="text-[10px] text-slate-400">+{Object.keys(d.attributes_values || {}).length - 3}</span>}
                                     </div>
-                                    <div className="mt-3 grid grid-cols-3 gap-1">
+                                    <div className="mt-auto grid grid-cols-3 gap-1 pt-3">
                                       <button onClick={() => setEditDevice(d)} className="col-span-2 inline-flex items-center justify-center gap-1 rounded-xl bg-slate-900 px-2 py-1.5 text-xs font-bold text-white hover:bg-black dark:bg-white dark:text-slate-900"><Settings2 className="h-3 w-3" /> ویژگی‌ها</button>
                                       {canManageDevices ? (
                                         <div className="flex gap-1">
@@ -505,7 +546,7 @@ export default function Lines() {
                                 </div>
                               ))}
                               {canManageDevices && (
-                                <button onClick={() => openCreateDevice(line.id)} className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-slate-500 transition hover:border-orange-300 hover:bg-orange-50/50 hover:text-orange-600 dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-orange-400/50">
+                                <button onClick={() => openCreateDevice(line.id)} className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-slate-500 transition hover:border-orange-300 hover:bg-orange-50/50 hover:text-orange-600 dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-orange-400/50">
                                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm dark:bg-slate-700"><Plus className="h-5 w-5" /></div>
                                   <span className="text-sm font-bold">افزودن دستگاه</span>
                                   <span className="text-xs">به {line.name}</span>
@@ -582,7 +623,15 @@ export default function Lines() {
                 {deviceImagePreview ? <img src={deviceImagePreview} alt="preview" className="h-full w-full object-cover" /> : editingDeviceMeta?.image ? <img src={imgUrl(editingDeviceMeta.image) || ''} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-slate-400" />}
               </div>
               <div className="flex flex-1 flex-col gap-2">
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => setDeviceImageFile(e.target.files?.[0] || null)} />
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" className="hidden" onChange={e => {
+                  const f = e.target.files?.[0] || null
+                  if (f) {
+                    const ok = ['image/jpeg', 'image/png', 'image/webp'].includes(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name)
+                    if (!ok) { notify('فرمت مجاز: JPG, PNG, WebP', 'error'); e.target.value = ''; return }
+                    if (f.size > 5 * 1024 * 1024) { notify('حجم تصویر نباید بیش از ۵ مگابایت باشد', 'error'); e.target.value = ''; return }
+                  }
+                  setDeviceImageFile(f)
+                }} />
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="btn-ghost !h-9" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> انتخاب تصویر</button>
                   {deviceImageFile && <button type="button" className="btn-ghost !h-9" onClick={() => setDeviceImageFile(null)}><X className="h-4 w-4" /> حذف انتخاب</button>}

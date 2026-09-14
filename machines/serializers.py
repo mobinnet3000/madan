@@ -4,6 +4,10 @@ from .models import (
     Shift,
     FailureReason,
     ProductionLine,
+    ProductionLineAttribute,
+    ProductionLineTemplate,
+    Attribute,
+    DeviceTemplate,
     Device,
     DeviceLog,
     ProductionReport,
@@ -148,10 +152,70 @@ class FailureReasonSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class FactorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Factory
+        fields = ["id", "name", "address"]
+
+
+class ProductionLineAttributeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductionLineAttribute
+        fields = ["id", "name", "unit"]
+
+
+class AttributeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attribute
+        fields = ["id", "name", "unit"]
+
+
+class DeviceTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeviceTemplate
+        fields = ["id", "name", "description", "available_attributes"]
+        read_only_fields = ["available_attributes"]
+
+
+class ProductionLineTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductionLineTemplate
+        fields = ["id", "name", "description", "available_attributes"]
+        read_only_fields = ["available_attributes"]
+
+
+class ProductionLineWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductionLine
+        fields = ["id", "factory", "name", "description", "line_type", "template", "attributes_values"]
+        read_only_fields = ["id"]
+
+
 class ShiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shift
-        fields = ["id", "name", "start_time", "end_time", "is_active"]
+        fields = ["id", "line", "name", "start_time", "end_time", "is_active"]
+
+
+class DeviceWriteSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, allow_null=True, use_url=True)
+
+    class Meta:
+        model = Device
+        fields = ["id", "line", "template", "name", "code", "order", "attributes_values", "image"]
+        read_only_fields = ["id"]
+        extra_kwargs = {"image": {"required": False, "allow_null": True}}
+
+    def validate_image(self, value):
+        if value is None or value == "":
+            return value
+        max_size = 5 * 1024 * 1024
+        if value.size > max_size:
+            raise serializers.ValidationError("حجم تصویر نباید بیش از ۵ مگابایت باشد.")
+        ext = (value.name or "").lower().rsplit(".", 1)[-1] if "." in (value.name or "") else ""
+        if ext not in ("jpg", "jpeg", "png", "webp"):
+            raise serializers.ValidationError("فرمت مجاز: jpg, jpeg, png, webp")
+        return value
 
 
 class DeviceSerializer(serializers.ModelSerializer):
@@ -202,6 +266,7 @@ class TonnageDefinitionBriefSerializer(serializers.ModelSerializer):
 
 class ProductionLineSerializer(serializers.ModelSerializer):
     devices = DeviceSerializer(many=True, read_only=True)
+    shifts = ShiftSerializer(many=True, read_only=True)
     template_name = serializers.ReadOnlyField(source="template.name")
     attribute_defs = serializers.SerializerMethodField()
     analysis_positions = AnalysisPositionSerializer(many=True, read_only=True)
@@ -218,6 +283,7 @@ class ProductionLineSerializer(serializers.ModelSerializer):
             "attributes_values",
             "attribute_defs",
             "devices",
+            "shifts",
             "analysis_positions",
             "tonnage_definition",
         ]
@@ -252,7 +318,7 @@ class FactoryAnalysisDefinitionBriefSerializer(serializers.ModelSerializer):
 
 
 class FactoryFullDetailSerializer(serializers.ModelSerializer):
-    shifts = ShiftSerializer(many=True, read_only=True)
+    shifts = serializers.SerializerMethodField()
     lines = ProductionLineSerializer(many=True, read_only=True)
     failure_reasons = serializers.SerializerMethodField()
     contractors = ContractorSerializer(many=True, read_only=True)
@@ -272,6 +338,10 @@ class FactoryFullDetailSerializer(serializers.ModelSerializer):
             "contractors",
             "factory_analysis_definition",
         ]
+
+    def get_shifts(self, obj):
+        from .models import Shift
+        return ShiftSerializer(Shift.objects.filter(line__factory=obj), many=True).data
 
     def get_failure_reasons(self, obj):
         return FailureReasonSerializer(FailureReason.objects.all(), many=True).data

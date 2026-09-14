@@ -16,8 +16,8 @@ class Factory(models.Model):
 
 
 class Shift(models.Model):
-    factory = models.ForeignKey(
-        Factory, on_delete=models.CASCADE, related_name="shifts", verbose_name="کارخانه"
+    line = models.ForeignKey(
+        "ProductionLine", on_delete=models.CASCADE, related_name="shifts", verbose_name="خط تولید"
     )
     name = models.CharField(max_length=100, verbose_name="نام شیفت")
     start_time = models.TimeField(verbose_name="ساعت شروع")
@@ -29,13 +29,13 @@ class Shift(models.Model):
         verbose_name_plural = "شیفت‌های کاری"
         constraints = [
             models.UniqueConstraint(
-                fields=["factory", "name"], name="uniq_shift_per_factory"
+                fields=["line", "name"], name="uniq_shift_per_line"
             ),
         ]
-        ordering = ["factory", "start_time"]
+        ordering = ["line", "start_time"]
 
     def __str__(self):
-        return f"{self.name} - {self.factory.name}"
+        return f"{self.name} - {self.line.name}"
 
 
 class FailureReason(models.Model):
@@ -287,10 +287,10 @@ class DeviceLog(models.Model):
         if (
             self.shift_id
             and self.line_id
-            and self.shift.factory_id != self.line.factory_id
+            and self.shift.line_id != self.line_id
         ):
             raise ValidationError(
-                {"shift": "شیفت انتخاب‌شده متعلق به کارخانه این خط تولید نیست."}
+                {"shift": "شیفت انتخاب‌شده متعلق به این خط تولید نیست."}
             )
 
     def save(self, *args, **kwargs):

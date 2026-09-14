@@ -141,8 +141,10 @@ STATIC_ROOT = config('DJANGO_STATIC_ROOT', default=str(BASE_DIR / 'staticfiles')
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # ── Media ──
-MEDIA_URL = config('DJANGO_MEDIA_URL', default='media/')
+MEDIA_URL = config('DJANGO_MEDIA_URL', default='/media/')
 MEDIA_ROOT = config('DJANGO_MEDIA_ROOT', default=str(BASE_DIR / 'media'))
+DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 
 # ── Security (auto-enabled when DEBUG=False) ──
 if not DEBUG:

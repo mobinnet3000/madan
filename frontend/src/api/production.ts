@@ -106,7 +106,7 @@ export async function deleteDevice(id: number) {
 export async function uploadDeviceImage(id: number, file: File) {
   const fd = new FormData()
   fd.append('image', file)
-  const { data } = await api.patch(`/devices/${id}/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  const { data } = await api.patch(`/devices/${id}/`, fd)
   return data
 }
 export async function deleteDeviceImage(id: number) {

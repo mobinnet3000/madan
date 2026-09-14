@@ -227,6 +227,7 @@ class DeviceForm(AttributeValuesFormMixin, forms.ModelForm):
 class ShiftInline(admin.TabularInline):
     model = Shift
     extra = 1
+    fields = ("name", "start_time", "end_time", "is_active")
 
 
 class DeviceLogInline(admin.TabularInline):
@@ -278,7 +279,6 @@ class FactoryAdmin(admin.ModelAdmin):
     list_display = ("name", "address", "analysis_definition_link")
     list_display_links = ("name",)
     search_fields = ("name",)
-    inlines = [ShiftInline]
 
     def analysis_definition_link(self, obj):
         try:
@@ -302,8 +302,8 @@ class FactoryAdmin(admin.ModelAdmin):
 
 @admin.register(Shift)
 class ShiftAdmin(admin.ModelAdmin):
-    list_display = ("name", "factory", "start_time", "end_time", "is_active")
-    list_filter = ("factory", "is_active")
+    list_display = ("name", "line", "start_time", "end_time", "is_active")
+    list_filter = ("line__factory", "line", "is_active")
 
 
 @admin.register(FailureReason)
@@ -337,7 +337,7 @@ class ProductionLineAdmin(AttributeFieldsAdminMixin, admin.ModelAdmin):
         "display_attributes",
     )
     list_filter = ("factory", "template")
-    inlines = [LineAnalysisDefinitionInline, DeviceInline, DeviceLogInline]
+    inlines = [ShiftInline, LineAnalysisDefinitionInline, DeviceInline, DeviceLogInline]
     search_fields = ("name",)
 
     display_attributes = display_attributes_summary
@@ -398,7 +398,7 @@ class DeviceTemplateAdmin(admin.ModelAdmin):
 class DeviceAdmin(AttributeFieldsAdminMixin, admin.ModelAdmin):
     form = DeviceForm
     template_model = DeviceTemplate
-    step1_fields = ("line", "template", "name", "code", "order")
+    step1_fields = ("line", "template", "name", "code", "order", "image")
     list_display = ("order", "code", "name", "line", "template", "display_attributes")
     display_attributes = display_attributes_summary
     list_editable = ("order",)
@@ -456,7 +456,7 @@ class DeviceLogAdmin(admin.ModelAdmin):
         if db_field.name == "device" and log_obj:
             kwargs["queryset"] = Device.objects.filter(line=log_obj.line)
         if db_field.name == "shift" and log_obj:
-            kwargs["queryset"] = Shift.objects.filter(factory=log_obj.line.factory)
+            kwargs["queryset"] = Shift.objects.filter(line=log_obj.line)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -738,7 +738,7 @@ class ActualAnalysisAdminForm(forms.ModelForm):
         self.fields["contractor"].queryset = Contractor.objects.filter(
             factory=line.factory_id, is_active=True
         ).order_by("name")
-        self.fields["shift"].queryset = Shift.objects.filter(factory=line.factory_id)
+        self.fields["shift"].queryset = Shift.objects.filter(line_id=line_id)
 
         existing_positions = {}
         existing_additional = {}

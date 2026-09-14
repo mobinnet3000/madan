@@ -13,6 +13,7 @@ export interface ExportOptions {
   dateFrom?: string
   dateTo?: string
   format: ExportFormat
+  outputLabelMap?: Record<string, string>
 }
 
 function esc(s: string): string {

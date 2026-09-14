@@ -206,8 +206,13 @@ export default function TonnageAnalysisDefinitionPanel({ lineMode = false }: { l
                   {canEdit && <button className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => setOutputs(p => p.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></button>}
                 </div>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                  <textarea ref={el => { refs.current[idx] = el }} className="input min-h-[70px] flex-1 font-mono text-xs" dir="ltr" rows={2} disabled={!canEdit} value={out.formula} onFocus={() => setFocusIdx(idx)} onChange={e => setOutputs(p => p.map((r, i) => i === idx ? { ...r, formula: e.target.value } : r))} placeholder="مثال: (a + b) / c * 100" />
-                  {canEdit && <div className="w-full shrink-0 sm:w-52"><button className="btn-ghost !h-7 w-full !px-2 text-xs" onClick={() => validateFormula(idx)} disabled={checking[idx]}>{checking[idx] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'اعتبارسنجی'}</button></div>}
+                  <textarea ref={el => { refs.current[idx] = el }} className="input min-h-[80px] flex-1 font-mono text-xs" dir="ltr" rows={3} disabled={!canEdit} value={out.formula} onFocus={() => setFocusIdx(idx)} onChange={e => setOutputs(p => p.map((r, i) => i === idx ? { ...r, formula: e.target.value } : r))} placeholder="مثال: (a + b) / c * 100" />
+                  {canEdit && <div className="w-full shrink-0 sm:w-64 space-y-2">
+                    <div className="flex flex-wrap gap-1">{['+', '-', '*', '/', '(', ')', '%'].map(op => <button key={op} type="button" className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800" onClick={() => insertVar(op)}>{op}</button>)}<button type="button" className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800" onClick={() => insertVar('100')}>100</button></div>
+                    <div className="flex flex-wrap gap-1">{variables.map(v => <button key={v.var} type="button" className="chip" onClick={() => insertVar(v.var)}>{v.label}</button>)}</div>
+                    <button className="btn-ghost !h-7 w-full !px-2 text-xs" onClick={() => validateFormula(idx)} disabled={checking[idx]}>{checking[idx] ? <Loader2 className="h-3 w-3 animate-spin" /> : 'اعتبارسنجی'}</button>
+                    <div className="text-[10px] text-slate-400">عملگر/عدد/متغیر → درج در فرمول</div>
+                  </div>}
                 </div>
                 {checks[idx] && <div className={`mt-1 rounded px-2 py-1 text-xs ${checks[idx].ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{checks[idx].ok ? 'معتبر' : checks[idx].errors.join(' · ')}</div>}
               </div>

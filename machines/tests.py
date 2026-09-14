@@ -19,7 +19,7 @@ class TestDeviceLogEfficiency(TestCase):
             name='Test Line', factory=fac, template=tpl,
             attributes_values={'ظرفیت': 100}
         )
-        shift = Shift.objects.create(factory=fac, name='صبح', start_time='06:00', end_time='14:00')
+        shift = Shift.objects.create(line=self.line, name='صبح', start_time='06:00', end_time='14:00')
 
     def test_efficiency_calculation(self):
         shift = Shift.objects.first()

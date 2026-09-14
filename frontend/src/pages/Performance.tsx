@@ -13,6 +13,7 @@ import Pagination from '../components/ui/Pagination'
 import DynamicAnalysisForm from '../components/performance/DynamicAnalysisForm'
 import PerformanceReportPanel from '../components/performance/PerformanceReportPanel'
 import { formatDate, formatNumber, todayISO } from '../utils'
+import { useOutputLabelMap, labelFor } from '../hooks/useOutputLabelMap'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
 import { buildPerformanceReport } from '../templates/pdf/reports/performanceReport'
 import { buildPdfHtml } from '../utils/pdf/renderer'
@@ -49,6 +50,9 @@ export default function Performance() {
   const [showExportMenu, setShowExportMenu] = useState(false)
 
   const lineIds = useMemo(() => (selectedFactory?.lines ?? []).map((l) => l.id), [selectedFactory])
+  const primaryLineId = useMemo(() => (filters.line ? Number(filters.line) : lineIds[0] ?? null) as number | null, [filters.line, lineIds])
+  const outputLabelMap = useOutputLabelMap(primaryLineId)
+  const lab = (k: string) => labelFor(outputLabelMap, k)
 
   const loadList = useCallback(() => {
     setLoading(true)
@@ -126,7 +130,7 @@ export default function Performance() {
       if (dateTo) chips.push({ label: 'تا تاریخ', value: formatDate(dateTo) })
       if (!chips.length) chips.push({ label: 'بازه', value: titleDate })
       if (fmt === 'pdf') {
-        const opts = buildPerformanceReport({ title, factoryName: selectedFactory?.name ?? '', factoryAddress: selectedFactory?.address, dateFrom, dateTo, records: reportRecords, chips })
+        const opts = buildPerformanceReport({ title, factoryName: selectedFactory?.name ?? '', factoryAddress: selectedFactory?.address, dateFrom, dateTo, records: reportRecords, chips, outputLabelMap })
         const html = buildPdfHtml(opts)
         htmlToPdf(html, baseName, { title })
       } else {
@@ -139,11 +143,11 @@ export default function Performance() {
           }
           outputKeys.forEach(k => {
             const v = r.outputs?.[k]
-            row[k] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
+            row[lab(k)] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
           })
           return row
         })
-        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt })
+        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt, outputLabelMap })
       }
       addReportHistoryEntry({
         kind: 'performance', factoryName: selectedFactory?.name, fileName: `${baseName}.${fmt}`, title, format: fmt,
@@ -170,6 +174,25 @@ export default function Performance() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 self-start">
+            <div className="relative">
+              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-black disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100" onClick={() => setShowExportMenu(v => !v)} disabled={!canExport || exporting !== null || !reportRecords.length}>
+                {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent dark:border-slate-900 dark:border-t-transparent" /> : <Download className="h-4 w-4" />} خروجی <span className="hidden opacity-70 sm:inline">({reportRecords.length || total})</span> <ChevronDown className={`h-4 w-4 opacity-60 transition ${showExportMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showExportMenu && (
+                <div className="absolute left-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  <div className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400">خروجی — همین فیلتر</div>
+                  <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-rose-600" /> PDF کامل</button>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <button onClick={() => handleExport('xlsx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel (XLSX)</button>
+                  <button onClick={() => handleExport('csv')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-amber-600" /> CSV</button>
+                  <button onClick={() => handleExport('docx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-blue-600" /> Word (DOCX)</button>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <button onClick={() => handleExport('html')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><Globe className="h-4 w-4 text-sky-600" /> HTML</button>
+                  <button onClick={() => handleExport('json')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-violet-600" /> JSON</button>
+                </div>
+              )}
+              {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
+            </div>
             {canCreate && <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={() => { setEditing(null); setModalOpen(true) }}>
               <Plus className="h-4 w-4" /> ثبت عملکرد جدید
             </button>}
@@ -280,8 +303,8 @@ export default function Performance() {
                         <td className="px-4 py-3">
                           <div className="flex max-w-[360px] flex-wrap gap-1">
                             {Object.entries(r.outputs || {}).map(([k, v]) => (
-                              <span key={k} className="chip">
-                                {k}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
+                              <span key={k} className="chip" title={k}>
+                                {lab(k)}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
                               </span>
                             ))}
                           </div>

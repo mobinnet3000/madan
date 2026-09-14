@@ -22,6 +22,7 @@ import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
 import { formatDate, formatNumber, todayISO } from '../utils'
+import { factoryOutputLabel } from '../utils/outputLabels'
 
 type FormState = {
   line: string
@@ -615,12 +616,12 @@ export default function ProductionReports() {
           }
           outputKeys.forEach(k => {
             const v = (r.outputs as Record<string, number>)[k]
-            row[k] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
+            row[factoryOutputLabel(selectedFactory, k)] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
           })
           if (r.note) row['یادداشت'] = r.note.slice(0, 60)
           return row
         })
-        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt })
+        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt, outputLabelMap: Object.fromEntries(outputKeys.map(k => [k, factoryOutputLabel(selectedFactory, k)])) })
       }
       addReportHistoryEntry({
         kind: 'production', factoryName: selectedFactory?.name, fileName: `${baseName}.${fmt}`, title, format: fmt,
@@ -773,8 +774,8 @@ export default function ProductionReports() {
                     <td className="px-4 py-3">
                       <div className="flex max-w-[420px] flex-wrap gap-1">
                         {Object.entries(p.outputs || {}).map(([k, v]) => (
-                          <span key={k} className="chip">
-                            {k}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
+                          <span key={k} className="chip" title={k}>
+                            {factoryOutputLabel(selectedFactory, k)}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
                           </span>
                         ))}
                       </div>

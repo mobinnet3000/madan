@@ -29,7 +29,7 @@ const emptyForm: FormState = { line: '', shift: '', date: todayISO(), rows: [{ .
 function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: FormState) => void; editing: DeviceLog | null }) {
   const { selectedFactory } = useFactory()
   const selectedLine = useMemo(() => selectedFactory?.lines.find((l) => l.id === Number(form.line)), [form.line, selectedFactory])
-  const shifts = useMemo(() => selectedFactory?.shifts ?? [], [selectedFactory])
+  const shifts = useMemo(() => selectedLine?.shifts ?? selectedFactory?.shifts ?? [], [selectedLine, selectedFactory])
   const lineDevices = useMemo(() => selectedLine?.devices ?? [], [selectedLine])
   const selectedShift = useMemo(() => shifts.find((s) => s.id === Number(form.shift)), [shifts, form.shift])
   const totalShiftHours = useMemo(() => shiftHours(selectedShift?.start_time, selectedShift?.end_time), [selectedShift])
@@ -160,7 +160,8 @@ export default function Logs() {
     setModalOpen(true)
   }
   const computeShift = (shiftId: number, down: number): number => {
-    const shift = selectedFactory?.shifts.find((s) => s.id === shiftId)
+    const allShifts = selectedFactory ? [...(selectedFactory.shifts ?? []), ...selectedFactory.lines.flatMap(l => (l as any).shifts ?? [])] : []
+    const shift = allShifts.find((s) => s.id === shiftId)
     return Math.max(0, shiftHours(shift?.start_time, shift?.end_time) - down)
   }
   const submit = async () => {

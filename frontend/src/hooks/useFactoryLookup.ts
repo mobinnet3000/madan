@@ -24,7 +24,7 @@ export function useFactoryLookup(factories: Factory[], selectedFactoryId: number
     allDevices.find((d) => d.id === id)?.name ?? `دستگاه ${id}`
 
   const shiftName = (id: number) =>
-    selectedFactory?.shifts.find((s) => s.id === id)?.name ?? `شیفت ${id}`
+    (selectedFactory?.shifts.find((s) => s.id === id) ?? selectedFactory?.lines.flatMap(l => l.shifts ?? []).find(s => s.id === id))?.name ?? `شیفت ${id}`
 
   const failureReasonTitle = (id: number) => {
     const fr: FailureReason | undefined = selectedFactory?.failure_reasons.find((f) => f.id === id)

@@ -1,9 +1,18 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
+    FactoryViewSet,
+    ShiftViewSet,
+    DeviceViewSet,
     DeviceLogViewSet,
     FactoryDetailViewSet,
     ProductionReportViewSet,
+    ProductionLineViewSet,
+    FailureReasonViewSet,
+    AttributeViewSet,
+    ProductionLineAttributeViewSet,
+    DeviceTemplateViewSet,
+    ProductionLineTemplateViewSet,
     ContractorViewSet,
     AnalysisTypeDefinitionViewSet,
     ActualAnalysisViewSet,
@@ -41,6 +50,15 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r"factory-setup", FactoryDetailViewSet, basename="factory-setup")
+router.register(r"factories", FactoryViewSet, basename="factories")
+router.register(r"shifts", ShiftViewSet, basename="shifts")
+router.register(r"production-lines", ProductionLineViewSet, basename="production-lines")
+router.register(r"devices", DeviceViewSet, basename="devices")
+router.register(r"failure-reasons", FailureReasonViewSet, basename="failure-reasons")
+router.register(r"attributes", AttributeViewSet, basename="attributes")
+router.register(r"production-line-attributes", ProductionLineAttributeViewSet, basename="pl-attributes")
+router.register(r"device-templates", DeviceTemplateViewSet, basename="device-templates")
+router.register(r"production-line-templates", ProductionLineTemplateViewSet, basename="pl-templates")
 router.register(r"device-logs", DeviceLogViewSet, basename="device-logs")
 router.register(
     r"production-reports", ProductionReportViewSet, basename="production-reports"

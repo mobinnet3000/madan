@@ -2,12 +2,18 @@ from django.http import FileResponse, Http404
 from datetime import datetime
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import (
     DeviceLog,
     Factory,
+    FailureReason,
+    Attribute,
+    ProductionLineAttribute,
+    ProductionLineTemplate,
+    DeviceTemplate,
     Device,
     ProductionLine,
     ProductionReport,
@@ -27,12 +33,22 @@ from .models import (
     DeliveredTonnage,
 )
 from .serializers import (
+    FactorySerializer,
+    ShiftSerializer,
+    DeviceSerializer,
+    DeviceWriteSerializer,
     DeviceLogSerializer,
     DeviceLogWriteSerializer,
     FactoryFullDetailSerializer,
     ProductionReportSerializer,
     ProductionReportWriteSerializer,
     ContractorSerializer,
+    ProductionLineWriteSerializer,
+    FailureReasonSerializer,
+    AttributeSerializer,
+    DeviceTemplateSerializer,
+    ProductionLineTemplateSerializer,
+    ProductionLineAttributeSerializer,
     AnalysisTypeDefinitionSerializer,
     AnalysisPositionSerializer,
     AdditionalInputDefinitionSerializer,
@@ -72,6 +88,125 @@ from accounts.permissions import HasPermission, require_permission, user_has_per
 from core.pagination import StandardPagination
 
 
+class FactoryViewSet(viewsets.ModelViewSet):
+    serializer_class = FactorySerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    def get_queryset(self):
+        factory = get_user_factory(self.request.user)
+        qs = Factory.objects.all()
+        if factory is not None:
+            qs = qs.filter(id=factory.id)
+        return qs
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        log_activity(self.request.user, "create", "کارخانه", obj.name, self.request, factory=obj)
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        log_activity(self.request.user, "update", "کارخانه", obj.name, self.request, factory=obj)
+    def perform_destroy(self, instance):
+        log_activity(self.request.user, "delete", "کارخانه", instance.name, self.request)
+
+
+class DeviceViewSet(viewsets.ModelViewSet):
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
+    required_permission = "devices.view"
+    action_permissions = {"create": "devices.manage", "update": "devices.manage", "partial_update": "devices.manage", "destroy": "devices.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return DeviceWriteSerializer
+        return DeviceSerializer
+
+    def get_queryset(self):
+        qs = Device.objects.select_related("line__factory", "template")
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(line__factory=factory)
+        line = self.request.query_params.get("line")
+        if line:
+            qs = qs.filter(line_id=line)
+        return qs.order_by("line_id", "order", "id")
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        log_activity(self.request.user, "create", "دستگاه", obj.name, self.request, factory=obj.line.factory)
+
+    def perform_update(self, serializer):
+        obj = serializer.save()
+        log_activity(self.request.user, "update", "دستگاه", obj.name, self.request, factory=obj.line.factory)
+
+    def perform_destroy(self, instance):
+        log_activity(self.request.user, "delete", "دستگاه", instance.name, self.request, factory=instance.line.factory)
+        instance.delete()
+
+
+class FailureReasonViewSet(viewsets.ModelViewSet):
+    serializer_class = FailureReasonSerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    queryset = FailureReason.objects.all()
+
+
+class AttributeViewSet(viewsets.ModelViewSet):
+    serializer_class = AttributeSerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    queryset = Attribute.objects.all()
+
+
+class ProductionLineAttributeViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductionLineAttributeSerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    queryset = ProductionLineAttribute.objects.all()
+
+
+class DeviceTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = DeviceTemplateSerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    queryset = DeviceTemplate.objects.all()
+
+
+class ProductionLineTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductionLineTemplateSerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    queryset = ProductionLineTemplate.objects.all()
+
+
+class ProductionLineViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductionLineWriteSerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    def get_queryset(self):
+        qs = ProductionLine.objects.select_related("factory", "template")
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(factory=factory)
+        fac = self.request.query_params.get("factory")
+        if fac:
+            qs = qs.filter(factory_id=fac)
+        return qs.order_by("factory_id", "name")
+
+
 class FactoryDetailViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FactoryFullDetailSerializer
     pagination_class = None
@@ -80,7 +215,7 @@ class FactoryDetailViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = Factory.objects.all().prefetch_related(
-            "shifts",
+            "lines__shifts",
             "contractors",
             "lines__template",
             "lines__devices__template",
@@ -97,6 +232,37 @@ class FactoryDetailViewSet(viewsets.ReadOnlyModelViewSet):
         if factory is not None:
             qs = qs.filter(id=factory.id)
         return qs
+
+
+class ShiftViewSet(viewsets.ModelViewSet):
+    serializer_class = ShiftSerializer
+    pagination_class = None
+    required_permission = "settings.view"
+    action_permissions = {"create": "settings.manage", "update": "settings.manage", "partial_update": "settings.manage", "destroy": "settings.manage"}
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+    def get_queryset(self):
+        qs = Shift.objects.select_related("line__factory")
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(line__factory=factory)
+        line_id = self.request.query_params.get("line")
+        if line_id:
+            qs = qs.filter(line_id=line_id)
+        return qs.order_by("line_id", "start_time")
+    def perform_create(self, serializer):
+        actual_line = serializer.validated_data["line"]
+        factory = get_user_factory(self.request.user)
+        if factory is not None and actual_line.factory_id != factory.id:
+            from django.http import Http404
+            raise Http404
+        serializer.save()
+        log_activity(self.request.user, "create", "شیفت", f"{actual_line.name} - {serializer.instance.name}", self.request, factory=actual_line.factory)
+    def perform_update(self, serializer):
+        serializer.save()
+        log_activity(self.request.user, "update", "شیفت", serializer.instance.name, self.request, factory=serializer.instance.line.factory)
+    def perform_destroy(self, instance):
+        log_activity(self.request.user, "delete", "شیفت", instance.name, self.request, factory=instance.line.factory)
+        instance.delete()
 
 
 class DeviceLogViewSet(viewsets.ModelViewSet):
@@ -616,7 +782,7 @@ def _error(msg, code=status.HTTP_400_BAD_REQUEST):
 class ContractorViewSet(viewsets.ModelViewSet):
     serializer_class = ContractorSerializer
     pagination_class = None
-    required_permission = "factory.view"
+    required_permission = "settings.view"
     action_permissions = {
         "create": "contractor.manage",
         "update": "contractor.manage",
@@ -771,9 +937,9 @@ class ActualAnalysisViewSet(viewsets.ModelViewSet):
         shift = None
         shift_id = data.get("shift")
         if shift_id:
-            shift = Shift.objects.filter(pk=shift_id, factory=line.factory_id).first()
+            shift = Shift.objects.filter(pk=shift_id, line=line).first()
             if shift is None:
-                raise ValueError("شیفت انتخاب‌شده متعلق به کارخانه‌ی همین خط نیست.")
+                raise ValueError("شیفت انتخاب‌شده متعلق به این خط نیست.")
 
         inputs, outputs = validate_and_compute(line, data)
         return line, contractor, date_from, date_to, shift, inputs, outputs

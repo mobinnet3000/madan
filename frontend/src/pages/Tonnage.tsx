@@ -15,6 +15,7 @@ import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
 import { formatDate, formatNumber, todayISO } from '../utils'
+import { lineTonnageOutputLabel } from '../utils/outputLabels'
 import { exportData } from '../utils/exports'
 import type { ExportFormat } from '../utils/exports'
 import { addReportHistoryEntry } from '../features/reportHistory'
@@ -312,12 +313,12 @@ export default function Tonnage() {
           }
           outputKeys2.forEach(k => {
             const v = (r.outputs as Record<string, number>)[k]
-            row[k] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
+            row[lineTonnageOutputLabel(selectedFactory, r.line?.id, k)] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
           })
           if (r.note) row['یادداشت'] = r.note.slice(0, 60)
           return row
         })
-        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt })
+        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt, outputLabelMap: Object.fromEntries(outputKeys2.map(k => [k, lineTonnageOutputLabel(selectedFactory, allRecords[0]?.line?.id, k)])) })
       }
       addReportHistoryEntry({
         kind: 'tonnage', factoryName: selectedFactory?.name, fileName: `${baseName}.${fmt}`, title, format: fmt,
@@ -455,8 +456,8 @@ export default function Tonnage() {
                         <td className="px-4 py-3">
                           <div className="flex max-w-[380px] flex-wrap gap-1">
                             {Object.entries(p.outputs || {}).map(([k, v]) => (
-                              <span key={k} className="chip">
-                                {k}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
+                              <span key={k} className="chip" title={k}>
+                                {lineTonnageOutputLabel(selectedFactory, p.line?.id, k)}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
                               </span>
                             ))}
                           </div>
