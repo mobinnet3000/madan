@@ -120,7 +120,6 @@ export function formatDateWithWeekday(iso: string): string {
   return `${wd} · ${j[0]}/${pad(j[1])}/${pad(j[2])}`
 }
 
-// ساعت شیفت از ساعت‌های شروع و پایان (پشتیبانی از شیفت شبانه که پايان < شروع)
 export function shiftHours(hhmmStart: string | undefined, hhmmEnd: string | undefined): number {
   if (!hhmmStart || !hhmmEnd) return 0
   const toMin = (s: string) => {
@@ -130,6 +129,30 @@ export function shiftHours(hhmmStart: string | undefined, hhmmEnd: string | unde
   let mins = toMin(hhmmEnd) - toMin(hhmmStart)
   if (mins < 0) mins += 24 * 60
   return mins / 60
+}
+
+export function formatHours(h: number | null | undefined): string {
+  if (h === null || h === undefined || isNaN(h as number)) return '-'
+  const v = h as number
+  if (v === 0) return '0:00'
+  const sign = v < 0 ? '-' : ''
+  const abs = Math.abs(v)
+  let hh = Math.floor(abs)
+  let mm = Math.round((abs - hh) * 60)
+  if (mm === 60) { hh += 1; mm = 0 }
+  return `${sign}${hh}:${String(mm).padStart(2, '0')}`
+}
+
+export function parseHoursHM(s: string): number {
+  if (!s) return 0
+  const t = s.trim().replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+  if (t.includes(':')) {
+    const [hs, ms] = t.split(':')
+    const h = Number(hs) || 0
+    const m = Number(ms) || 0
+    return h + m / 60
+  }
+  return Number(t) || 0
 }
 
 export function formatNumber(n: number | null | undefined): string {

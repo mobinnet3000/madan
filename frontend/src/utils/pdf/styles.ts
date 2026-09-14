@@ -73,8 +73,6 @@ export function buildPageCss(page: PdfPageConfig, style: PdfStyleConfig): string
     color:#3c4c63;
   }
   .pdf-page-pill{background:${style.headerBg};color:#fff;border-radius:999px;padding:1.1mm 4mm;font-size:6.5px;font-weight:800;white-space:nowrap;flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .pdf-page-pill .pg::after{content:counter(page)}
-  .pdf-page-pill .tot::after{content:counter(pages)}
   .pdf-body{padding:2mm 0 2mm 0}
   .pdf-cover{border:1px solid #e2e8f0;border-radius:10px;background:linear-gradient(180deg,#ffffff 0%,#f6f9fd 100%);padding:9px 12px;margin-bottom:7px;text-align:center;break-inside:avoid}
   .pdf-cover-title{font-size:13px;font-weight:800;color:${style.primaryColor};margin-bottom:2px}

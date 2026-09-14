@@ -6,7 +6,7 @@ import { useAuth } from '../store/AuthContext'
 import type { DeviceLog } from '../types'
 import { Loading, EmptyState, ErrorBanner, CardSkeleton } from '../components/ui/States'
 import Pagination from '../components/ui/Pagination'
-import { formatDate, formatNumber, formatPercent } from '../utils'
+import { formatDate, formatNumber, formatPercent, formatHours } from '../utils'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
 import { useReportState } from '../features/reports/useReportState'
 import { PRESETS } from '../features/reports/reportFilters'
@@ -71,7 +71,7 @@ export default function Reports() {
         htmlToPdf(html, `توقفات_${factoryName}_${report.filters.date_from}_${report.filters.date_to}`)
       } else {
         const rows: Record<string, string | number>[] = report.sorted.map((l) => ({
-          'تاریخ': l.date, 'خط': l.line?.name || '—', 'شیفت': l.shift?.name || '—', 'دستگاه': l.device?.name || '—', 'علت خرابی': l.failure_cause?.title || '—', 'کارکرد': l.runtime_hours, 'توقف': l.downtime_hours, 'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage, 'راندمان': l.efficiency ?? 0,
+          'تاریخ': l.date, 'خط': l.line?.name || '—', 'شیفت': l.shift?.name || '—', 'دستگاه': l.device?.name || '—', 'علت خرابی': l.failure_cause?.title || '—', 'کارکرد': formatHours(l.runtime_hours), 'توقف': formatHours(l.downtime_hours), 'ورودی': l.feed_tonnage, 'خروجی': l.product_tonnage, 'باطله': l.tailing_tonnage, 'راندمان': l.efficiency ?? 0,
         }))
         await exportData(rows, { fileName: `توقفات_${factoryName}`, title: `${factoryName} — توقفات`, factoryName, dateFrom: report.filters.date_from, dateTo: report.filters.date_to, format: type as never })
       }
@@ -82,48 +82,39 @@ export default function Reports() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="card-glass p-5 sm:p-6">
+      <div className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3 sm:gap-4">
-            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl" style={{ background: 'linear-gradient(135deg, #1e3a5f, #2563eb)' }}><Building2 className="h-6 w-6 sm:h-7 sm:w-7 text-white" /></div>
-            <div><h2 className="text-lg sm:text-xl font-extrabold text-ink-900 dark:text-white">{factoryName || 'همه کارخانه‌ها'}</h2>{factoryAddr && <p className="text-sm text-ink-500">{factoryAddr}</p>}<p className="mt-1 text-xs text-ink-400">{report.totalCount} رکورد — مرتب: {report.filters.sortKey} ({report.filters.sortDir}) — {report.sorted.length !== report.logs.length ? `فیلتر: ${report.filtered.length} / ${report.logs.length}` : 'بدون فیلتر جستجو'}</p></div>
+            <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-slate-900 dark:bg-white"><Building2 className="h-6 w-6 sm:h-7 sm:w-7 text-white dark:text-slate-900" /></div>
+            <div><h2 className="text-lg sm:text-xl font-extrabold text-ink-900 dark:text-white">{factoryName || '—'}</h2>{factoryAddr && <p className="text-sm text-ink-500">{factoryAddr}</p>}<p className="mt-1 text-xs text-ink-400">{formatNumber(report.totalCount)} رکورد</p></div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => handleExport('pdf')} disabled={exporting !== null} className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-600 disabled:opacity-50">{exporting === 'pdf' ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <FileText className="h-4 w-4" />} PDF ({report.sorted.length})</button>
+            <button onClick={() => handleExport('pdf')} disabled={exporting !== null} className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-600 disabled:opacity-50">{exporting === 'pdf' ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <FileText className="h-4 w-4" />} PDF</button>
             <button onClick={() => handleExport('xlsx')} disabled={exporting !== null} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-50">{exporting === 'xlsx' ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <FileSpreadsheet className="h-4 w-4" />} Excel</button>
-            <button onClick={() => handleExport('csv')} disabled={exporting !== null} className="inline-flex items-center gap-1.5 rounded-xl bg-ink-100 px-3 py-2 text-xs font-bold text-ink-700 hover:bg-ink-200 dark:bg-slate-800 dark:text-slate-200"><Download className="h-3.5 w-3.5" /> CSV</button>
+            <button onClick={() => handleExport('csv')} disabled={exporting !== null} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"><Download className="h-3.5 w-3.5" /> CSV</button>
           </div>
         </div>
       </div>
 
-      <div className="card-glass p-5">
+      <div className="card p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Calendar className="h-4 w-4 text-ink-400" />
-          <span className="text-sm font-bold text-ink-700 dark:text-slate-200">بازه گزارش:</span>
-          <span className="text-sm text-ink-500">{formatDate(report.filters.date_from)} تا {formatDate(report.filters.date_to)}</span>
-          <span className="mx-2 text-ink-300">|</span>
-          <div className="relative"><Search className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400" /><input className="input h-8 pr-8 text-xs" placeholder="جستجو خط/دستگاه/علت..." value={report.filters.search} onChange={(e) => report.setSearch(e.target.value)} /></div>
+          <div className="relative"><Search className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input className="input h-8 pr-8 text-xs" placeholder="جستجو خط، دستگاه، علت..." value={report.filters.search} onChange={(e) => report.setSearch(e.target.value)} /></div>
           <select className="input h-8 min-w-[110px] text-xs" value={report.filters.sortKey} onChange={(e) => report.setSort(e.target.value as never)}><option value="date">تاریخ</option><option value="downtime">توقف</option><option value="runtime">کارکرد</option><option value="line">خط</option><option value="efficiency">راندمان</option></select>
           <button className="btn-ghost !h-8 !px-2" onClick={() => report.setFilter('sortDir', report.filters.sortDir === 'asc' ? 'desc' : 'asc')} title="جهت مرتب‌سازی"><ArrowUpDown className="h-4 w-4" /></button>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map((p) => <button key={p.key} onClick={() => report.applyPreset(p.key)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${report.filters.date_from === (() => { const [f] = report.filters.date_from ? [report.filters.date_from] : ['']; return f })() ? '' : ''} ${report.filters.date_from && report.filters.date_to ? 'bg-ink-100/70 text-ink-600 dark:bg-slate-800/70 dark:text-slate-300' : ''} hover:bg-ink-200/70`}>{p.label}</button>)}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {PRESETS.map((p) => (
-            <button key={`p2-${p.key}`} onClick={() => report.applyPreset(p.key)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${report.filters.date_from && report.filters.date_to ? '' : ''} bg-ink-100/70 text-ink-600 hover:bg-ink-200/70 dark:bg-slate-800/70 dark:text-slate-300`}>{p.label}</button>
-          ))}
-          <span className="mx-1 self-center text-ink-300 dark:text-slate-600">|</span>
+          {PRESETS.map((p) => <button key={p.key} onClick={() => report.applyPreset(p.key)} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">{p.label}</button>)}
+          <span className="mx-1 self-center text-slate-300 dark:text-slate-600">|</span>
           <div className="flex items-center gap-1.5">
-            <label className="text-xs text-ink-500">از</label><JalaliDateInput value={report.filters.date_from} onChange={(iso) => report.setFilter('date_from', iso)} />
-            <label className="text-xs text-ink-500">تا</label><JalaliDateInput value={report.filters.date_to} onChange={(iso) => report.setFilter('date_to', iso)} />
-            {report.chips.length > 0 && <button className="btn-ghost !h-7 !px-2 text-xs" onClick={report.clearFilters}><X className="h-3 w-3" /> پاک کردن فیلترها</button>}
+            <span className="text-xs text-slate-500">از</span><JalaliDateInput value={report.filters.date_from} onChange={(iso) => report.setFilter('date_from', iso)} />
+            <span className="text-xs text-slate-500">تا</span><JalaliDateInput value={report.filters.date_to} onChange={(iso) => report.setFilter('date_to', iso)} />
+            {report.chips.length > 0 && <button className="btn-ghost !h-7 !px-2 text-xs" onClick={report.clearFilters}><X className="h-3 w-3" /> پاک کردن</button>}
           </div>
         </div>
         {report.chips.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            {report.chips.map((c, i) => <span key={i} className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">{c.label}: {c.value} <button onClick={c.onRemove} className="rounded-full p-0.5 hover:bg-brand-100"><X className="h-3 w-3" /></button></span>)}
-            <span className="text-xs text-ink-400">{report.totalCount} رکورد پس از فیلتر/جستجو — مرتب: {report.filters.sortKey}</span>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3 dark:border-slate-700">
+            {report.chips.map((c, i) => <span key={i} className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-medium text-white dark:bg-white dark:text-slate-900">{c.label}: {c.value} <button onClick={c.onRemove} className="rounded-full p-0.5 hover:bg-white/20"><X className="h-3 w-3" /></button></span>)}
+            <span className="text-xs text-slate-500">{formatNumber(report.totalCount)} رکورد</span>
           </div>
         )}
       </div>
@@ -135,7 +126,7 @@ export default function Reports() {
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <KpiCard icon={<TrendingUp className="h-5 w-5 text-brand-600" />} label="تناژ ورودی" value={formatNumber(Math.round(logsStats.totalFeed / 1000)) + ' هزار'} suffix="تن" accentBg="bg-brand-50" />
             <KpiCard icon={<ActivityIcon className="h-5 w-5 text-emerald-600" />} label="میانگین راندمان" value={formatPercent(logsStats.avgEff)} accentBg="bg-emerald-50" />
-            <KpiCard icon={<Clock className="h-5 w-5 text-rose-600" />} label="ساعات توقف" value={formatNumber(Math.round(logsStats.totalDowntime))} suffix="ساعت" accentBg="bg-rose-50" />
+            <KpiCard icon={<Clock className="h-5 w-5 text-rose-600" />} label="ساعات توقف" value={formatHours(logsStats.totalDowntime)} accentBg="bg-rose-50" />
             <KpiCard icon={<FileText className="h-5 w-5 text-sky-600" />} label="تعداد رکورد" value={formatNumber(logsStats.count)} suffix="مورد" accentBg="bg-sky-50" />
           </div>
 
@@ -180,17 +171,17 @@ export default function Reports() {
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-right text-xs text-ink-500" style={{ background: 'rgba(241,245,249,0.4)' }}><th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">خط</th><th className="px-4 py-3 font-semibold">شیفت</th><th className="px-4 py-3 font-semibold">ورودی</th><th className="px-4 py-3 font-semibold">خروجی</th><th className="px-4 py-3 font-semibold">کارکرد</th><th className="px-4 py-3 font-semibold">توقف</th><th className="px-4 py-3 font-semibold">راندمان</th></tr></thead>
-                    <tbody className="divide-y" style={{ borderColor: 'rgba(148,163,184,0.1)' }}>
+                    <thead><tr className="text-right text-xs text-slate-500 dark:text-slate-400" style={{ background: 'rgba(241,245,249,0.4)' }}><th className="px-4 py-3 font-semibold">تاریخ</th><th className="px-4 py-3 font-semibold">خط</th><th className="px-4 py-3 font-semibold">شیفت</th><th className="px-4 py-3 font-semibold">ورودی</th><th className="px-4 py-3 font-semibold">خروجی</th><th className="px-4 py-3 font-semibold">کارکرد</th><th className="px-4 py-3 font-semibold">توقف</th><th className="px-4 py-3 font-semibold">راندمان</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                       {report.paginated.map((l: DeviceLog) => (
-                        <tr key={l.id} className="transition hover:bg-ink-50/40 dark:hover:bg-white/5" style={(l.efficiency != null && l.efficiency < 40) ? { background: 'rgba(244,63,94,0.04)' } : (l.efficiency != null && l.efficiency > 80) ? { background: 'rgba(16,185,129,0.04)' } : {}}>
-                          <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">{formatDate(l.date)}</td>
+                        <tr key={l.id} className="transition hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                          <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">{formatDate(l.date)}</td>
                           <td className="px-4 py-3 dark:text-slate-300">{l.line?.name}</td>
                           <td className="px-4 py-3 dark:text-slate-400">{l.shift?.name}</td>
                           <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.feed_tonnage)}</td>
                           <td className="px-4 py-3 dark:text-slate-300">{formatNumber(l.product_tonnage)}</td>
-                          <td className="px-4 py-3">{formatNumber(l.runtime_hours)}</td>
-                          <td className="px-4 py-3">{l.downtime_hours > 0 ? <span className="font-semibold text-rose-600">{formatNumber(l.downtime_hours)}</span> : '—'}</td>
+                          <td className="px-4 py-3 tabular-nums" dir="ltr">{formatHours(l.runtime_hours)}</td>
+                          <td className="px-4 py-3 tabular-nums" dir="ltr">{l.downtime_hours > 0 ? <span className="font-semibold text-rose-600">{formatHours(l.downtime_hours)}</span> : '—'}</td>
                           <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${(l.efficiency || 0) >= 80 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : (l.efficiency || 0) >= 50 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'}`}>{l.efficiency != null ? `${l.efficiency.toFixed(1)}٪` : '—'}</span></td>
                         </tr>
                       ))}

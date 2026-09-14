@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Sparkles, Clock, Activity, BarChart3 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Sparkles, Clock, Activity } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { createLog, updateLog, deleteLog } from '../api/logs'
 import type { DeviceLog, DeviceLogPayload } from '../types'
@@ -8,7 +8,7 @@ import { ErrorBanner, EmptyState, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
-import { formatDate, formatNumber, todayISO, shiftHours } from '../utils'
+import { formatDate, formatNumber, todayISO, shiftHours, formatHours, parseHoursHM } from '../utils'
 import { useReportState } from '../features/reports/useReportState'
 import { PRESETS } from '../features/reports/reportFilters'
 import { buildDowntimeReport } from '../templates/pdf/reports/downtimeReport'
@@ -19,7 +19,7 @@ import type { ExportFormat } from '../utils/exports'
 
 type RowState = { device: string; failure_cause: string; downtime_hours: string; failure_description: string; repair_description: string }
 type FormState = { line: string; shift: string; date: string; rows: RowState[] }
-const emptyRow: RowState = { device: '', failure_cause: '', downtime_hours: '0', failure_description: '', repair_description: '' }
+const emptyRow: RowState = { device: '', failure_cause: '', downtime_hours: '0:00', failure_description: '', repair_description: '' }
 const emptyForm: FormState = { line: '', shift: '', date: todayISO(), rows: [{ ...emptyRow }] }
 
 function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: FormState) => void; editing: DeviceLog | null }) {
@@ -29,11 +29,18 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
   const lineDevices = useMemo(() => selectedLine?.devices ?? [], [selectedLine])
   const selectedShift = useMemo(() => shifts.find((s) => s.id === Number(form.shift)), [shifts, form.shift])
   const totalShiftHours = useMemo(() => shiftHours(selectedShift?.start_time, selectedShift?.end_time), [selectedShift])
-  const totalDowntime = useMemo(() => form.rows.reduce((s, r) => s + (Number(r.downtime_hours) || 0), 0), [form.rows])
+  const totalDowntime = useMemo(() => form.rows.reduce((s, r) => s + parseHoursHM(r.downtime_hours), 0), [form.rows])
   const runtime = Math.max(0, totalShiftHours - totalDowntime)
   const downtimeWarning = totalDowntime > totalShiftHours
   const onLineChange = (v: string) => setForm({ ...form, line: v, shift: '' })
-  const setRow = (idx: number, k: keyof RowState, v: string) => setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [k]: v } : r)) })
+  const setRow = (idx: number, k: keyof RowState, v: string) => {
+    let nv = v
+    if (k === 'downtime_hours') {
+      const cleaned = v.replace(/[^0-9:۰-۹٠-٩]/g, '')
+      nv = cleaned
+    }
+    setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [k]: nv } : r)) })
+  }
   const addRow = () => setForm({ ...form, rows: [...form.rows, { ...emptyRow }] })
   const removeRow = (idx: number) => { if (form.rows.length <= 1) return; setForm({ ...form, rows: form.rows.filter((_, i) => i !== idx) }) }
   return (
@@ -86,7 +93,8 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
               </div>
               <div>
                 <label className="label">ساعت توقف</label>
-                <input type="number" step="0.1" min="0" className="input" value={row.downtime_hours} onChange={(e) => setRow(idx, 'downtime_hours', e.target.value)} />
+                <input type="text" inputMode="numeric" placeholder="0:00" dir="ltr" className="input text-center tracking-widest" value={row.downtime_hours} onChange={(e) => setRow(idx, 'downtime_hours', e.target.value)} />
+                <span className="mt-1 block text-[11px] text-ink-400">فرمت HH:MM — مثال 1:30</span>
               </div>
               <div className="sm:col-span-3"><label className="label">توضیحات خرابی</label><textarea className="input min-h-[56px]" value={row.failure_description} onChange={(e) => setRow(idx, 'failure_description', e.target.value)} /></div>
               <div className="sm:col-span-3"><label className="label">شرح اقدامات / تعمیرات</label><textarea className="input min-h-[56px]" value={row.repair_description} onChange={(e) => setRow(idx, 'repair_description', e.target.value)} /></div>
@@ -96,12 +104,11 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
       </div>
       <div className="rounded-xl border border-ink-100 bg-ink-50/60 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
         <div className="mb-1 flex flex-wrap items-center justify-between text-xs text-ink-500 dark:text-slate-400">
-          <span>طول شیفت: {formatNumber(Math.round(totalShiftHours * 10) / 10)} ساعت</span>
-          <span>مجموع توقف: {formatNumber(Math.round(totalDowntime * 10) / 10)} ساعت ({form.rows.length} ردیف)</span>
+          <span>طول شیفت: {formatHours(totalShiftHours)}</span>
+          <span>مجموع توقف: {formatHours(totalDowntime)} ({form.rows.length} ردیف)</span>
         </div>
-        <div className="flex items-center justify-between"><span className="font-medium text-ink-700 dark:text-slate-200">ساعت کارکرد مفید</span><span className="text-lg font-extrabold text-emerald-600">{formatNumber(Math.round(runtime * 10) / 10)} ساعت</span></div>
-        <p className="mt-1 text-[11px] text-ink-400 dark:text-slate-500">کارکرد مفید = طول شیفت − مجموع توقف‌ها</p>
-        {downtimeWarning && <div className="mt-2 rounded-md bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">مجموع توقف‌ها از طول شیفت بیشتر است.</div>}
+        <div className="flex items-center justify-between"><span className="font-medium text-ink-700 dark:text-slate-200">ساعت کارکرد مفید</span><span className="text-lg font-extrabold tabular-nums text-emerald-600" dir="ltr">{formatHours(runtime)}</span></div>
+        {downtimeWarning && <div className="mt-2 rounded-md bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">مجموع توقف از طول شیفت بیشتر است.</div>}
       </div>
     </div>
   )
@@ -138,7 +145,7 @@ export default function Logs() {
     setEditing(log)
     setForm({
       line: String(log.line.id), shift: String(log.shift.id), date: log.date,
-      rows: [{ device: log.device ? String(log.device.id) : '', failure_cause: log.failure_cause ? String(log.failure_cause.id) : '', downtime_hours: String(log.downtime_hours), failure_description: log.failure_description ?? '', repair_description: log.repair_description ?? '' }],
+      rows: [{ device: log.device ? String(log.device.id) : '', failure_cause: log.failure_cause ? String(log.failure_cause.id) : '', downtime_hours: formatHours(log.downtime_hours), failure_description: log.failure_description ?? '', repair_description: log.repair_description ?? '' }],
     })
     setModalOpen(true)
   }
@@ -150,15 +157,18 @@ export default function Logs() {
     if (!form.line || !form.shift || !form.date) { notify('خط، شیفت و تاریخ الزامی هستند', 'error'); return }
     if (form.rows.length === 0) { notify('حداقل یک ردیف توقف وارد کنید', 'error'); return }
     const line = Number(form.line); const shift = Number(form.shift)
-    const buildPayload = (row: RowState): DeviceLogPayload => ({
-      line, shift, date: form.date,
-      device: row.device ? Number(row.device) : null,
-      failure_cause: row.failure_cause ? Number(row.failure_cause) : null,
-      runtime_hours: computeShift(shift, Number(row.downtime_hours) || 0),
-      downtime_hours: Number(row.downtime_hours) || 0,
-      failure_description: row.failure_description,
-      repair_description: row.repair_description,
-    })
+    const buildPayload = (row: RowState): DeviceLogPayload => {
+      const down = parseHoursHM(row.downtime_hours)
+      return {
+        line, shift, date: form.date,
+        device: row.device ? Number(row.device) : null,
+        failure_cause: row.failure_cause ? Number(row.failure_cause) : null,
+        runtime_hours: computeShift(shift, down),
+        downtime_hours: down,
+        failure_description: row.failure_description,
+        repair_description: row.repair_description,
+      }
+    }
     setSaving(true)
     try {
       if (editing) { await updateLog(editing.id, buildPayload(form.rows[0])); notify('توقف خط تولید با موفقیت ویرایش شد') }
@@ -201,8 +211,8 @@ export default function Logs() {
         'شیفت': l.shift?.name || '—',
         'دستگاه': l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—',
         'علت توقف': l.failure_cause?.title || '—',
-        'توقف (ساعت)': l.downtime_hours,
-        'کارکرد (ساعت)': l.runtime_hours,
+        'توقف': formatHours(l.downtime_hours),
+        'کارکرد': formatHours(l.runtime_hours),
         'راندمان': l.efficiency ?? 0,
         'توضیحات': l.failure_description || '—',
       }))
@@ -226,11 +236,9 @@ export default function Logs() {
             <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:flex"><Layers className="h-5 w-5" /></div>
             <div>
               <h1 className="flex items-center gap-2 text-[17px] font-extrabold tracking-tight text-slate-900 dark:text-white">توقفات خط تولید <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline-flex">{selectedFactory?.name ?? '—'}</span></h1>
-              <p className="mt-1 max-w-[560px] text-sm leading-5 text-slate-500 dark:text-slate-400">ثبت توقفات، فیلتر و سورت کامل در فرانت؛ خروجی PDF صنعتی + ۶ فرمت دیگر دقیقاً از همین دیتاست فیلترشده.</p>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Activity className="h-3 w-3" />{formatNumber(stats.total)} رکورد</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300"><Clock className="h-3 w-3" />{formatNumber(Math.round(stats.totalDown * 10) / 10)} ساعت توقف</span>
-                {!report.loading && <span className="text-xs text-slate-400 dark:text-slate-500">· {isFiltered ? `فیلترشده · PDF همین ${stats.total} رکورد` : 'همه داده‌ها · بدون فیلتر'}</span>}
+                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300" dir="ltr"><Clock className="h-3 w-3" />{formatHours(stats.totalDown)}</span>
               </div>
             </div>
           </div>
@@ -302,11 +310,8 @@ export default function Logs() {
               <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <Sparkles className="h-3.5 w-3.5 text-brand-500" />
                 {report.chips.map((c, i) => <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white dark:bg-white dark:text-slate-900">{c.label}: {c.value} <button onClick={c.onRemove} className="rounded-full bg-white/20 p-0.5 hover:bg-white/30 dark:bg-slate-900/10"><X className="h-3 w-3" /></button></span>)}
-                <span className="text-xs text-slate-500 dark:text-slate-400">{report.totalCount} رکورد · مرتب {report.filters.sortKey} ({report.filters.sortDir}) · PDF همین‌ها</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{formatNumber(report.totalCount)} رکورد</span>
               </div>
-            )}
-            {!isFiltered && !report.filters.search && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500"><BarChart3 className="h-3.5 w-3.5" /> نمایش همه داده‌ها — برای خروجی محدود، فیلتر یا بازه انتخاب کنید.</div>
             )}
           </div>
         </div>
@@ -314,7 +319,6 @@ export default function Logs() {
         <div className="px-4 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-slate-500 dark:text-slate-400">{report.loading ? 'در حال بارگذاری...' : `${formatNumber(report.totalCount)} رکورد · ${formatNumber(stats.withDown)} با توقف · ${formatNumber(stats.withoutDown)} بدون توقف`}</span>
-            <span className="hidden text-slate-400 dark:text-slate-500 sm:inline">فیلتر و سورت ۱۰۰٪ فرانت · PDF = جدول همین صفحه</span>
           </div>
         </div>
       </div>
@@ -323,7 +327,7 @@ export default function Logs() {
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-10 text-center dark:border-slate-700 dark:bg-slate-900/40">
           <ClipboardList className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
           <div className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">توقفی یافت نشد</div>
-          <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">با فیلتر/جستجو/بازه فعلی رکوردی وجود ندارد. فیلترها را پاک کنید یا بازه را تغییر دهید. PDF در این حالت Empty حرفه‌ای چاپ می‌کند.</p>
+          <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">با فیلترهای فعلی رکوردی یافت نشد.</p>
           <div className="mt-4 flex justify-center gap-2"><button className="btn-ghost" onClick={report.clearFilters}><X className="h-4 w-4" /> پاک کردن فیلترها</button><button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت اولین توقف</button></div>
         </div>
       ) : (
@@ -338,8 +342,8 @@ export default function Logs() {
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">{l.line.name}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600 dark:text-slate-400">{l.shift.name}</td>
                     <td className="px-4 py-3"><div className="font-medium text-slate-700 dark:text-slate-300">{l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—'}</div>{l.failure_cause ? <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50">{l.failure_cause.title}</span> : <span className="text-xs text-slate-400">—</span>}</td>
-                    <td className="whitespace-nowrap px-4 py-3"><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatNumber(l.runtime_hours)}</span></td>
-                    <td className="whitespace-nowrap px-4 py-3"><span className={l.downtime_hours > 0 ? 'font-extrabold tabular-nums text-rose-600 dark:text-rose-400' : 'tabular-nums text-slate-300 dark:text-slate-600'}>{formatNumber(l.downtime_hours)}</span></td>
+                    <td className="whitespace-nowrap px-4 py-3"><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400" dir="ltr">{formatHours(l.runtime_hours)}</span></td>
+                    <td className="whitespace-nowrap px-4 py-3"><span className={l.downtime_hours > 0 ? 'font-extrabold tabular-nums text-rose-600 dark:text-rose-400' : 'tabular-nums text-slate-300 dark:text-slate-600'} dir="ltr">{formatHours(l.downtime_hours)}</span></td>
                     <td className="whitespace-nowrap px-4 py-3"><div className="flex items-center justify-center gap-1"><button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white" onClick={() => openEdit(l)} title="ویرایش"><Pencil className="h-4 w-4" /></button><button className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40" onClick={() => setConfirmId(l.id)} title="حذف"><Trash2 className="h-4 w-4" /></button></div></td>
                   </tr>
                 ))}

@@ -67,7 +67,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
       <div className="border-t border-white/5 px-5 py-4">
         {user && <span className={classNames('badge', ROLE_BADGE[user.role])}>{ROLE_LABELS[user.role]}</span>}
-        <div className="mt-1 text-[11px] leading-relaxed text-slate-500">نسخه ۲.۰ · متصل به بک‌اند Django REST</div>
+        <div className="mt-1 text-[11px] leading-relaxed text-slate-500">سامانه مدیریت معدن</div>
       </div>
     </aside>
   )

@@ -1,15 +1,8 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Mountain, LogIn, User, Lock, AlertCircle, Sparkles } from 'lucide-react'
+import { Mountain, LogIn, User, Lock, AlertCircle } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import { useToast } from '../ui/Toast'
-
-const demoUsers = [
-  { role: 'ادمین (دسترسی کامل)', username: 'admin' },
-  { role: 'مدیر کارخانه ۱', username: 'manager1' },
-  { role: 'اپراتور کارخانه ۱', username: 'operator1' },
-  { role: 'بیننده کارخانه ۱', username: 'viewer1' },
-]
 
 export default function Login() {
   const { login } = useAuth()
@@ -89,23 +82,7 @@ export default function Login() {
               </button>
             </form>
 
-            <div className="mt-6 rounded-xl px-3 py-3" style={{ background: 'rgba(30,41,59,0.5)' }}>
-              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
-                <Sparkles className="h-3 w-3 text-brand-400" /> حساب‌های نمونه
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {demoUsers.map((u) => (
-                  <button key={u.username} type="button" title={u.role}
-                    onClick={() => { setUsername(u.username); setPassword('Madan@1404') }}
-                    className="rounded-lg px-2.5 py-1 text-[11px] font-medium text-slate-300 transition" style={{ background: 'rgba(51,65,85,0.6)' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(249,115,22,0.2)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(51,65,85,0.6)'}>
-                    {u.username}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-1.5 text-[10px] text-slate-500">رمز همه: Madan@1404</div>
-            </div>
+
           </div>
         </div>
       </motion.div>

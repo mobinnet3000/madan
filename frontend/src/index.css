@@ -5,48 +5,46 @@
 :root { color-scheme: light dark; }
 
 * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+*::selection { background: rgba(249,115,22,0.2); }
 
 html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  font-family: 'Vazirmatn', system-ui, sans-serif;
-  background-color: #faf5ff;
+  font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif;
+  background-color: #f8fafc;
   color: #0f172a;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .dark body {
-  background-color: #020617;
-  color: #f1f5f9;
+  background-color: #0b1220;
+  color: #e2e8f0;
 }
 
-/* === GRID BACKGROUND === */
 .bg-grid {
   background-image:
-    linear-gradient(rgba(249, 115, 22, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(249, 115, 22, 0.04) 1px, transparent 1px);
-  background-size: 48px 48px;
+    linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
 }
 .dark .bg-grid {
   background-image:
-    linear-gradient(rgba(249, 115, 22, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(249, 115, 22, 0.06) 1px, transparent 1px);
+    linear-gradient(rgba(148,163,184,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148,163,184,0.04) 1px, transparent 1px);
 }
 
-/* === GLASS CARD === */
 .glass {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(249, 115, 22, 0.08);
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(226,232,240,0.8);
 }
 .dark .glass {
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(249, 115, 22, 0.06);
+  background: rgba(15,23,42,0.72);
+  border: 1px solid rgba(51,65,85,0.5);
 }
 
-/* === SCROLLBAR === */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
@@ -56,23 +54,28 @@ body {
 
 @layer components {
   .card {
-    @apply bg-white rounded-2xl border border-ink-200/70 shadow-sm dark:bg-slate-900 dark:border-slate-700/70;
+    @apply bg-white rounded-2xl border shadow-sm dark:bg-slate-800 dark:border-slate-700/60;
+    border-color: rgba(226,232,240,0.9);
+    box-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 4px 16px rgba(15,23,42,0.04);
+  }
+  .dark .card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
   }
   .card-glass {
     @apply rounded-2xl border backdrop-blur-xl transition-all duration-200;
-    background: rgba(255, 255, 255, 0.8);
-    border-color: rgba(249, 115, 22, 0.08);
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.85);
+    border-color: rgba(226,232,240,0.7);
+    box-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 8px 24px rgba(15,23,42,0.06);
   }
   .card-glass:hover {
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 20px rgba(15,23,42,0.08);
   }
   .dark .card-glass {
-    background: rgba(15, 23, 42, 0.8);
-    border-color: rgba(249, 115, 22, 0.06);
+    background: rgba(30,41,59,0.6);
+    border-color: rgba(51,65,85,0.5);
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.97];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.98];
   }
   .btn-primary {
     @apply btn text-white shadow-sm;
@@ -80,68 +83,64 @@ body {
   }
   .btn-primary:hover {
     background: linear-gradient(135deg, #ea580c, #c2410c);
-    box-shadow: 0 4px 15px rgba(249, 115, 22, 0.3);
+    box-shadow: 0 4px 14px rgba(249,115,22,0.32);
   }
   .btn-ghost {
-    @apply btn bg-ink-100/70 text-ink-700 hover:bg-ink-200/70 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/70;
+    @apply btn bg-slate-100/80 text-slate-700 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700;
   }
   .btn-danger {
     @apply btn text-white;
     background: linear-gradient(135deg, #f43f5e, #e11d48);
   }
   .btn-danger:hover {
-    box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3);
+    box-shadow: 0 4px 14px rgba(244,63,94,0.28);
   }
   .btn-outline {
-    @apply btn border border-ink-300/60 text-ink-700 hover:bg-ink-100/60 dark:border-slate-700/60 dark:text-slate-300 dark:hover:bg-slate-800/60;
+    @apply btn border text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800;
+    border-color: rgba(226,232,240,0.9);
   }
+  .dark .btn-outline { border-color: rgba(51,65,85,0.6); }
   .btn-green {
     @apply btn text-white shadow-sm;
     background: linear-gradient(135deg, #10b981, #059669);
   }
-  .btn-green:hover {
-    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-  }
+  .btn-green:hover { box-shadow: 0 4px 14px rgba(16,185,129,0.28); }
   .btn-vibrant {
     @apply btn text-white shadow-sm;
     background: linear-gradient(135deg, #8b5cf6, #7c3aed);
   }
-  .btn-vibrant:hover {
-    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
-  }
+  .btn-vibrant:hover { box-shadow: 0 4px 14px rgba(139,92,246,0.28); }
   .input {
-    @apply w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none transition placeholder:text-ink-400 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500;
-    border-color: rgba(148, 163, 184, 0.3);
-    background: rgba(255, 255, 255, 0.6);
+    @apply w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:border-slate-700;
+    border-color: rgba(203,213,225,0.9);
+    background: #ffffff;
     color: #0f172a;
   }
   .input:focus {
     border-color: #f97316;
-    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
   }
   .dark .input {
-    background: rgba(15, 23, 42, 0.6);
-    color: #f1f5f9;
+    background: rgba(15,23,42,0.8);
+    color: #e2e8f0;
   }
   .dark .input:focus {
     border-color: #f97316;
-    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.18);
   }
   .label {
-    @apply mb-1.5 block text-xs font-semibold;
-    color: rgba(71, 85, 105, 0.9);
+    @apply mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400;
   }
-  .dark .label { color: rgba(148, 163, 184, 0.9); }
   .badge {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium;
-    background: rgba(241, 245, 249, 0.8);
-    color: rgba(71, 85, 105, 0.9);
+    background: #f1f5f9;
+    color: #475569;
   }
   .dark .chip {
-    background: rgba(30, 41, 59, 0.8);
-    color: rgba(203, 213, 225, 0.9);
+    background: #1e293b;
+    color: #cbd5e1;
   }
 }

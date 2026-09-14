@@ -188,12 +188,14 @@ function renderHeader(opts: PdfRenderOptions): string {
 
 function renderFooter(opts: PdfRenderOptions): string {
   const f = opts.footer
-    const ft = f.footnote ? esc(f.footnote) : esc(f.branding.factoryName ?? '')
+  const ft = f.footnote ? esc(f.footnote) : esc(f.branding.factoryName ?? '')
   const dt = f.showPrintDate ? ` · ${esc(todayFa())}` : ''
-  const pn = f.showPageNumbers ? `<span class="pdf-page-pill">صفحه <span class="pg"></span> از <span class="tot"></span>${f.pageText ? ' · ' + esc(f.pageText) : ''}</span>` : ''
-  return `<div class="pdf-footer">
+// const pn = f.showPageNumbers
+//   ? `<span class="pdf-page-pill">صفحه <span class="pg"></span> از <span class="tot"></span>${f.pageText ? ' · ' + esc(f.pageText) : ''}</span>`
+//   : ''
+    return `<div class="pdf-footer">
     <span class="pdf-ft-right"><span class="pdf-ft-dot"></span><span style="overflow:hidden;text-overflow:ellipsis">${ft}${dt}</span></span>
-    ${pn}
+    
   </div>`
 }
 
@@ -232,8 +234,13 @@ export function buildPdfHtml(input: Partial<PdfRenderOptions>): string {
 @font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-FD-Regular.ttf') format('truetype');font-weight:400}
 @font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-FD-Bold.ttf') format('truetype');font-weight:700}
 ${css}
-.pdf-page-pill .pg::after{content:counter(page)}
-.pdf-page-pill .tot::after{content:counter(pages)}
+.pdf-page-pill .pg::after {
+  content: counter(page);
+}
+
+.pdf-page-pill .tot::after {
+  content: counter(pages);
+}
 </style>
 </head>
 <body>

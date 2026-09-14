@@ -1,4 +1,4 @@
-import { formatDate, formatNumber } from '../../../utils'
+import { formatDate, formatNumber, formatHours } from '../../../utils'
 import { esc } from '../../../utils/pdf/helpers'
 import type { PdfKpiCard, PdfRenderOptions, PdfChartConfig, AppliedFilterChip } from '../../../utils/pdf/types'
 import { downtimeTemplate } from '../../../utils/pdf/templates'
@@ -32,8 +32,8 @@ export function buildDowntimeReport(input: DowntimeReportInput): PdfRenderOption
   const avgEff = effs.length ? effs.reduce((a, b) => a + b, 0) / effs.length : null
   const kpis: PdfKpiCard[] = [
     { label: 'تعداد رکورد', value: formatNumber(input.rows.length), suffix: 'مورد', bg: '#eff6ff', color: '#1e3a5f' },
-    { label: 'مجموع توقف', value: formatNumber(Math.round(totalDowntime * 10) / 10), suffix: 'ساعت', bg: '#fef2f2', color: '#991b1b' },
-    { label: 'مجموع کارکرد', value: formatNumber(Math.round(totalRuntime * 10) / 10), suffix: 'ساعت', bg: '#ecfdf5', color: '#065f46' },
+    { label: 'مجموع توقف', value: formatHours(totalDowntime), suffix: '', bg: '#fef2f2', color: '#991b1b' },
+    { label: 'مجموع کارکرد', value: formatHours(totalRuntime), suffix: '', bg: '#ecfdf5', color: '#065f46' },
     { label: 'میانگین راندمان', value: avgEff != null ? `${(Math.round(avgEff * 10) / 10).toString()}٪` : '—', bg: '#f0fdfa', color: '#0f766e' },
   ]
 
@@ -94,8 +94,8 @@ export function buildDowntimeReport(input: DowntimeReportInput): PdfRenderOption
     شیفت: r.shift,
     دستگاه: r.device || '—',
     علت: r.cause || '—',
-    توقف: r.downtime_hours,
-    کارکرد: r.runtime_hours,
+    توقف: formatHours(r.downtime_hours),
+    کارکرد: formatHours(r.runtime_hours),
     راندمان: r.efficiency ?? '—',
   }))
 
