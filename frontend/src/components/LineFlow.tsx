@@ -43,11 +43,12 @@ function groupByOrder(devices: Device[]): Device[][] {
 
 function DeviceNode({ device, index, onEdit }: { device: Device; index: number; onEdit?: (d: Device) => void }) {
   const attrs = Object.entries(device.attributes_values || {})
+  const shown = attrs.slice(0, 2)
   return (
     <motion.div
       whileHover={{ y: -6, scale: 1.03 }}
       transition={{ type: 'spring', stiffness: 300, damping: 18 }}
-      className="group relative flex min-h-[220px] w-48 shrink-0 flex-col overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-sm hover:shadow-xl hover:ring-2 hover:ring-brand-200"
+      className="group relative flex min-h-[260px] w-48 shrink-0 flex-col overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-sm hover:shadow-xl hover:ring-2 hover:ring-brand-200"
     >
       <DeviceImage device={device} />
       <div className="flex flex-1 flex-col p-3">
@@ -75,24 +76,23 @@ function DeviceNode({ device, index, onEdit }: { device: Device; index: number; 
           <div className="truncate text-sm font-bold text-ink-800" title={device.name}>
             {device.name}
           </div>
-          <div className="text-[11px] text-ink-400">
+          <div className="truncate text-[11px] text-ink-400">
             {device.code ? `${device.code} · ` : ''}{device.template_name}
           </div>
         </div>
 
-        <div className="mt-2 flex min-h-[54px] flex-col justify-start space-y-1 border-t border-ink-100 pt-2">
-          {attrs.length === 0 && (
-            <div className="text-[11px] text-ink-400">ویژگی ثبت نشده</div>
+        <div className="mt-2 flex min-h-[44px] flex-col justify-start gap-1 border-t border-ink-100 pt-2">
+          {shown.length === 0 ? (
+            <div className="text-[11px] text-ink-400">—</div>
+          ) : (
+            shown.map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="truncate text-ink-500">{k}</span>
+                <span className="shrink-0 font-semibold text-ink-700">{formatNumber(v)}</span>
+              </div>
+            ))
           )}
-          {attrs.slice(0, 3).map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between text-[11px]">
-              <span className="text-ink-500">{k}</span>
-              <span className="font-semibold text-ink-700">{formatNumber(v)}</span>
-            </div>
-          ))}
-          {attrs.length > 3 && (
-            <div className="text-[10px] text-ink-400">+{attrs.length - 3} مورد دیگر</div>
-          )}
+          <div className="min-h-[14px] text-[10px] text-ink-400">{attrs.length > 2 ? `+${attrs.length - 2} مورد` : '\u00A0'}</div>
         </div>
       </div>
     </motion.div>
