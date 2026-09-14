@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Sparkles, Clock, Activity } from 'lucide-react'
+import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Sparkles, Clock, Activity, BarChart3 } from 'lucide-react'
+import DowntimeReportPanel from '../components/downtime/DowntimeReportPanel'
 import { useFactory } from '../store/FactoryContext'
+import { useAuth } from '../store/AuthContext'
+import { hasPerm } from '../constants'
+import { addReportHistoryEntry } from '../features/reportHistory'
 import { createLog, updateLog, deleteLog } from '../api/logs'
 import type { DeviceLog, DeviceLogPayload } from '../types'
 import { useToast } from '../components/ui/Toast'
@@ -116,8 +120,14 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
 
 export default function Logs() {
   const { selectedFactory } = useFactory()
+  const { user } = useAuth()
   const { notify } = useToast()
+  const canExport = hasPerm(user?.permissions, 'reports.export') || hasPerm(user?.permissions, 'reports.view')
+  const canCreate = hasPerm(user?.permissions, 'logs.create')
+  const canEdit = hasPerm(user?.permissions, 'logs.edit')
+  const canDelete = hasPerm(user?.permissions, 'logs.delete')
   const report = useReportState({}, 30)
+  const [tab, setTab] = useState<'list' | 'report'>('list')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<DeviceLog | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -183,13 +193,19 @@ export default function Logs() {
   }
 
   const handleExport = async (fmt: ExportFormat) => {
+    if (!canExport) { notify('شما دسترسی خروجی ندارید', 'error'); return }
     if (!report.sorted.length) { notify('داده‌ای برای خروجی وجود ندارد', 'error'); return }
     setExporting(fmt); setShowExportMenu(false)
+    const hasDate = !!report.filters.date_from || !!report.filters.date_to
+    const baseName = `توقفات_${selectedFactory?.name ?? 'گزارش'}_${hasDate ? `${report.filters.date_from || 'همه'}_${report.filters.date_to || 'همه'}` : 'همه_داده'}`
+    const titleDate = hasDate ? `${report.filters.date_from ? formatDate(report.filters.date_from) : 'ابتدا'} تا ${report.filters.date_to ? formatDate(report.filters.date_to) : 'اکنون'}` : 'همه داده‌ها'
+    const title = `توقفات خط تولید — ${selectedFactory?.name ?? ''} — ${titleDate}`
+    const chips = report.chips.map(c => ({ label: c.label, value: c.value }))
+    const filtersRec: Record<string, unknown> = {
+      line: report.filters.line, shift: report.filters.shift, device: report.filters.device, failure_cause: report.filters.failure_cause,
+      date_from: report.filters.date_from, date_to: report.filters.date_to, search: report.filters.search, sortKey: report.filters.sortKey, sortDir: report.filters.sortDir,
+    }
     try {
-      const hasDate = !!report.filters.date_from || !!report.filters.date_to
-      const baseName = `توقفات_${selectedFactory?.name ?? 'گزارش'}_${hasDate ? `${report.filters.date_from || 'همه'}_${report.filters.date_to || 'همه'}` : 'همه_داده'}`
-      const titleDate = hasDate ? `${report.filters.date_from ? formatDate(report.filters.date_from) : 'ابتدا'} تا ${report.filters.date_to ? formatDate(report.filters.date_to) : 'اکنون'}` : 'همه داده‌ها'
-      const title = `توقفات خط تولید — ${selectedFactory?.name ?? ''} — ${titleDate}`
       if (fmt === 'pdf') {
         const rows = report.sorted.map((l) => ({
           date: l.date, line: l.line.name, shift: l.shift.name,
@@ -199,24 +215,30 @@ export default function Logs() {
         const opts = buildDowntimeReport({
           title, factoryName: selectedFactory?.name ?? '', factoryAddress: selectedFactory?.address,
           dateFrom: report.filters.date_from || '', dateTo: report.filters.date_to || '', rows,
-          chips: report.chips.map((c) => ({ label: c.label, value: c.value })),
+          chips,
         })
         const html = buildPdfHtml(opts)
         htmlToPdf(html, baseName, { title })
-        return
+      } else {
+        const rows: Record<string, string | number>[] = report.sorted.map((l) => ({
+          'تاریخ': formatDate(l.date),
+          'خط': l.line?.name || '—',
+          'شیفت': l.shift?.name || '—',
+          'دستگاه': l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—',
+          'علت توقف': l.failure_cause?.title || '—',
+          'توقف': formatHours(l.downtime_hours),
+          'کارکرد': formatHours(l.runtime_hours),
+          'راندمان': l.efficiency ?? 0,
+          'توضیحات': l.failure_description || '—',
+        }))
+        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: report.filters.date_from || undefined, dateTo: report.filters.date_to || undefined, format: fmt })
       }
-      const rows: Record<string, string | number>[] = report.sorted.map((l) => ({
-        'تاریخ': formatDate(l.date),
-        'خط': l.line?.name || '—',
-        'شیفت': l.shift?.name || '—',
-        'دستگاه': l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—',
-        'علت توقف': l.failure_cause?.title || '—',
-        'توقف': formatHours(l.downtime_hours),
-        'کارکرد': formatHours(l.runtime_hours),
-        'راندمان': l.efficiency ?? 0,
-        'توضیحات': l.failure_description || '—',
-      }))
-      await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: report.filters.date_from || undefined, dateTo: report.filters.date_to || undefined, format: fmt })
+      addReportHistoryEntry({
+        kind: 'downtime', factoryName: selectedFactory?.name, fileName: `${baseName}.${fmt}`, title, format: fmt,
+        recordCount: report.sorted.length,
+        dateFrom: report.filters.date_from || undefined, dateTo: report.filters.date_to || undefined,
+        chips, filters: filtersRec,
+      })
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : 'خطا در خروجی', 'error')
     } finally { setExporting(null) }
@@ -244,7 +266,7 @@ export default function Logs() {
           </div>
           <div className="flex shrink-0 items-center gap-2 self-start">
             <div className="relative">
-              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-black disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100" onClick={() => setShowExportMenu((v) => !v)} disabled={exporting !== null || report.loading}>
+              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-black disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100" onClick={() => setShowExportMenu((v) => !v)} disabled={!canExport || exporting !== null || report.loading}>
                 {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent dark:border-slate-900 dark:border-t-transparent" /> : <Download className="h-4 w-4" />} خروجی <span className="hidden opacity-70 sm:inline">({stats.total})</span> <ChevronDown className={`h-4 w-4 opacity-60 transition ${showExportMenu ? 'rotate-180' : ''}`} />
               </button>
               {showExportMenu && (
@@ -262,11 +284,24 @@ export default function Logs() {
               )}
               {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
             </div>
-            <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت توقف</button>
+            {canCreate && <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت توقف</button>}
           </div>
         </div>
       </div>
 
+      <div className="flex gap-1 rounded-xl bg-slate-200/60 p-1 dark:bg-slate-800">
+        <button onClick={() => setTab('list')} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'list' ? 'bg-white text-slate-900 shadow dark:bg-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+          <ClipboardList className="h-4 w-4" /> لیست توقفات
+        </button>
+        <button onClick={() => setTab('report')} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'report' ? 'bg-white text-slate-900 shadow dark:bg-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+          <BarChart3 className="h-4 w-4" /> گزارش و نمودار
+        </button>
+      </div>
+
+      {tab === 'report' ? (
+        <DowntimeReportPanel records={report.sorted} />
+      ) : (
+        <>
       {report.error && <ErrorBanner message={report.error} onRetry={report.reload} />}
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -344,7 +379,7 @@ export default function Logs() {
                     <td className="px-4 py-3"><div className="font-medium text-slate-700 dark:text-slate-300">{l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—'}</div>{l.failure_cause ? <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50">{l.failure_cause.title}</span> : <span className="text-xs text-slate-400">—</span>}</td>
                     <td className="whitespace-nowrap px-4 py-3"><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400" dir="ltr">{formatHours(l.runtime_hours)}</span></td>
                     <td className="whitespace-nowrap px-4 py-3"><span className={l.downtime_hours > 0 ? 'font-extrabold tabular-nums text-rose-600 dark:text-rose-400' : 'tabular-nums text-slate-300 dark:text-slate-600'} dir="ltr">{formatHours(l.downtime_hours)}</span></td>
-                    <td className="whitespace-nowrap px-4 py-3"><div className="flex items-center justify-center gap-1"><button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white" onClick={() => openEdit(l)} title="ویرایش"><Pencil className="h-4 w-4" /></button><button className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40" onClick={() => setConfirmId(l.id)} title="حذف"><Trash2 className="h-4 w-4" /></button></div></td>
+                    <td className="whitespace-nowrap px-4 py-3"><div className="flex items-center justify-center gap-1">{canEdit && <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white" onClick={() => openEdit(l)} title="ویرایش"><Pencil className="h-4 w-4" /></button>}{canDelete && <button className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40" onClick={() => setConfirmId(l.id)} title="حذف"><Trash2 className="h-4 w-4" /></button>}{!canEdit && !canDelete && <span className="text-xs text-slate-400">—</span>}</div></td>
                   </tr>
                 ))}
               </tbody>
@@ -355,6 +390,8 @@ export default function Logs() {
             <Pagination currentPage={report.page} totalPages={report.totalPages} onPageChange={report.setPage} />
           </div>
         </div>
+      )}
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'ویرایش توقف خط تولید' : 'ثبت توقف خط تولید'} subtitle={selectedFactory?.name} size="lg" footer={<><button className="btn-ghost" onClick={() => setModalOpen(false)}>انصراف</button><button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'در حال ذخیره...' : editing ? 'ذخیره تغییرات' : 'ثبت توقف'}</button></>}>

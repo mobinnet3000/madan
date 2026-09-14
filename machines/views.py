@@ -291,12 +291,12 @@ class DeliveredTonnageViewSet(viewsets.ModelViewSet):
     serializer_class = DeliveredTonnageSerializer
     filterset_class = DeliveredTonnageFilter
     pagination_class = StandardPagination
-    required_permission = "production.view"
+    required_permission = "tonnage.view"
     action_permissions = {
-        "create": "production.create",
-        "update": "production.edit",
-        "partial_update": "production.edit",
-        "destroy": "production.delete",
+        "create": "tonnage.create",
+        "update": "tonnage.edit",
+        "partial_update": "tonnage.edit",
+        "destroy": "tonnage.delete",
     }
     permission_classes = [permissions.IsAuthenticated, HasPermission]
 
@@ -1394,20 +1394,20 @@ def formula_validate_factory_view(request):
 
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([IsAuthenticated])
-@require_permission("production.view")
+@require_permission("tonnage.view")
 def tonnage_definition_view(request, line_id):
     line = _get_scoped_line(request, line_id)
     definition = getattr(line, "tonnage_definition", None)
 
     if request.method == "DELETE":
-        if not user_has_permission(request.user, "analysis.manage"):
+        if not user_has_permission(request.user, "tonnage.manage"):
             return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
         if definition is not None:
             definition.delete()
         return Response({"detail": "تعریف تناژ تحویلی خط حذف شد."})
 
     if request.method == "PUT":
-        if not user_has_permission(request.user, "analysis.manage"):
+        if not user_has_permission(request.user, "tonnage.manage"):
             return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
         data = request.data.copy()
         data["line"] = line.id
@@ -1430,14 +1430,14 @@ def tonnage_definition_view(request, line_id):
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
-@require_permission("production.view")
+@require_permission("tonnage.view")
 def tonnage_inputs_view(request, line_id):
     line = _get_scoped_line(request, line_id)
     definition = getattr(line, "tonnage_definition", None)
     if definition is None:
         raise Http404
     if request.method == "POST":
-        if not user_has_permission(request.user, "analysis.manage"):
+        if not user_has_permission(request.user, "tonnage.manage"):
             return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
         serializer = DeliveredTonnageInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1448,7 +1448,7 @@ def tonnage_inputs_view(request, line_id):
 
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
-@require_permission("analysis.manage")
+@require_permission("tonnage.manage")
 def tonnage_input_detail_view(request, line_id, pk):
     line = _get_scoped_line(request, line_id)
     definition = getattr(line, "tonnage_definition", None)
@@ -1466,14 +1466,14 @@ def tonnage_input_detail_view(request, line_id, pk):
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
-@require_permission("production.view")
+@require_permission("tonnage.view")
 def tonnage_outputs_view(request, line_id):
     line = _get_scoped_line(request, line_id)
     definition = getattr(line, "tonnage_definition", None)
     if definition is None:
         raise Http404
     if request.method == "POST":
-        if not user_has_permission(request.user, "analysis.manage"):
+        if not user_has_permission(request.user, "tonnage.manage"):
             return _error("شما اجازه‌ی مدیریت تعریف‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
         serializer = DeliveredTonnageOutputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1492,7 +1492,7 @@ def tonnage_outputs_view(request, line_id):
 
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
-@require_permission("analysis.manage")
+@require_permission("tonnage.manage")
 def tonnage_output_detail_view(request, line_id, pk):
     line = _get_scoped_line(request, line_id)
     definition = getattr(line, "tonnage_definition", None)
@@ -1518,7 +1518,7 @@ def tonnage_output_detail_view(request, line_id, pk):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-@require_permission("production.view")
+@require_permission("tonnage.view")
 def tonnage_schema_view(request):
     """اسکیمای فرم داینامیک ثبت تناژ یک خط (از ?line)."""
     line_id = request.query_params.get("line")
@@ -1530,7 +1530,7 @@ def tonnage_schema_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-@require_permission("production.view")
+@require_permission("tonnage.view")
 def formula_validate_tonnage_view(request):
     line_id = request.data.get("line_id")
     expression = request.data.get("expression") or ""

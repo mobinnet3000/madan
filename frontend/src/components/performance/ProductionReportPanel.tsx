@@ -4,7 +4,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell,
 } from 'recharts'
 import { TrendingUp, BarChart3, Table2, Layers, Calendar, Users, Activity } from 'lucide-react'
-import type { ActualAnalysis } from '../../types'
+import type { ProductionReport } from '../../types'
 import { formatDate, formatNumber } from '../../utils'
 
 function isoWeekKey(iso: string): string {
@@ -28,11 +28,11 @@ function formatMonthLabel(mk: string): string {
 const PALETTE = ['#0f2040', '#ea580c', '#059669', '#7c3aed', '#0284c7', '#dc2626', '#0891b2', '#65a30d']
 const PIE_COLORS = ['#0f2040', '#ea580c', '#059669', '#7c3aed', '#0284c7', '#dc2626', '#0891b2', '#65a30d', '#e11d48', '#a16207']
 
-function uniqOutputs(records: ActualAnalysis[]): string[] {
+function uniqOutputs(records: ProductionReport[]): string[] {
   return Array.from(new Set(records.flatMap(r => Object.keys(r.outputs || {})))).sort((a, b) => a.localeCompare(b, 'fa'))
 }
 
-export default function PerformanceReportPanel({ records }: { records: ActualAnalysis[] }) {
+export default function ProductionReportPanel({ records }: { records: ProductionReport[] }) {
   const [metric, setMetric] = useState('')
   const [mode, setMode] = useState<'sum' | 'avg'>('sum')
 
@@ -68,6 +68,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
         if (typeof v === 'number') le.sums[k] = (le.sums[k] ?? 0) + v
       }
       byLine.set(ln, le)
+
       const d = r.date_from || r.date_to || ''
       const de = byDate.get(d) ?? { count: 0, sums: {} }
       de.count += 1
@@ -76,6 +77,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
         if (typeof v === 'number') de.sums[k] = (de.sums[k] ?? 0) + v
       }
       byDate.set(d, de)
+
       const wk = isoWeekKey(d)
       const we = byWeek.get(wk) ?? { count: 0, sums: {} }
       we.count += 1
@@ -84,6 +86,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
         if (typeof v === 'number') we.sums[k] = (we.sums[k] ?? 0) + v
       }
       byWeek.set(wk, we)
+
       const mk = monthKey(d)
       const me = byMonth.get(mk) ?? { count: 0, sums: {} }
       me.count += 1
@@ -92,6 +95,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
         if (typeof v === 'number') me.sums[k] = (me.sums[k] ?? 0) + v
       }
       byMonth.set(mk, me)
+
       const ck = r.contractor?.name || 'بدون پیمانکار'
       const ce = byContractor.get(ck) ?? { count: 0, sums: {} }
       ce.count += 1
@@ -101,6 +105,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
       }
       byContractor.set(ck, ce)
     }
+
     return { outputKeys, sums, avgs, mins, maxs, cnts, topKeys, byLine, byDate, byWeek, byMonth, byContractor }
   }, [records])
 
@@ -254,6 +259,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
             </BarChart>
           </ResponsiveContainer>
         </div>
+
         <div className="card p-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-bold text-ink-700 dark:text-slate-200"><TrendingUp className="h-4 w-4 text-brand-600" />روند {mode === 'sum' ? 'مجموع' : ''} «{metricKey}» — روزانه</div>
           <ResponsiveContainer width="100%" height={280}>
@@ -408,6 +414,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
             </table>
           </div>
         </div>
+
         <div className="card overflow-hidden">
           <div className="flex items-center gap-2 border-b border-ink-100 px-4 py-3 text-sm font-bold text-ink-700 dark:border-slate-700 dark:text-slate-200">
             <Layers className="h-4 w-4 text-brand-600" /> هفتگی / ماهانه — جمع و میانگین

@@ -83,3 +83,61 @@ export async function saveDeviceAttributes(id: number, attributes_values: Record
   const { data } = await api.patch(`/devices/${id}/attributes/`, { attributes_values })
   return data
 }
+
+export interface DevicePayload {
+  line: number
+  name: string
+  code?: string
+  order?: number
+  template?: number
+}
+export async function createDevice(payload: DevicePayload) {
+  const { data } = await api.post('/devices/', payload)
+  return data
+}
+export async function updateDevice(id: number, payload: Partial<DevicePayload>) {
+  const { data } = await api.patch(`/devices/${id}/`, payload)
+  return data
+}
+export async function deleteDevice(id: number) {
+  const { data } = await api.delete(`/devices/${id}/`)
+  return data
+}
+export async function uploadDeviceImage(id: number, file: File) {
+  const fd = new FormData()
+  fd.append('image', file)
+  const { data } = await api.patch(`/devices/${id}/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return data
+}
+export async function deleteDeviceImage(id: number) {
+  const { data } = await api.patch(`/devices/${id}/`, { image: null })
+  return data
+}
+export async function reorderDevices(lineId: number, orderedIds: number[]) {
+  const { data } = await api.post(`/lines/${lineId}/reorder-devices/`, { order: orderedIds })
+  return data
+}
+export async function getDeviceTemplates(): Promise<{ id: number; name: string }[]> {
+  try {
+    const { data } = await api.get('/device-templates/')
+    return Array.isArray(data) ? data : data.results ?? []
+  } catch { return [] }
+}
+export async function getLineTemplates(): Promise<{ id: number; name: string }[]> {
+  try {
+    const { data } = await api.get('/production-line-templates/')
+    return Array.isArray(data) ? data : data.results ?? []
+  } catch { return [] }
+}
+export async function createLine(payload: { factory: number; name: string; description?: string; line_type?: string; template: number }) {
+  const { data } = await api.post('/production-lines/', payload)
+  return data
+}
+export async function updateLine(id: number, payload: Partial<{ name: string; description: string; line_type: string; template: number }>) {
+  const { data } = await api.patch(`/production-lines/${id}/`, payload)
+  return data
+}
+export async function deleteLine(id: number) {
+  const { data } = await api.delete(`/production-lines/${id}/`)
+  return data
+}

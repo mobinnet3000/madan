@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
-import { Plus, Pencil, Trash2, X, Filter, FlaskConical, Loader2, AlertTriangle, Save, Settings2, ListChecks } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Filter, FlaskConical, Loader2, AlertTriangle, Save, Settings2, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Activity, BarChart3 } from 'lucide-react'
+import ProductionReportPanel from '../components/performance/ProductionReportPanel'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { useToast } from '../components/ui/Toast'
 import { hasPerm } from '../constants'
 import {
-  getProductionReports, createProductionReport, updateProductionReport, deleteProductionReport,
+  getProductionReports, fetchAllProductionReports, createProductionReport, updateProductionReport, deleteProductionReport,
   getFactoryAnalysisSchema, getFactoryAnalysisDefinition, saveFactoryAnalysisDefinition,
   deleteFactoryAnalysisDefinition, validateFactoryFormula,
 } from '../api/production'
+import { exportData } from '../utils/exports'
+import type { ExportFormat } from '../utils/exports'
+import { addReportHistoryEntry } from '../features/reportHistory'
 import type {
   ProductionReport, ProductionReportFilters, ProductionReportPayload, FactoryAnalysisSchema,
   FactoryAnalysisInputDef, FactoryAnalysisOutputDef,
@@ -456,9 +460,16 @@ function FactoryDefinitionPanel() {
 
 export default function ProductionReports() {
   const { selectedFactory } = useFactory()
+  const { user } = useAuth()
   const { notify } = useToast()
+  const canView = hasPerm(user?.permissions, 'production.view')
+  const canCreate = hasPerm(user?.permissions, 'production.create')
+  const canEdit = hasPerm(user?.permissions, 'production.edit')
+  const canDelete = hasPerm(user?.permissions, 'production.delete')
+  const canExport = hasPerm(user?.permissions, 'reports.export') || hasPerm(user?.permissions, 'reports.view')
+  const canManageDef = hasPerm(user?.permissions, 'production.create') || hasPerm(user?.permissions, 'analysis.manage')
 
-  const [tab, setTab] = useState<'records' | 'definition'>('records')
+  const [tab, setTab] = useState<'records' | 'definition' | 'report'>('records')
   const [items, setItems] = useState<ProductionReport[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -471,6 +482,10 @@ export default function ProductionReports() {
   const [page, setPage] = useState(1)
   const [pageSize] = useState(50)
   const [totalCount, setTotalCount] = useState(0)
+  const [exporting, setExporting] = useState<ExportFormat | null>(null)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [reportItems, setReportItems] = useState<ProductionReport[]>([])
+  const [loadingReport, setLoadingReport] = useState(false)
 
   const lineIds = useMemo(() => (selectedFactory?.lines ?? []).map((l) => l.id), [selectedFactory])
 
@@ -484,7 +499,22 @@ export default function ProductionReports() {
       .finally(() => setLoading(false))
   }, [filters, page, pageSize, lineIds])
 
+  const loadReport = useCallback(async () => {
+    setLoadingReport(true)
+    try {
+      const merged: Record<string, unknown> = { ...filters } as any
+      if (lineIds.length) merged.lines = lineIds.join(',')
+      const all = await fetchAllProductionReports(merged as unknown as ProductionReportFilters, 200)
+      setReportItems([...all].sort((a, b) => b.date_from.localeCompare(a.date_from)))
+    } catch (e: any) {
+      notify(e.message || 'خطا در دریافت گزارش', 'error')
+    } finally {
+      setLoadingReport(false)
+    }
+  }, [filters, lineIds, notify])
+
   useEffect(() => { if (selectedFactory) load() }, [selectedFactory, load])
+  useEffect(() => { if (tab === 'report' && selectedFactory) loadReport() }, [tab, selectedFactory, loadReport])
 
   const openCreate = () => {
     setEditing(null)
@@ -536,6 +566,73 @@ export default function ProductionReports() {
     catch (e: any) { notify(e.message || 'خطا در حذف', 'error') }
   }
 
+  const handleExport = async (fmt: ExportFormat) => {
+    if (!canExport) { notify('شما دسترسی خروجی ندارید', 'error'); return }
+    if (tab === 'report') {
+      if (!reportItems.length) { notify('داده‌ای برای خروجی وجود ندارد', 'error'); return }
+    } else {
+      if (!sorted.length && !totalCount) { notify('داده‌ای برای خروجی وجود ندارد', 'error'); return }
+    }
+    setExporting(fmt); setShowExportMenu(false)
+    try {
+      const merged: Record<string, unknown> = { ...filters } as any
+      if (lineIds.length) merged.lines = lineIds.join(',')
+      let allRecords: ProductionReport[] = tab === 'report' ? reportItems : sorted
+      if (tab !== 'report' && (totalCount > sorted.length || fmt === 'pdf' || sorted.length < totalCount)) {
+        const fetched = await fetchAllProductionReports(merged as unknown as ProductionReportFilters, 200)
+        allRecords = [...fetched].sort((a, b) => b.date_from.localeCompare(a.date_from))
+      }
+      if (!allRecords.length) { notify('داده‌ای برای خروجی وجود ندارد', 'error'); return }
+      const dateFrom = (filters.date_from as string) || ''
+      const dateTo = (filters.date_to as string) || ''
+      const hasDate = !!dateFrom || !!dateTo
+      const baseName = `ریز_عملکرد_${selectedFactory?.name ?? 'گزارش'}_${hasDate ? `${dateFrom || 'ابتدا'}_${dateTo || 'اکنون'}` : 'همه'}`
+      const titleDate = hasDate ? `${dateFrom ? formatDate(dateFrom) : 'ابتدا'} تا ${dateTo ? formatDate(dateTo) : 'اکنون'}` : 'همه داده‌ها'
+      const title = `ریز عملکرد خطوط تولید — ${selectedFactory?.name ?? ''} — ${titleDate}`
+      const lineName = filters.line ? (selectedFactory?.lines.find(l => l.id === Number(filters.line))?.name ?? String(filters.line)) : ''
+      const contractorName = filters.contractor ? (selectedFactory?.contractors.find(c => c.id === Number(filters.contractor))?.name ?? String(filters.contractor)) : ''
+      const chips: { label: string; value: string }[] = []
+      if (lineName) chips.push({ label: 'خط', value: lineName })
+      if (contractorName) chips.push({ label: 'پیمانکار', value: contractorName })
+      if (dateFrom) chips.push({ label: 'از تاریخ', value: formatDate(dateFrom) })
+      if (dateTo) chips.push({ label: 'تا تاریخ', value: formatDate(dateTo) })
+      if (!chips.length) chips.push({ label: 'بازه', value: titleDate })
+      let outputKeys: string[] = []
+      if (fmt === 'pdf') {
+        const { buildProductionReport } = await import('../templates/pdf/reports/productionReport')
+        const { buildPdfHtml } = await import('../utils/pdf/renderer')
+        const { htmlToPdf } = await import('../utils/pdf/printer')
+        const opts = buildProductionReport({ title, factoryName: selectedFactory?.name ?? '', factoryAddress: selectedFactory?.address, dateFrom, dateTo, records: allRecords, chips })
+        const html = buildPdfHtml(opts)
+        htmlToPdf(html, baseName, { title })
+      } else {
+        outputKeys = Array.from(new Set(allRecords.flatMap(r => Object.keys(r.outputs || {})))).sort((a, b) => a.localeCompare(b, 'fa'))
+        const rows: Record<string, string | number>[] = allRecords.map(r => {
+          const row: Record<string, string | number> = {
+            'بازه': `${formatDate(r.date_from)} تا ${formatDate(r.date_to)}`,
+            'خط': r.line?.name || '—',
+            'پیمانکار': r.contractor?.name || '—',
+          }
+          outputKeys.forEach(k => {
+            const v = (r.outputs as Record<string, number>)[k]
+            row[k] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
+          })
+          if (r.note) row['یادداشت'] = r.note.slice(0, 60)
+          return row
+        })
+        await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt })
+      }
+      addReportHistoryEntry({
+        kind: 'production', factoryName: selectedFactory?.name, fileName: `${baseName}.${fmt}`, title, format: fmt,
+        recordCount: allRecords.length,
+        dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
+        chips, filters: { line: filters.line as any, contractor: filters.contractor as any, date_from: dateFrom, date_to: dateTo },
+      })
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : 'خطا در خروجی', 'error')
+    } finally { setExporting(null) }
+  }
+
   const setFilter = (k: keyof ProductionReportFilters, v: string) => { setPage(1); setFilters((prev) => ({ ...prev, [k]: v === '' ? undefined : (v as any) })) }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -543,16 +640,41 @@ export default function ProductionReports() {
 
   return (
     <div className="animate-fade-in space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-extrabold text-ink-900 dark:text-slate-100">
-            <FlaskConical className="h-6 w-6 text-brand-600" /> آنالیز خطوط تولید
-          </h1>
-          <p className="text-sm text-ink-500">
-            ثبت آنالیز داینامیک خطوط تولید بر اساس ورودی/خروجیهای تعریفشده برای کارخانه
-          </p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex gap-3">
+            <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:flex"><FlaskConical className="h-5 w-5" /></div>
+            <div>
+              <h1 className="flex items-center gap-2 text-[17px] font-extrabold tracking-tight text-slate-900 dark:text-white">ریز عملکرد خطوط تولید <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline-flex">{selectedFactory?.name ?? '—'}</span></h1>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Activity className="h-3 w-3" />{formatNumber(totalCount)} رکورد</span>
+                {sorted.length > 0 && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"><FlaskConical className="h-3 w-3" />{Object.keys(sorted[0]?.outputs || {}).length} خروجی</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 self-start">
+            <div className="relative">
+              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-black disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100" onClick={() => setShowExportMenu(v => !v)} disabled={!canExport || exporting !== null || loading}>
+                {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent dark:border-slate-900 dark:border-t-transparent" /> : <Download className="h-4 w-4" />} خروجی <span className="hidden opacity-70 sm:inline">({totalCount})</span> <ChevronDown className={`h-4 w-4 opacity-60 transition ${showExportMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showExportMenu && (
+                <div className="absolute left-0 z-20 mt-2 w-60 overflow-hidden rounded-xl border bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  <div className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400">خروجی حرفه‌ای — همین فیلتر</div>
+                  <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-rose-600" /> PDF صنعتی <span className="mr-auto text-xs text-slate-400">KPI + نمودار</span></button>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <button onClick={() => handleExport('xlsx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel (XLSX)</button>
+                  <button onClick={() => handleExport('csv')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-amber-600" /> CSV</button>
+                  <button onClick={() => handleExport('docx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-blue-600" /> Word (DOCX)</button>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <button onClick={() => handleExport('html')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><Globe className="h-4 w-4 text-sky-600" /> HTML</button>
+                  <button onClick={() => handleExport('json')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-violet-600" /> JSON</button>
+                </div>
+              )}
+              {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
+            </div>
+            {tab === 'records' && canCreate && <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت آنالیز جدید</button>}
+          </div>
         </div>
-        {tab === 'records' && <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت آنالیز جدید</button>}
       </div>
 
       <div className="flex gap-1 rounded-xl bg-ink-100/60 p-1 dark:bg-slate-800">
@@ -568,10 +690,30 @@ export default function ProductionReports() {
         >
           <Settings2 className="h-4 w-4" /> تعریف ورودیها / خروجیها
         </button>
+        <button
+          onClick={() => setTab('report')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'report' ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400' : 'text-ink-500 dark:text-slate-400'}`}
+        >
+          <BarChart3 className="h-4 w-4" /> گزارش و نمودار
+        </button>
       </div>
 
       {tab === 'definition' ? (
         <FactoryDefinitionPanel />
+      ) : tab === 'report' ? (
+        <>
+          {loadingReport ? (
+            <TableSkeleton columns={6} />
+          ) : reportItems.length === 0 ? (
+            <EmptyState
+              icon={<BarChart3 className="h-10 w-10" />}
+              title="داده‌ای برای گزارش نیست"
+              description="برای فیلترهای بالا رکوردی یافت نشد. فیلترها را تغییر دهید."
+            />
+          ) : (
+            <ProductionReportPanel records={reportItems} />
+          )}
+        </>
       ) : (
         <>
       {error && <ErrorBanner message={error} onRetry={load} />}
@@ -639,8 +781,9 @@ export default function ProductionReports() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1">
-                        <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-brand-600 dark:hover:bg-slate-800" onClick={() => openEdit(p)} title="ویرایش"><Pencil className="h-4 w-4" /></button>
-                        <button className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50" onClick={() => setConfirmId(p.id)} title="حذف"><Trash2 className="h-4 w-4" /></button>
+                        {canEdit && <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-brand-600 dark:hover:bg-slate-800" onClick={() => openEdit(p)} title="ویرایش"><Pencil className="h-4 w-4" /></button>}
+                        {canDelete && <button className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50" onClick={() => setConfirmId(p.id)} title="حذف"><Trash2 className="h-4 w-4" /></button>}
+                        {!canEdit && !canDelete && <span className="text-xs text-slate-400">—</span>}
                       </div>
                     </td>
                   </tr>

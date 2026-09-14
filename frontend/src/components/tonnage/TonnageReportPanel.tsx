@@ -3,8 +3,8 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
   LineChart, Line, PieChart, Pie, Cell,
 } from 'recharts'
-import { TrendingUp, BarChart3, Table2, Layers, Calendar, Users, Activity } from 'lucide-react'
-import type { ActualAnalysis } from '../../types'
+import { TrendingUp, BarChart3, Table2, Layers, Calendar, Users, Activity, Clock } from 'lucide-react'
+import type { DeliveredTonnage } from '../../types'
 import { formatDate, formatNumber } from '../../utils'
 
 function isoWeekKey(iso: string): string {
@@ -28,11 +28,11 @@ function formatMonthLabel(mk: string): string {
 const PALETTE = ['#0f2040', '#ea580c', '#059669', '#7c3aed', '#0284c7', '#dc2626', '#0891b2', '#65a30d']
 const PIE_COLORS = ['#0f2040', '#ea580c', '#059669', '#7c3aed', '#0284c7', '#dc2626', '#0891b2', '#65a30d', '#e11d48', '#a16207']
 
-function uniqOutputs(records: ActualAnalysis[]): string[] {
+function uniqOutputs(records: DeliveredTonnage[]): string[] {
   return Array.from(new Set(records.flatMap(r => Object.keys(r.outputs || {})))).sort((a, b) => a.localeCompare(b, 'fa'))
 }
 
-export default function PerformanceReportPanel({ records }: { records: ActualAnalysis[] }) {
+export default function TonnageReportPanel({ records }: { records: DeliveredTonnage[] }) {
   const [metric, setMetric] = useState('')
   const [mode, setMode] = useState<'sum' | 'avg'>('sum')
 
@@ -59,6 +59,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
     const byWeek = new Map<string, { count: number; sums: Record<string, number> }>()
     const byMonth = new Map<string, { count: number; sums: Record<string, number> }>()
     const byContractor = new Map<string, { count: number; sums: Record<string, number> }>()
+    const byHour = new Map<string, number>()
     for (const r of records) {
       const ln = r.line?.name || '—'
       const le = byLine.get(ln) ?? { count: 0, sums: {} }
@@ -68,7 +69,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
         if (typeof v === 'number') le.sums[k] = (le.sums[k] ?? 0) + v
       }
       byLine.set(ln, le)
-      const d = r.date_from || r.date_to || ''
+      const d = r.date || ''
       const de = byDate.get(d) ?? { count: 0, sums: {} }
       de.count += 1
       for (const k of outputKeys) {
@@ -100,8 +101,10 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
         if (typeof v === 'number') ce.sums[k] = (ce.sums[k] ?? 0) + v
       }
       byContractor.set(ck, ce)
+      const hh = (r.hour || '').slice(0, 2)
+      if (hh) byHour.set(hh, (byHour.get(hh) ?? 0) + 1)
     }
-    return { outputKeys, sums, avgs, mins, maxs, cnts, topKeys, byLine, byDate, byWeek, byMonth, byContractor }
+    return { outputKeys, sums, avgs, mins, maxs, cnts, topKeys, byLine, byDate, byWeek, byMonth, byContractor, byHour }
   }, [records])
 
   const metricKey = metric || computed.topKeys[0] || computed.outputKeys[0] || ''
@@ -154,6 +157,13 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
       .map(([name, v]) => ({ name: name.length > 16 ? name.slice(0, 16) + '…' : name, fullName: name, value: v.count }))
   }, [computed.byContractor])
 
+  const hourData = useMemo(() => {
+    return [...computed.byHour.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([hh, cnt]) => ({
+      name: `${hh}:00`,
+      value: cnt,
+    }))
+  }, [computed.byHour])
+
   if (records.length === 0) {
     return (
       <div className="card p-8 text-center text-sm text-ink-500 dark:text-slate-400">
@@ -168,7 +178,7 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1 font-bold text-white dark:bg-white dark:text-slate-900"><Activity className="h-3.5 w-3.5" />{formatNumber(records.length)} رکورد</span>
-        <span className="text-slate-400">{computed.outputKeys.length} ستون خروجی · {computed.byLine.size} خط · {computed.byContractor.size} پیمانکار</span>
+        <span className="text-slate-400">{computed.outputKeys.length} ستون خروجی · {computed.byLine.size} خط · {computed.byContractor.size} پیمانکار · {computed.byHour.size} ساعت</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -293,6 +303,21 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip contentStyle={{ direction: 'rtl', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }} />
               <Bar dataKey="value" name={`${metricKey} جمع ماهانه`} fill="#0284c7" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {hourData.length > 1 && (
+        <div className="card p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-bold text-ink-700 dark:text-slate-200"><Clock className="h-4 w-4 text-brand-600" />توزیع ساعتی رکوردها</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={hourData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.25} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip contentStyle={{ direction: 'rtl', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }} />
+              <Bar dataKey="value" name="تعداد" fill="#0891b2" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -496,6 +521,32 @@ export default function PerformanceReportPanel({ records }: { records: ActualAna
           </table>
         </div>
       </div>
+
+      {hourData.length > 1 && (
+        <div className="card overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-ink-100 px-4 py-3 text-sm font-bold text-ink-700 dark:border-slate-700 dark:text-slate-200">
+            <Clock className="h-4 w-4 text-brand-600" /> توزیع ساعتی
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-ink-100 bg-ink-50/60 text-right text-xs text-ink-500 dark:border-slate-700 dark:bg-slate-800/60">
+                  <th className="px-4 py-3 font-semibold">ساعت</th>
+                  <th className="px-4 py-3 font-semibold">تعداد</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100 dark:divide-slate-700">
+                {hourData.map(h => (
+                  <tr key={h.name} className="hover:bg-ink-50/40">
+                    <td className="px-4 py-3 font-medium dark:text-slate-200" dir="ltr">{h.name}</td>
+                    <td className="px-4 py-3 dark:text-slate-300">{formatNumber(h.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
