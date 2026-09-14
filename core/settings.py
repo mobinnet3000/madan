@@ -8,6 +8,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-change-me-in-production!!')
 DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=Csv())
+if config('DJANGO_DEBUG', default=True, cast=bool):
+    for _h in ('127.0.0.1', 'localhost', '[::1]', 'testserver'):
+        if _h not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_h)
 
 # ── CORS ──
 CORS_ALLOW_ALL_ORIGINS = False

@@ -1,76 +1,43 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Sparkles, Clock, Activity, BarChart3 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
-import { getLogsPage, createLog, updateLog, deleteLog } from '../api/logs'
-import type { DeviceLog, DeviceLogPayload, LogFilters } from '../types'
+import { createLog, updateLog, deleteLog } from '../api/logs'
+import type { DeviceLog, DeviceLogPayload } from '../types'
 import { useToast } from '../components/ui/Toast'
-import { Loading, ErrorBanner, EmptyState, TableSkeleton } from '../components/ui/States'
+import { ErrorBanner, EmptyState, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
 import { formatDate, formatNumber, todayISO, shiftHours } from '../utils'
+import { useReportState } from '../features/reports/useReportState'
+import { PRESETS } from '../features/reports/reportFilters'
+import { buildDowntimeReport } from '../templates/pdf/reports/downtimeReport'
+import { buildPdfHtml } from '../utils/pdf/renderer'
+import { htmlToPdf } from '../utils/pdf/printer'
+import { exportData } from '../utils/exports'
+import type { ExportFormat } from '../utils/exports'
 
-type RowState = {
-  device: string
-  failure_cause: string
-  downtime_hours: string
-  failure_description: string
-  repair_description: string
-}
-
-type FormState = {
-  line: string
-  shift: string
-  date: string
-  rows: RowState[]
-}
-
-const emptyRow: RowState = {
-  device: '', failure_cause: '', downtime_hours: '0',
-  failure_description: '', repair_description: '',
-}
-
-const emptyForm: FormState = {
-  line: '', shift: '', date: todayISO(), rows: [{ ...emptyRow }],
-}
+type RowState = { device: string; failure_cause: string; downtime_hours: string; failure_description: string; repair_description: string }
+type FormState = { line: string; shift: string; date: string; rows: RowState[] }
+const emptyRow: RowState = { device: '', failure_cause: '', downtime_hours: '0', failure_description: '', repair_description: '' }
+const emptyForm: FormState = { line: '', shift: '', date: todayISO(), rows: [{ ...emptyRow }] }
 
 function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: FormState) => void; editing: DeviceLog | null }) {
   const { selectedFactory } = useFactory()
-
-  const selectedLine = useMemo(
-    () => selectedFactory?.lines.find((l) => l.id === Number(form.line)),
-    [form.line, selectedFactory],
-  )
+  const selectedLine = useMemo(() => selectedFactory?.lines.find((l) => l.id === Number(form.line)), [form.line, selectedFactory])
   const shifts = useMemo(() => selectedFactory?.shifts ?? [], [selectedFactory])
   const lineDevices = useMemo(() => selectedLine?.devices ?? [], [selectedLine])
-
   const selectedShift = useMemo(() => shifts.find((s) => s.id === Number(form.shift)), [shifts, form.shift])
-  const totalShiftHours = useMemo(
-    () => shiftHours(selectedShift?.start_time, selectedShift?.end_time),
-    [selectedShift],
-  )
-  const totalDowntime = useMemo(
-    () => form.rows.reduce((sum, r) => sum + (Number(r.downtime_hours) || 0), 0),
-    [form.rows],
-  )
+  const totalShiftHours = useMemo(() => shiftHours(selectedShift?.start_time, selectedShift?.end_time), [selectedShift])
+  const totalDowntime = useMemo(() => form.rows.reduce((s, r) => s + (Number(r.downtime_hours) || 0), 0), [form.rows])
   const runtime = Math.max(0, totalShiftHours - totalDowntime)
   const downtimeWarning = totalDowntime > totalShiftHours
-
-  const set = (k: keyof FormState, v: string) => setForm({ ...form, [k]: v })
   const onLineChange = (v: string) => setForm({ ...form, line: v, shift: '' })
-
-  const setRow = (idx: number, k: keyof RowState, v: string) => {
-    setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [k]: v } : r)) })
-  }
+  const setRow = (idx: number, k: keyof RowState, v: string) => setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [k]: v } : r)) })
   const addRow = () => setForm({ ...form, rows: [...form.rows, { ...emptyRow }] })
-  const removeRow = (idx: number) => {
-    if (form.rows.length <= 1) return
-    setForm({ ...form, rows: form.rows.filter((_, i) => i !== idx) })
-  }
-
+  const removeRow = (idx: number) => { if (form.rows.length <= 1) return; setForm({ ...form, rows: form.rows.filter((_, i) => i !== idx) }) }
   return (
     <div className="space-y-4">
-      {/* سربرگ ثابت: خط / شیفت / تاریخ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label className="label">خط تولید *</label>
@@ -81,40 +48,26 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
         </div>
         <div>
           <label className="label">شیفت *</label>
-          <select className="input" value={form.shift} onChange={(e) => set('shift', e.target.value)} disabled={!form.line}>
+          <select className="input" value={form.shift} onChange={(e) => setForm({ ...form, shift: e.target.value })} disabled={!form.line}>
             <option value="">انتخاب شیفت</option>
             {shifts.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time.slice(0, 5)}-{s.end_time.slice(0, 5)})</option>)}
           </select>
         </div>
         <div>
           <label className="label">تاریخ *</label>
-          <JalaliDateInput value={form.date} onChange={(iso) => set('date', iso)} />
+          <JalaliDateInput value={form.date} onChange={(iso) => setForm({ ...form, date: iso })} />
         </div>
       </div>
-
-      {/* ردیف‌های توقف */}
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-sm font-bold text-ink-700 dark:text-slate-200">
-            <Layers className="h-4 w-4 text-brand-600" /> توقف‌های این گزارش
-            <span className="chip">برای این خط/شیفت/تاریخ</span>
-          </div>
-          {!editing && (
-            <button type="button" className="btn-ghost !h-9 !px-3 text-xs" onClick={addRow}>
-              <Plus className="h-4 w-4" /> افزودن ردیف توقف
-            </button>
-          )}
+          <div className="flex items-center gap-1.5 text-sm font-bold text-ink-700 dark:text-slate-200"><Layers className="h-4 w-4 text-brand-600" /> توقف‌های این گزارش <span className="chip">برای این خط/شیفت/تاریخ</span></div>
+          {!editing && <button type="button" className="btn-ghost !h-9 !px-3 text-xs" onClick={addRow}><Plus className="h-4 w-4" /> افزودن ردیف توقف</button>}
         </div>
-
         {form.rows.map((row, idx) => (
           <div key={idx} className="mb-3 rounded-xl border border-ink-100 p-3 dark:border-slate-700">
             <div className="mb-2 flex items-center justify-between">
               <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">توقف {idx + 1}</span>
-              {!editing && form.rows.length > 1 && (
-                <button type="button" className="rounded-lg p-1 text-ink-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => removeRow(idx)} title="حذف ردیف">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
+              {!editing && form.rows.length > 1 && <button type="button" className="rounded-lg p-1 text-ink-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => removeRow(idx)} title="حذف ردیف"><Trash2 className="h-4 w-4" /></button>}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
@@ -135,35 +88,20 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
                 <label className="label">ساعت توقف</label>
                 <input type="number" step="0.1" min="0" className="input" value={row.downtime_hours} onChange={(e) => setRow(idx, 'downtime_hours', e.target.value)} />
               </div>
-              <div className="sm:col-span-3">
-                <label className="label">توضیحات خرابی</label>
-                <textarea className="input min-h-[56px]" value={row.failure_description} onChange={(e) => setRow(idx, 'failure_description', e.target.value)} />
-              </div>
-              <div className="sm:col-span-3">
-                <label className="label">شرح اقدامات / تعمیرات</label>
-                <textarea className="input min-h-[56px]" value={row.repair_description} onChange={(e) => setRow(idx, 'repair_description', e.target.value)} />
-              </div>
+              <div className="sm:col-span-3"><label className="label">توضیحات خرابی</label><textarea className="input min-h-[56px]" value={row.failure_description} onChange={(e) => setRow(idx, 'failure_description', e.target.value)} /></div>
+              <div className="sm:col-span-3"><label className="label">شرح اقدامات / تعمیرات</label><textarea className="input min-h-[56px]" value={row.repair_description} onChange={(e) => setRow(idx, 'repair_description', e.target.value)} /></div>
             </div>
           </div>
         ))}
       </div>
-
-      {/* خلاصه کارکرد */}
-      <div className="rounded-lg border border-ink-100 bg-ink-50/60 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+      <div className="rounded-xl border border-ink-100 bg-ink-50/60 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
         <div className="mb-1 flex flex-wrap items-center justify-between text-xs text-ink-500 dark:text-slate-400">
           <span>طول شیفت: {formatNumber(Math.round(totalShiftHours * 10) / 10)} ساعت</span>
           <span>مجموع توقف: {formatNumber(Math.round(totalDowntime * 10) / 10)} ساعت ({form.rows.length} ردیف)</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="font-medium text-ink-700 dark:text-slate-200">ساعت کارکرد مفید</span>
-          <span className="text-lg font-extrabold text-emerald-600">{formatNumber(Math.round(runtime * 10) / 10)} ساعت</span>
-        </div>
+        <div className="flex items-center justify-between"><span className="font-medium text-ink-700 dark:text-slate-200">ساعت کارکرد مفید</span><span className="text-lg font-extrabold text-emerald-600">{formatNumber(Math.round(runtime * 10) / 10)} ساعت</span></div>
         <p className="mt-1 text-[11px] text-ink-400 dark:text-slate-500">کارکرد مفید = طول شیفت − مجموع توقف‌ها</p>
-        {downtimeWarning && (
-          <div className="mt-2 rounded-md bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">
-            مجموع توقف‌ها از طول شیفت بیشتر است.
-          </div>
-        )}
+        {downtimeWarning && <div className="mt-2 rounded-md bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">مجموع توقف‌ها از طول شیفت بیشتر است.</div>}
       </div>
     </div>
   )
@@ -172,215 +110,253 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
 export default function Logs() {
   const { selectedFactory } = useFactory()
   const { notify } = useToast()
-
-  const [logs, setLogs] = useState<DeviceLog[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useState<LogFilters>({})
+  const report = useReportState({}, 30)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<DeviceLog | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [confirmId, setConfirmId] = useState<number | null>(null)
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(30)
-  const [totalCount, setTotalCount] = useState(0)
+  const [exporting, setExporting] = useState<ExportFormat | null>(null)
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
-  const lineIds = useMemo(() => (selectedFactory?.lines ?? []).map((l) => l.id), [selectedFactory])
+  const allDevices = useMemo(() => (selectedFactory?.lines ?? []).flatMap((l) => l.devices.map((d) => ({ ...d, lineName: l.name }))), [selectedFactory])
 
-  const load = useCallback(() => {
-    setLoading(true)
-    const merged = { ...filters } as any
-    if (lineIds.length) merged.lines = lineIds.join(',')
-    getLogsPage(merged, page, pageSize)
-      .then((data) => {
-        setLogs(data.results)
-        setTotalCount(data.count); setError(null)
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [filters, page, pageSize, lineIds])
-
-  useEffect(() => { if (selectedFactory) load() }, [selectedFactory, load])
+  const stats = useMemo(() => {
+    const rows = report.sorted
+    const totalDown = rows.reduce((s, r) => s + (r.downtime_hours || 0), 0)
+    const totalRun = rows.reduce((s, r) => s + (r.runtime_hours || 0), 0)
+    const withDown = rows.filter((r) => r.downtime_hours > 0).length
+    return { total: rows.length, totalDown, totalRun, withDown, withoutDown: rows.length - withDown }
+  }, [report.sorted])
 
   const openCreate = () => {
     setEditing(null)
     setForm({ ...emptyForm, line: String(selectedFactory?.lines[0]?.id ?? ''), rows: [{ ...emptyRow }] })
     setModalOpen(true)
   }
-
   const openEdit = (log: DeviceLog) => {
     setEditing(log)
     setForm({
       line: String(log.line.id), shift: String(log.shift.id), date: log.date,
-      rows: [{
-        device: log.device ? String(log.device.id) : '',
-        failure_cause: log.failure_cause ? String(log.failure_cause.id) : '',
-        downtime_hours: String(log.downtime_hours),
-        failure_description: log.failure_description ?? '',
-        repair_description: log.repair_description ?? '',
-      }],
+      rows: [{ device: log.device ? String(log.device.id) : '', failure_cause: log.failure_cause ? String(log.failure_cause.id) : '', downtime_hours: String(log.downtime_hours), failure_description: log.failure_description ?? '', repair_description: log.repair_description ?? '' }],
     })
     setModalOpen(true)
   }
-
-  // ساعت کارکرد مفید برای هر ردیف (مانند قبل: طول شیفت − توقف همان ردیف)
-  const computeShift = (lineId: number, shiftId: number, down: number): number => {
+  const computeShift = (shiftId: number, down: number): number => {
     const shift = selectedFactory?.shifts.find((s) => s.id === shiftId)
     return Math.max(0, shiftHours(shift?.start_time, shift?.end_time) - down)
   }
-
   const submit = async () => {
-    if (!form.line || !form.shift || !form.date) {
-      notify('خط، شیفت و تاریخ الزامی هستند', 'error'); return
-    }
-    if (form.rows.length === 0) {
-      notify('حداقل یک ردیف توقف وارد کنید', 'error'); return
-    }
-    const line = Number(form.line)
-    const shift = Number(form.shift)
-
+    if (!form.line || !form.shift || !form.date) { notify('خط، شیفت و تاریخ الزامی هستند', 'error'); return }
+    if (form.rows.length === 0) { notify('حداقل یک ردیف توقف وارد کنید', 'error'); return }
+    const line = Number(form.line); const shift = Number(form.shift)
     const buildPayload = (row: RowState): DeviceLogPayload => ({
       line, shift, date: form.date,
       device: row.device ? Number(row.device) : null,
       failure_cause: row.failure_cause ? Number(row.failure_cause) : null,
-      runtime_hours: computeShift(line, shift, Number(row.downtime_hours) || 0),
+      runtime_hours: computeShift(shift, Number(row.downtime_hours) || 0),
       downtime_hours: Number(row.downtime_hours) || 0,
       failure_description: row.failure_description,
       repair_description: row.repair_description,
     })
-
     setSaving(true)
     try {
-      if (editing) {
-        await updateLog(editing.id, buildPayload(form.rows[0]))
-        notify('توقف خط تولید با موفقیت ویرایش شد')
-      } else {
-        for (const row of form.rows) {
-          await createLog(buildPayload(row))
-        }
-        notify(`توقف خط تولید ثبت شد (${form.rows.length} ردیف توقف)`)
-      }
-      setModalOpen(false); load()
-    } catch (e: any) {
-      notify(e.message || 'خطا در ذخیره‌سازی', 'error')
-    } finally {
-      setSaving(false)
-    }
+      if (editing) { await updateLog(editing.id, buildPayload(form.rows[0])); notify('توقف خط تولید با موفقیت ویرایش شد') }
+      else { for (const row of form.rows) await createLog(buildPayload(row)); notify(`توقف خط تولید ثبت شد (${form.rows.length} ردیف توقف)`) }
+      setModalOpen(false); report.reload()
+    } catch (e: unknown) { notify(e instanceof Error ? e.message : 'خطا در ذخیره‌سازی', 'error') } finally { setSaving(false) }
   }
-
   const confirmDelete = async () => {
     if (confirmId == null) return
-    try { await deleteLog(confirmId); notify('توقف حذف شد'); setConfirmId(null); load() }
-    catch (e: any) { notify(e.message || 'خطا در حذف', 'error') }
+    try { await deleteLog(confirmId); notify('توقف حذف شد'); setConfirmId(null); report.reload() }
+    catch (e: unknown) { notify(e instanceof Error ? e.message : 'خطا در حذف', 'error') }
   }
 
-  const setFilter = (k: keyof LogFilters, v: string) => { setPage(1); setFilters((prev) => ({ ...prev, [k]: v === '' ? undefined : (v as any) })) }
+  const handleExport = async (fmt: ExportFormat) => {
+    if (!report.sorted.length) { notify('داده‌ای برای خروجی وجود ندارد', 'error'); return }
+    setExporting(fmt); setShowExportMenu(false)
+    try {
+      const hasDate = !!report.filters.date_from || !!report.filters.date_to
+      const baseName = `توقفات_${selectedFactory?.name ?? 'گزارش'}_${hasDate ? `${report.filters.date_from || 'همه'}_${report.filters.date_to || 'همه'}` : 'همه_داده'}`
+      const titleDate = hasDate ? `${report.filters.date_from ? formatDate(report.filters.date_from) : 'ابتدا'} تا ${report.filters.date_to ? formatDate(report.filters.date_to) : 'اکنون'}` : 'همه داده‌ها'
+      const title = `توقفات خط تولید — ${selectedFactory?.name ?? ''} — ${titleDate}`
+      if (fmt === 'pdf') {
+        const rows = report.sorted.map((l) => ({
+          date: l.date, line: l.line.name, shift: l.shift.name,
+          device: l.device?.name ?? '—', cause: l.failure_cause?.title ?? '—',
+          downtime_hours: l.downtime_hours, runtime_hours: l.runtime_hours, efficiency: l.efficiency ?? 0,
+        }))
+        const opts = buildDowntimeReport({
+          title, factoryName: selectedFactory?.name ?? '', factoryAddress: selectedFactory?.address,
+          dateFrom: report.filters.date_from || '', dateTo: report.filters.date_to || '', rows,
+          chips: report.chips.map((c) => ({ label: c.label, value: c.value })),
+        })
+        const html = buildPdfHtml(opts)
+        htmlToPdf(html, baseName, { title })
+        return
+      }
+      const rows: Record<string, string | number>[] = report.sorted.map((l) => ({
+        'تاریخ': formatDate(l.date),
+        'خط': l.line?.name || '—',
+        'شیفت': l.shift?.name || '—',
+        'دستگاه': l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—',
+        'علت توقف': l.failure_cause?.title || '—',
+        'توقف (ساعت)': l.downtime_hours,
+        'کارکرد (ساعت)': l.runtime_hours,
+        'راندمان': l.efficiency ?? 0,
+        'توضیحات': l.failure_description || '—',
+      }))
+      await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: report.filters.date_from || undefined, dateTo: report.filters.date_to || undefined, format: fmt })
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : 'خطا در خروجی', 'error')
+    } finally { setExporting(null) }
+  }
 
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date))
+  const isFiltered = report.chips.length > 0 || !!report.filters.date_from || !!report.filters.date_to
+  const activePreset = useMemo(() => {
+    if (!report.filters.date_from && !report.filters.date_to) return 'all'
+    return null
+  }, [report.filters.date_from, report.filters.date_to])
 
   return (
-    <div className="animate-fade-in space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-extrabold text-ink-900 dark:text-slate-100">توقفات خط تولید</h1>
-          <p className="text-sm text-ink-500">ثبت و مدیریت توقفات و خرابی خطوط تولید (چند توقف در یک ثبت)</p>
+    <div className="mx-auto max-w-[1400px] space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex gap-3">
+            <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:flex"><Layers className="h-5 w-5" /></div>
+            <div>
+              <h1 className="flex items-center gap-2 text-[17px] font-extrabold tracking-tight text-slate-900 dark:text-white">توقفات خط تولید <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline-flex">{selectedFactory?.name ?? '—'}</span></h1>
+              <p className="mt-1 max-w-[560px] text-sm leading-5 text-slate-500 dark:text-slate-400">ثبت توقفات، فیلتر و سورت کامل در فرانت؛ خروجی PDF صنعتی + ۶ فرمت دیگر دقیقاً از همین دیتاست فیلترشده.</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Activity className="h-3 w-3" />{formatNumber(stats.total)} رکورد</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300"><Clock className="h-3 w-3" />{formatNumber(Math.round(stats.totalDown * 10) / 10)} ساعت توقف</span>
+                {!report.loading && <span className="text-xs text-slate-400 dark:text-slate-500">· {isFiltered ? `فیلترشده · PDF همین ${stats.total} رکورد` : 'همه داده‌ها · بدون فیلتر'}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 self-start">
+            <div className="relative">
+              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-black disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100" onClick={() => setShowExportMenu((v) => !v)} disabled={exporting !== null || report.loading}>
+                {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent dark:border-slate-900 dark:border-t-transparent" /> : <Download className="h-4 w-4" />} خروجی <span className="hidden opacity-70 sm:inline">({stats.total})</span> <ChevronDown className={`h-4 w-4 opacity-60 transition ${showExportMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showExportMenu && (
+                <div className="absolute left-0 z-20 mt-2 w-60 overflow-hidden rounded-xl border bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  <div className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400">خروجی حرفه‌ای — همین دیتاست</div>
+                  <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-rose-600" /> PDF صنعتی <span className="mr-auto text-xs text-slate-400">هدر/فوتر هر صفحه</span></button>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <button onClick={() => handleExport('xlsx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel (XLSX)</button>
+                  <button onClick={() => handleExport('csv')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-amber-600" /> CSV</button>
+                  <button onClick={() => handleExport('docx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-blue-600" /> Word (DOCX)</button>
+                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                  <button onClick={() => handleExport('html')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><Globe className="h-4 w-4 text-sky-600" /> HTML</button>
+                  <button onClick={() => handleExport('json')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-violet-600" /> JSON</button>
+                </div>
+              )}
+              {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
+            </div>
+            <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت توقف</button>
+          </div>
         </div>
-        <button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت توقف جدید</button>
       </div>
 
-      {error && <ErrorBanner message={error} onRetry={load} />}
+      {report.error && <ErrorBanner message={report.error} onRetry={report.reload} />}
 
-      <div className="card flex flex-wrap items-end gap-3 p-4">
-        <div className="flex items-center gap-1.5 text-sm font-semibold text-ink-600 dark:text-slate-300"><Filter className="h-4 w-4" /> فیلترها</div>
-        <div className="min-w-[150px] flex-1">
-          <label className="label">خط</label>
-          <select className="input" value={filters.line ?? ''} onChange={(e) => setFilter('line', e.target.value)}>
-            <option value="">همه خطوط</option>
-            {selectedFactory?.lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-200"><Filter className="h-4 w-4 text-slate-400" /> فیلترها</span>
+              <span className="hidden h-4 w-px bg-slate-200 dark:bg-slate-700 sm:block" />
+              <div className="relative min-w-[180px] flex-1 max-w-[420px]">
+                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="input !h-9 !rounded-xl !py-0 pr-9 leading-9 !text-sm" placeholder="جستجو: خط، دستگاه، علت، توضیحات..." value={report.filters.search} onChange={(e) => report.setSearch(e.target.value)} />
+                {report.filters.search && <button onClick={() => report.setSearch('')} className="absolute left-1.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-3.5 w-3.5" /></button>}
+              </div>
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                <span className="hidden whitespace-nowrap text-xs leading-9 text-slate-500 dark:text-slate-400 sm:inline">مرتب‌سازی:</span>
+                <select className="input !h-9 !w-[126px] !rounded-xl !py-0 leading-9 !text-sm" value={report.filters.sortKey} onChange={(e) => report.setSort(e.target.value as never)}><option value="date">تاریخ</option><option value="downtime">توقف</option><option value="runtime">کارکرد</option><option value="line">خط</option><option value="efficiency">راندمان</option></select>
+                <button className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300" onClick={() => report.setFilter('sortDir', report.filters.sortDir === 'asc' ? 'desc' : 'asc')} title={report.filters.sortDir === 'asc' ? 'صعودی' : 'نزولی'}><ArrowUpDown className="h-4 w-4" /></button>
+              </div>
+              {(isFiltered || report.filters.search) && <button className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300" onClick={report.clearFilters}><X className="h-3.5 w-3.5" /> پاک کردن همه</button>}
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <select className="input !h-9 !rounded-xl !py-0 leading-9 !text-sm" value={report.filters.line ?? ''} onChange={(e) => report.setFilter('line', e.target.value)}><option value="">همه خطوط</option>{selectedFactory?.lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+              <select className="input !h-9 !rounded-xl !py-0 leading-9 !text-sm" value={report.filters.shift ?? ''} onChange={(e) => report.setFilter('shift', e.target.value)}><option value="">همه شیفت‌ها</option>{selectedFactory?.shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+              <select className="input !h-9 !rounded-xl !py-0 leading-9 !text-sm" value={report.filters.device ?? ''} onChange={(e) => report.setFilter('device', e.target.value)}><option value="">همه دستگاه‌ها</option>{allDevices.map((d) => <option key={d.id} value={String(d.id)}>{d.code ? `${d.code} - ${d.name}` : d.name} · {d.lineName}</option>)}</select>
+              <select className="input !h-9 !rounded-xl !py-0 leading-9 !text-sm" value={report.filters.failure_cause ?? ''} onChange={(e) => report.setFilter('failure_cause', e.target.value)}><option value="">همه علل</option>{selectedFactory?.failure_reasons.map((f) => <option key={f.id} value={String(f.id)}>{f.title}</option>)}</select>
+              <div className="flex items-center gap-1"><span className="shrink-0 whitespace-nowrap text-xs leading-9 text-slate-500">از</span><JalaliDateInput value={report.filters.date_from} onChange={(iso) => report.setFilter('date_from', iso)} /></div>
+              <div className="flex items-center gap-1"><span className="shrink-0 whitespace-nowrap text-xs leading-9 text-slate-500">تا</span><JalaliDateInput value={report.filters.date_to} onChange={(iso) => report.setFilter('date_to', iso)} /></div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {PRESETS.map((p) => {
+                const isAll = p.key === 'all'
+                const active = isAll ? activePreset === 'all' : false
+                return <button key={p.key} onClick={() => report.applyPreset(p.key)} className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${active ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{p.label}</button>
+              })}
+              <span className="mr-2 hidden text-xs text-slate-400 dark:text-slate-500 sm:inline">· برای اعمال بازه سریع</span>
+            </div>
+
+            {report.chips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <Sparkles className="h-3.5 w-3.5 text-brand-500" />
+                {report.chips.map((c, i) => <span key={i} className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white dark:bg-white dark:text-slate-900">{c.label}: {c.value} <button onClick={c.onRemove} className="rounded-full bg-white/20 p-0.5 hover:bg-white/30 dark:bg-slate-900/10"><X className="h-3 w-3" /></button></span>)}
+                <span className="text-xs text-slate-500 dark:text-slate-400">{report.totalCount} رکورد · مرتب {report.filters.sortKey} ({report.filters.sortDir}) · PDF همین‌ها</span>
+              </div>
+            )}
+            {!isFiltered && !report.filters.search && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500"><BarChart3 className="h-3.5 w-3.5" /> نمایش همه داده‌ها — برای خروجی محدود، فیلتر یا بازه انتخاب کنید.</div>
+            )}
+          </div>
         </div>
-        <div className="min-w-[140px]">
-          <label className="label">شیفت</label>
-          <select className="input" value={filters.shift ?? ''} onChange={(e) => setFilter('shift', e.target.value)}>
-            <option value="">همه شیفت‌ها</option>
-            {selectedFactory?.shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+
+        <div className="px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-slate-500 dark:text-slate-400">{report.loading ? 'در حال بارگذاری...' : `${formatNumber(report.totalCount)} رکورد · ${formatNumber(stats.withDown)} با توقف · ${formatNumber(stats.withoutDown)} بدون توقف`}</span>
+            <span className="hidden text-slate-400 dark:text-slate-500 sm:inline">فیلتر و سورت ۱۰۰٪ فرانت · PDF = جدول همین صفحه</span>
+          </div>
         </div>
-        <div>
-          <label className="label">از تاریخ</label>
-          <JalaliDateInput value={filters.date_from ?? ''} onChange={(iso) => setFilter('date_from', iso)} />
-        </div>
-        <div>
-          <label className="label">تا تاریخ</label>
-          <JalaliDateInput value={filters.date_to ?? ''} onChange={(iso) => setFilter('date_to', iso)} />
-        </div>
-        <button className="btn-ghost" onClick={() => { setFilters({}); setPage(1) }}><X className="h-4 w-4" /> پاک کردن</button>
       </div>
 
-      {loading ? (
-        <TableSkeleton columns={7} />
-      ) : sorted.length === 0 ? (
-        <EmptyState icon={<ClipboardList className="h-10 w-10" />} title="توقفی یافت نشد"
-          description="با فیلترهای فعلی رکوردی وجود ندارد یا هنوز توقفی ثبت نشده است."
-          action={<button className="btn-primary mt-2" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت اولین توقف</button>} />
+      {report.loading ? <TableSkeleton columns={7} /> : report.sorted.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-10 text-center dark:border-slate-700 dark:bg-slate-900/40">
+          <ClipboardList className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
+          <div className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">توقفی یافت نشد</div>
+          <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">با فیلتر/جستجو/بازه فعلی رکوردی وجود ندارد. فیلترها را پاک کنید یا بازه را تغییر دهید. PDF در این حالت Empty حرفه‌ای چاپ می‌کند.</p>
+          <div className="mt-4 flex justify-center gap-2"><button className="btn-ghost" onClick={report.clearFilters}><X className="h-4 w-4" /> پاک کردن فیلترها</button><button className="btn-primary" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت اولین توقف</button></div>
+        </div>
       ) : (
-        <div className="card overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-ink-100 bg-ink-50/60 text-right text-xs text-ink-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
-                  <th className="px-4 py-3 font-semibold">تاریخ</th>
-                  <th className="px-4 py-3 font-semibold">خط</th>
-                  <th className="px-4 py-3 font-semibold">شیفت</th>
-                  <th className="px-4 py-3 font-semibold">دستگاه</th>
-                  <th className="px-4 py-3 font-semibold">کارکرد مفید</th>
-                  <th className="px-4 py-3 font-semibold">توقف</th>
-                  <th className="px-4 py-3 font-semibold text-center">عملیات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-100 dark:divide-slate-700">
-                {sorted.map((l) => (
-                  <tr key={l.id} className="transition hover:bg-ink-50/50 dark:hover:bg-slate-800/50">
-                    <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">
-                      <div>{formatDate(l.date)}</div>
-                      <div className="text-[10px] text-ink-400">{l.day_of_week || formatDate(l.date)}</div>
-                    </td>
-                    <td className="px-4 py-3 dark:text-slate-300">{l.line.name}</td>
-                    <td className="px-4 py-3 dark:text-slate-300">{l.shift.name}</td>
-                    <td className="px-4 py-3 text-ink-600 dark:text-slate-400">
-                      {l.device ? <span>{l.device.code ? `${l.device.code} - ` : ''}{l.device.name}</span> : <span className="text-ink-300 dark:text-slate-600">—</span>}
-                      {l.failure_cause && <span className="mr-2 badge bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300">{l.failure_cause.title}</span>}
-                    </td>
-                    <td className="px-4 py-3"><span className="font-semibold text-emerald-600">{formatNumber(l.runtime_hours)}</span></td>
-                    <td className="px-4 py-3 text-rose-600">{formatNumber(l.downtime_hours)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-brand-600 dark:hover:bg-slate-800" onClick={() => openEdit(l)} title="ویرایش"><Pencil className="h-4 w-4" /></button>
-                        <button className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50" onClick={() => setConfirmId(l.id)} title="حذف"><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </td>
+              <thead><tr className="border-b border-slate-200 bg-slate-50/80 text-right text-xs font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400"><th className="whitespace-nowrap px-4 py-3">تاریخ</th><th className="whitespace-nowrap px-4 py-3">خط</th><th className="whitespace-nowrap px-4 py-3">شیفت</th><th className="px-4 py-3">دستگاه / علت</th><th className="whitespace-nowrap px-4 py-3">کارکرد</th><th className="whitespace-nowrap px-4 py-3">توقف</th><th className="whitespace-nowrap px-4 py-3 text-center">عملیات</th></tr></thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {report.paginated.map((l) => (
+                  <tr key={l.id} className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800 dark:text-slate-200"><div>{formatDate(l.date)}</div><div className="text-[11px] font-normal text-slate-400 dark:text-slate-500">{l.day_of_week || ''}</div></td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">{l.line.name}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600 dark:text-slate-400">{l.shift.name}</td>
+                    <td className="px-4 py-3"><div className="font-medium text-slate-700 dark:text-slate-300">{l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—'}</div>{l.failure_cause ? <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50">{l.failure_cause.title}</span> : <span className="text-xs text-slate-400">—</span>}</td>
+                    <td className="whitespace-nowrap px-4 py-3"><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatNumber(l.runtime_hours)}</span></td>
+                    <td className="whitespace-nowrap px-4 py-3"><span className={l.downtime_hours > 0 ? 'font-extrabold tabular-nums text-rose-600 dark:text-rose-400' : 'tabular-nums text-slate-300 dark:text-slate-600'}>{formatNumber(l.downtime_hours)}</span></td>
+                    <td className="whitespace-nowrap px-4 py-3"><div className="flex items-center justify-center gap-1"><button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white" onClick={() => openEdit(l)} title="ویرایش"><Pencil className="h-4 w-4" /></button><button className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40" onClick={() => setConfirmId(l.id)} title="حذف"><Trash2 className="h-4 w-4" /></button></div></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between border-t border-ink-100 px-4 py-3 dark:border-slate-700">
-            <span className="text-xs text-ink-400">نمایش {Math.min((page - 1) * pageSize + 1, totalCount)} تا {Math.min(page * pageSize, totalCount)} از {totalCount} رکورد</span>
-            <Pagination currentPage={page} totalPages={totalPages} onPageChange={(p) => { setPage(p); load() }} />
+          <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">نمایش {Math.min((report.page - 1) * report.pageSize + 1, report.totalCount)} تا {Math.min(report.page * report.pageSize, report.totalCount)} از {formatNumber(report.totalCount)} رکورد — مرتب: {report.filters.sortKey} ({report.filters.sortDir})</span>
+            <Pagination currentPage={report.page} totalPages={report.totalPages} onPageChange={report.setPage} />
           </div>
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'ویرایش توقف خط تولید' : 'ثبت توقف خط تولید'} subtitle={selectedFactory?.name}
-        size="lg"
-        footer={<><button className="btn-ghost" onClick={() => setModalOpen(false)}>انصراف</button><button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'در حال ذخیره...' : editing ? 'ذخیره تغییرات' : 'ثبت توقف'}</button></>}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'ویرایش توقف خط تولید' : 'ثبت توقف خط تولید'} subtitle={selectedFactory?.name} size="lg" footer={<><button className="btn-ghost" onClick={() => setModalOpen(false)}>انصراف</button><button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'در حال ذخیره...' : editing ? 'ذخیره تغییرات' : 'ثبت توقف'}</button></>}>
         <LogForm form={form} setForm={setForm} editing={editing} />
       </Modal>
-
-      <Modal open={confirmId != null} onClose={() => setConfirmId(null)} title="حذف توقف"
-        footer={<><button className="btn-ghost" onClick={() => setConfirmId(null)}>انصراف</button><button className="btn-danger" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> حذف قطعی</button></>}>
+      <Modal open={confirmId != null} onClose={() => setConfirmId(null)} title="حذف توقف" footer={<><button className="btn-ghost" onClick={() => setConfirmId(null)}>انصراف</button><button className="btn-danger" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> حذف قطعی</button></>}>
         <p className="text-sm text-ink-600 dark:text-slate-300">آیا از حذف این توقف خط تولید اطمینان دارید؟ این عمل قابل بازگشت نیست.</p>
       </Modal>
     </div>

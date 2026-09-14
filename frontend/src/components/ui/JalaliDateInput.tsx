@@ -122,23 +122,23 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
   const isSelected = (d: number) => parts && view.jy === parts.jy && view.jm === parts.jm && d === parts.jd
 
   return (
-    <div ref={wrapRef} className={`relative inline-block text-sm ${className}`}>
+    <div ref={wrapRef} className={`relative inline-flex flex-col text-sm ${className}`}>
       <div className="flex items-center gap-1.5">
         <input
           type="text"
           inputMode="numeric"
-          className="input !px-2.5"
-          style={{ width: '158px', direction: 'ltr', textAlign: 'left' }}
+          className="input !h-9 !px-2.5 !py-0 leading-9"
+          style={{ width: '128px', direction: 'ltr', textAlign: 'center' }}
           placeholder="۱۴۰۵/۰۵/۱۵"
           value={text}
           onChange={(e) => onTextChange(e.target.value)}
           onFocus={openCalendar}
         />
-        <button type="button" className="btn-ghost !h-9 !px-2.5" onClick={openCalendar} title="تقویم شمسی">
+        <button type="button" className="btn-ghost !h-9 !w-9 !min-w-[36px] !px-0 shrink-0" onClick={openCalendar} title="تقویم شمسی">
           <Calendar className="h-4 w-4" />
         </button>
         {allowEmpty && value && (
-          <button type="button" className="btn-ghost !h-9 !px-2" title="پاک کردن" onClick={() => onChange('')}>
+          <button type="button" className="btn-ghost !h-9 !w-8 !min-w-[32px] !px-0 shrink-0" title="پاک کردن" onClick={() => onChange('')}>
             <X className="h-4 w-4" />
           </button>
         )}

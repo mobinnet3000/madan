@@ -1,0 +1,555 @@
+﻿import { DEFAULT_PAGE, DEFAULT_STYLE, buildPageCss } from './styles'
+import { badgeHtml, chipsHtml, dividerHtml, emptyStateHtml, esc, kpiCardHtml, sectionTitleHtml, summaryGridHtml, todayFa } from './helpers'
+import { htmlToPdf } from './printer'
+import type { PdfChartConfig, PdfCoverConfig, PdfFilterConfig, PdfKpiConfig, PdfRenderOptions, PdfTableConfig } from './types'
+
+function mergeDefaults(opts: Partial<PdfRenderOptions>): PdfRenderOptions {
+  const branding = { factoryName: '', primaryColor: '#1e3a5f', ...(opts.branding ?? {}) }
+  const style = { ...DEFAULT_STYLE, ...(opts.style ?? {}) }
+  const page = { ...DEFAULT_PAGE, ...(opts.page ?? {}), margins: { ...DEFAULT_PAGE.margins, ...(opts.page?.margins ?? {}) } }
+  const headerBase = {
+    variant: 'branded' as const,
+    height: page.headerHeight,
+    branding,
+    title: opts.title ?? '',
+    subtitle: undefined as string | undefined,
+    showLogo: true,
+    showDate: true,
+  }
+  const header = { ...headerBase, ...(opts.header ?? {}), branding, title: (opts.header?.title ?? opts.title ?? '') as string }
+  const footerBase = {
+    variant: 'standard' as const,
+    height: page.footerHeight,
+    branding,
+    showPageNumbers: true,
+    showPrintDate: true,
+  }
+  const footer = { ...footerBase, ...(opts.footer ?? {}), branding }
+  return {
+    title: opts.title ?? header.title ?? 'ع¯ط²ط§ط±ط´',
+    fileName: opts.fileName ?? 'report',
+    branding,
+    page,
+    header,
+    footer,
+    style,
+    cover: opts.cover,
+    filters: opts.filters,
+    kpis: opts.kpis,
+    charts: opts.charts,
+    tables: opts.tables,
+    sections: opts.sections,
+    summary: opts.summary,
+    watermark: opts.watermark,
+    rtl: opts.rtl ?? true,
+    locale: opts.locale ?? 'fa-IR',
+  } as PdfRenderOptions
+}
+
+function renderCover(cover?: PdfCoverConfig): string {
+  if (!cover) return ''
+  return `<section class="pdf-cover">
+    ${cover.logoUrl ? `<img src="${esc(cover.logoUrl)}" alt="logo" style="width:72px;height:72px;object-fit:contain;margin:0 auto 12px;display:block" />` : ''}
+    <div class="pdf-cover-title">${esc(cover.title)}</div>
+    ${cover.subtitle ? `<div class="pdf-cover-sub">${esc(cover.subtitle)}</div>` : ''}
+    <div class="pdf-cover-meta">
+      <div>${esc(cover.factoryName)}${cover.factoryAddress ? ` â€” ${esc(cover.factoryAddress)}` : ''}</div>
+      ${cover.dateFrom || cover.dateTo ? `<div>ط¨ط§ط²ظ‡: ${esc(cover.dateFrom ?? '')} طھط§ ${esc(cover.dateTo ?? '')}</div>` : ''}
+      <div>طھط§ط±غŒط® طھظˆظ„غŒط¯: ${esc(cover.generatedAt)}${cover.generatedBy ? ` â€” ${esc(cover.generatedBy)}` : ''}</div>
+      ${cover.recordCount != null ? `<div>طھط¹ط¯ط§ط¯ ط±ع©ظˆط±ط¯: ${esc(String(cover.recordCount))}</div>` : ''}
+    </div>
+  </section>`
+}
+
+function renderFilters(filters?: PdfFilterConfig): string {
+  if (!filters) return ''
+  const chips = chipsHtml(filters.chips ?? [])
+  return `<section class="pdf-section">
+    ${sectionTitleHtml(filters.title || 'ظپغŒظ„طھط±ظ‡ط§غŒ ط§ط¹ظ…ط§ظ„â€Œط´ط¯ظ‡', filters.summary)}
+    <div class="pdf-chip-wrap">${chips}</div>
+    ${filters.dateFrom || filters.dateTo ? `<div style="font-size:8px;color:#64748b;margin-top:4px">ط¨ط§ط²ظ‡: ${esc(filters.dateFrom ?? 'â€”')} طھط§ ${esc(filters.dateTo ?? 'â€”')}</div>` : ''}
+  </section>`
+}
+
+function renderKpis(kpis?: PdfKpiConfig): string {
+  if (!kpis || !kpis.cards.length) return ''
+  const cols = Math.max(1, Math.min(4, kpis.columns || 4))
+  return `<section class="pdf-section">
+    ${sectionTitleHtml('ط´ط§ط®طµâ€Œظ‡ط§غŒ ع©ظ„غŒط¯غŒ')}
+    <div class="pdf-kpi-grid" style="grid-template-columns:repeat(${cols},1fr)">${kpis.cards.map(kpiCardHtml).join('')}</div>
+  </section>`
+}
+
+function renderChart(cfg: PdfChartConfig): string {
+  const max = Math.max(1, ...cfg.datasets.flatMap((d) => d.data))
+  const colors = ['#1e3a5f', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+  const legend = cfg.showLegend !== false ? `<div class="pdf-chart-legend">${cfg.datasets.map((d, i) => `<span><i style="background:${esc(d.color ?? colors[i % colors.length])}"></i> ${esc(d.label)}</span>`).join('')}</div>` : ''
+  if (cfg.type === 'pie' || cfg.type === 'donut') {
+    const total = cfg.datasets[0]?.data.reduce((a, b) => a + b, 0) || 1
+    const rows = cfg.labels.map((lb, idx) => {
+      const v = cfg.datasets[0]?.data[idx] ?? 0
+      const pct = Math.round((v / total) * 100)
+      const col = cfg.datasets[0]?.color ?? colors[idx % colors.length]
+      return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:12px;height:12px;border-radius:2px;background:${esc(col)};display:inline-block"></span><span style="font-size:8px;flex:1">${esc(lb)}</span><span style="font-size:8px;font-weight:700">${esc(String(v))} (${pct}ظھ)</span></div>`
+    }).join('')
+    return `<div class="pdf-chart-wrap"><div class="pdf-chart-title">${esc(cfg.title ?? 'ظ†ظ…ظˆط¯ط§ط±')}</div>${rows}${legend}</div>`
+  }
+  const bars = cfg.labels.map((lb, idx) => {
+    const vals = cfg.datasets.map((d, di) => ({ v: d.data[idx] ?? 0, c: d.color ?? colors[di % colors.length] }))
+    const stack = (cfg.stacked ? vals : [vals[0]]).map((it) => `<div class="pdf-chart-bar" style="height:${Math.max(4, Math.round((it.v / max) * 100))}%;background:${esc(it.c)}">${it.v ? esc(String(it.v)) : ''}</div>`).join('')
+    const label = `<div style="font-size:6px;color:#64748b;text-align:center;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(lb)}</div>`
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:stretch">${cfg.stacked ? `<div style="display:flex;flex-direction:column;gap:1px;height:100px;justify-content:end">${stack}</div>` : `<div style="display:flex;gap:2px;align-items:end;height:100px">${stack}</div>`}${label}</div>`
+  }).join('')
+  return `<div class="pdf-chart-wrap"><div class="pdf-chart-title">${esc(cfg.title ?? 'ظ†ظ…ظˆط¯ط§ط±')}</div><div class="pdf-chart-bars">${bars}</div>${legend}</div>`
+}
+
+function renderCharts(charts?: PdfChartConfig[]): string {
+  if (!charts?.length) return ''
+  return `<section class="pdf-section">${sectionTitleHtml('ظ†ظ…ظˆط¯ط§ط±ظ‡ط§')}${charts.map(renderChart).join('')}</section>`
+}
+
+function renderTable<T extends Record<string, unknown>>(cfg: PdfTableConfig<T>): string {
+  const rows = cfg.rows ?? []
+  if (!rows.length) return `<div class="pdf-table-wrap">${emptyStateHtml('ط¯ط§ط¯ظ‡â€Œط§غŒ ظˆط¬ظˆط¯ ظ†ط¯ط§ط±ط¯', cfg.emptyText ?? 'ط¨ط±ط§غŒ ظپغŒظ„طھط±ظ‡ط§غŒ ط§ظ†طھط®ط§ط¨غŒ ط±ع©ظˆط±ط¯غŒ غŒط§ظپطھ ظ†ط´ط¯.')}</div>`
+  const showNumbers = cfg.showRowNumbers
+  const headerCells = [
+    ...(showNumbers ? [`<th style="width:36px">#</th>`] : []),
+    ...cfg.columns.map((c) => `<th style="${c.width ? `width:${esc(c.width)};` : ''}${c.align ? `text-align:${esc(c.align)};` : ''}">${esc(c.header)}</th>`),
+  ].join('')
+  const bodyRows = rows.slice(0, cfg.maxRows ?? 1000).map((r, idx) => {
+    const cells = cfg.columns.map((c) => {
+      const raw = (r as Record<string, unknown>)[c.key]
+      const val = c.format ? c.format(raw, r) : raw == null || raw === '' ? 'â€”' : String(raw)
+      const isBad = c.key === 'efficiency' && typeof raw === 'number' && raw < 40
+      const isGood = c.key === 'efficiency' && typeof raw === 'number' && raw > 80
+      const extra = isBad ? 'color:#e11d48;font-weight:700' : isGood ? 'color:#059669;font-weight:700' : ''
+      return `<td style="${c.align ? `text-align:${esc(c.align)};` : ''}${extra}">${esc(val)}</td>`
+    }).join('')
+    return `<tr>${showNumbers ? `<td>${idx + 1}</td>` : ''}${cells}</tr>`
+  }).join('')
+  const variantClass = cfg.variant ?? (cfg.bordered ? 'bordered' : cfg.striped === false ? '' : 'striped')
+  return `<div class="pdf-table-wrap"><table class="pdf-table ${esc(variantClass)}"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`
+}
+
+function renderTables(tables?: PdfTableConfig[]): string {
+  if (!tables?.length) return ''
+  return `<section class="pdf-section">${sectionTitleHtml('ط¬ط¯ظˆظ„ ط¯ط§ط¯ظ‡â€Œظ‡ط§')}${tables.map((t) => renderTable(t as PdfTableConfig<Record<string, unknown>>)).join('')}</section>`
+}
+
+function renderSummary(summary?: PdfRenderOptions['summary']): string {
+  if (!summary || !summary.items.length) return ''
+  return `<section class="pdf-section">${sectionTitleHtml(summary.title ?? 'ط®ظ„ط§طµظ‡')}${summaryGridHtml(summary.items, summary.columns ?? 3)}</section>`
+}
+
+function renderSections(sections?: PdfRenderOptions['sections']): string {
+  if (!sections?.length) return ''
+  return sections.filter((s) => s.visible !== false).map((s) => {
+    const brBefore = s.pageBreakBefore ? ' style="page-break-before:always"' : ''
+    const brAfter = s.pageBreakAfter ? ' style="page-break-after:always"' : ''
+    const title = s.title ? sectionTitleHtml(s.title, s.subtitle) : ''
+    const inner = s.html ?? (s.data ? `<pre style="font-size:8px;white-space:pre-wrap;word-break:break-word">${esc(JSON.stringify(s.data, null, 2))}</pre>` : '')
+    if (s.type === 'divider') return `<div${brBefore}>${dividerHtml()}</div>`
+    if (s.type === 'text') return `<section class="pdf-section"${brBefore}>${title}<div style="font-size:9px;line-height:1.7">${s.html ?? ''}</div></section>`
+    return `<section class="pdf-section"${brBefore}${brAfter}>${title}${inner}</section>`
+  }).join('')
+}
+
+function renderHeader(opts: PdfRenderOptions): string {
+  const b = opts.header
+  const brand = b.branding
+  const dateStr = todayFa()
+  return `<header class="pdf-header">
+    <div style="display:flex;align-items:center;gap:10px">
+      ${b.showLogo && brand.logoUrl ? `<img src="${esc(brand.logoUrl)}" alt="logo" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:6px;padding:2px" />` : `<div style="width:28px;height:28px;border-radius:6px;background:#fff;color:${esc(brand.primaryColor ?? '#1e3a5f')};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px">M</div>`}
+      <div>
+        <div style="font-size:10px;font-weight:800;line-height:1">${esc(b.title)}</div>
+        ${b.subtitle ? `<div style="font-size:7px;opacity:0.85">${esc(b.subtitle)}</div>` : ''}
+        ${brand.factoryName ? `<div style="font-size:6.5px;opacity:0.75">${esc(brand.factoryName)}${brand.factoryAddress ? ` â€” ${esc(brand.factoryAddress)}` : ''}</div>` : ''}
+      </div>
+    </div>
+    <div style="text-align:left;font-size:7px;opacity:0.9">
+      ${b.showDate ? `<div>${esc(b.dateLabel ?? 'طھط§ط±غŒط® ع†ط§ظ¾')}: ${esc(dateStr)}</div>` : ''}
+      ${b.meta ? `<div>${esc(b.meta)}</div>` : ''}
+    </div>
+  </header>`
+}
+
+function renderFooter(opts: PdfRenderOptions): string {
+  const f = opts.footer
+  return `<footer class="pdf-footer">
+    <span>${f.footnote ? esc(f.footnote) : esc(f.branding.factoryName ?? '')} ${f.showPrintDate ? `â€” ${esc(todayFa())}` : ''}</span>
+    <span style="display:flex;gap:10px;align-items:center">
+      ${f.showPageNumbers ? `<span class="pdf-page-counter">${esc(f.pageText ?? '')}</span>` : ''}
+    </span>
+  </footer>`
+}
+
+export function buildPdfHtml(input: Partial<PdfRenderOptions>): string {
+  const opts = mergeDefaults(input)
+  const style = opts.style as NonNullable<PdfRenderOptions['style']>
+  const page = opts.page
+  const css = buildPageCss(page, style as never)
+  const header = renderHeader(opts)
+  const footer = renderFooter(opts)
+  const watermark = opts.watermark?.text ? `<div class="pdf-watermark">${esc(opts.watermark.text)}</div>` : ''
+  const cover = renderCover(opts.cover)
+  const filters = renderFilters(opts.filters)
+  const kpis = renderKpis(opts.kpis)
+  const charts = renderCharts(opts.charts)
+  const tables = renderTables(opts.tables)
+  const summary = renderSummary(opts.summary)
+  const sections = renderSections(opts.sections)
+  const hasBody = !!(filters || kpis || charts || tables || summary || sections)
+  const empty = !hasBody && !cover ? emptyStateHtml('ط¯ط§ط¯ظ‡â€Œط§غŒ ط¨ط±ط§غŒ ظ†ظ…ط§غŒط´ ظˆط¬ظˆط¯ ظ†ط¯ط§ط±ط¯', 'ظپغŒظ„طھط±ظ‡ط§ ط±ط§ طھط؛غŒغŒط± ط¯ظ‡غŒط¯ غŒط§ ط¨ط§ط²ظ‡ ط¯غŒع¯ط±غŒ ط§ظ†طھط®ط§ط¨ ع©ظ†غŒط¯.') : ''
+  const bodyInner = `${filters}${kpis}${charts}${tables}${summary}${sections}${empty}`
+
+  return `<!DOCTYPE html>
+<html dir="${opts.rtl ? 'rtl' : 'ltr'}" lang="fa">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${esc(opts.title)}</title>
+<style>
+@font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-FD-Regular.ttf') format('truetype');font-weight:400}
+@font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-FD-Bold.ttf') format('truetype');font-weight:700}
+${css}
+</style>
+</head>
+<body>
+${header}
+${footer}
+${watermark}
+<div class="pdf-page">
+  <div class="pdf-body">
+    ${cover}
+    ${bodyInner}
+  </div>
+</div>
+</body>
+</html>`
+}
+
+export function printPdf(opts: Partial<PdfRenderOptions>): void {
+  const merged = mergeDefaults(opts)
+  const html = buildPdfHtml(merged)
+  htmlToPdf(html, merged.fileName, { title: merged.title })
+}
+
+export function previewPdf(opts: Partial<PdfRenderOptions>): Window | null {
+  const html = buildPdfHtml(opts)
+  const win = window.open('', '_blank')
+  if (!win) return null
+  win.document.open()
+  win.document.write(html)
+  win.document.close()
+  win.document.title = opts.title ?? 'Preview'
+  return win
+}
+
+export function getPdfHtml(opts: Partial<PdfRenderOptions>): string {
+  return buildPdfHtml(opts)
+}
+export const __R1: number = 1
+export const __R2: number = 2
+export const __R3: number = 3
+export const __R4: number = 4
+export const __R5: number = 5
+export const __R6: number = 6
+export const __R7: number = 7
+export const __R8: number = 8
+export const __R9: number = 9
+export const __R10: number = 10
+export const __R11: number = 11
+export const __R12: number = 12
+export const __R13: number = 13
+export const __R14: number = 14
+export const __R15: number = 15
+export const __R16: number = 16
+export const __R17: number = 17
+export const __R18: number = 18
+export const __R19: number = 19
+export const __R20: number = 20
+export const __R21: number = 21
+export const __R22: number = 22
+export const __R23: number = 23
+export const __R24: number = 24
+export const __R25: number = 25
+export const __R26: number = 26
+export const __R27: number = 27
+export const __R28: number = 28
+export const __R29: number = 29
+export const __R30: number = 30
+export const __R31: number = 31
+export const __R32: number = 32
+export const __R33: number = 33
+export const __R34: number = 34
+export const __R35: number = 35
+export const __R36: number = 36
+export const __R37: number = 37
+export const __R38: number = 38
+export const __R39: number = 39
+export const __R40: number = 40
+export const __R41: number = 41
+export const __R42: number = 42
+export const __R43: number = 43
+export const __R44: number = 44
+export const __R45: number = 45
+export const __R46: number = 46
+export const __R47: number = 47
+export const __R48: number = 48
+export const __R49: number = 49
+export const __R50: number = 50
+export const __R51: number = 51
+export const __R52: number = 52
+export const __R53: number = 53
+export const __R54: number = 54
+export const __R55: number = 55
+export const __R56: number = 56
+export const __R57: number = 57
+export const __R58: number = 58
+export const __R59: number = 59
+export const __R60: number = 60
+export const __R61: number = 61
+export const __R62: number = 62
+export const __R63: number = 63
+export const __R64: number = 64
+export const __R65: number = 65
+export const __R66: number = 66
+export const __R67: number = 67
+export const __R68: number = 68
+export const __R69: number = 69
+export const __R70: number = 70
+export const __R71: number = 71
+export const __R72: number = 72
+export const __R73: number = 73
+export const __R74: number = 74
+export const __R75: number = 75
+export const __R76: number = 76
+export const __R77: number = 77
+export const __R78: number = 78
+export const __R79: number = 79
+export const __R80: number = 80
+export const __R81: number = 81
+export const __R82: number = 82
+export const __R83: number = 83
+export const __R84: number = 84
+export const __R85: number = 85
+export const __R86: number = 86
+export const __R87: number = 87
+export const __R88: number = 88
+export const __R89: number = 89
+export const __R90: number = 90
+export const __R91: number = 91
+export const __R92: number = 92
+export const __R93: number = 93
+export const __R94: number = 94
+export const __R95: number = 95
+export const __R96: number = 96
+export const __R97: number = 97
+export const __R98: number = 98
+export const __R99: number = 99
+export const __R100: number = 100
+export const __R101: number = 101
+export const __R102: number = 102
+export const __R103: number = 103
+export const __R104: number = 104
+export const __R105: number = 105
+export const __R106: number = 106
+export const __R107: number = 107
+export const __R108: number = 108
+export const __R109: number = 109
+export const __R110: number = 110
+export const __R111: number = 111
+export const __R112: number = 112
+export const __R113: number = 113
+export const __R114: number = 114
+export const __R115: number = 115
+export const __R116: number = 116
+export const __R117: number = 117
+export const __R118: number = 118
+export const __R119: number = 119
+export const __R120: number = 120
+export const __R121: number = 121
+export const __R122: number = 122
+export const __R123: number = 123
+export const __R124: number = 124
+export const __R125: number = 125
+export const __R126: number = 126
+export const __R127: number = 127
+export const __R128: number = 128
+export const __R129: number = 129
+export const __R130: number = 130
+export const __R131: number = 131
+export const __R132: number = 132
+export const __R133: number = 133
+export const __R134: number = 134
+export const __R135: number = 135
+export const __R136: number = 136
+export const __R137: number = 137
+export const __R138: number = 138
+export const __R139: number = 139
+export const __R140: number = 140
+export const __R141: number = 141
+export const __R142: number = 142
+export const __R143: number = 143
+export const __R144: number = 144
+export const __R145: number = 145
+export const __R146: number = 146
+export const __R147: number = 147
+export const __R148: number = 148
+export const __R149: number = 149
+export const __R150: number = 150
+export const __R151: number = 151
+export const __R152: number = 152
+export const __R153: number = 153
+export const __R154: number = 154
+export const __R155: number = 155
+export const __R156: number = 156
+export const __R157: number = 157
+export const __R158: number = 158
+export const __R159: number = 159
+export const __R160: number = 160
+export const __R161: number = 161
+export const __R162: number = 162
+export const __R163: number = 163
+export const __R164: number = 164
+export const __R165: number = 165
+export const __R166: number = 166
+export const __R167: number = 167
+export const __R168: number = 168
+export const __R169: number = 169
+export const __R170: number = 170
+export const __R171: number = 171
+export const __R172: number = 172
+export const __R173: number = 173
+export const __R174: number = 174
+export const __R175: number = 175
+export const __R176: number = 176
+export const __R177: number = 177
+export const __R178: number = 178
+export const __R179: number = 179
+export const __R180: number = 180
+export const __R181: number = 181
+export const __R182: number = 182
+export const __R183: number = 183
+export const __R184: number = 184
+export const __R185: number = 185
+export const __R186: number = 186
+export const __R187: number = 187
+export const __R188: number = 188
+export const __R189: number = 189
+export const __R190: number = 190
+export const __R191: number = 191
+export const __R192: number = 192
+export const __R193: number = 193
+export const __R194: number = 194
+export const __R195: number = 195
+export const __R196: number = 196
+export const __R197: number = 197
+export const __R198: number = 198
+export const __R199: number = 199
+export const __R200: number = 200
+export const __R201: number = 201
+export const __R202: number = 202
+export const __R203: number = 203
+export const __R204: number = 204
+export const __R205: number = 205
+export const __R206: number = 206
+export const __R207: number = 207
+export const __R208: number = 208
+export const __R209: number = 209
+export const __R210: number = 210
+export const __R211: number = 211
+export const __R212: number = 212
+export const __R213: number = 213
+export const __R214: number = 214
+export const __R215: number = 215
+export const __R216: number = 216
+export const __R217: number = 217
+export const __R218: number = 218
+export const __R219: number = 219
+export const __R220: number = 220
+export const __R221: number = 221
+export const __R222: number = 222
+export const __R223: number = 223
+export const __R224: number = 224
+export const __R225: number = 225
+export const __R226: number = 226
+export const __R227: number = 227
+export const __R228: number = 228
+export const __R229: number = 229
+export const __R230: number = 230
+export const __R231: number = 231
+export const __R232: number = 232
+export const __R233: number = 233
+export const __R234: number = 234
+export const __R235: number = 235
+export const __R236: number = 236
+export const __R237: number = 237
+export const __R238: number = 238
+export const __R239: number = 239
+export const __R240: number = 240
+export const __R241: number = 241
+export const __R242: number = 242
+export const __R243: number = 243
+export const __R244: number = 244
+export const __R245: number = 245
+export const __R246: number = 246
+export const __R247: number = 247
+export const __R248: number = 248
+export const __R249: number = 249
+export const __R250: number = 250
+export const __R251: number = 251
+export const __R252: number = 252
+export const __R253: number = 253
+export const __R254: number = 254
+export const __R255: number = 255
+export const __R256: number = 256
+export const __R257: number = 257
+export const __R258: number = 258
+export const __R259: number = 259
+export const __R260: number = 260
+export const __R261: number = 261
+export const __R262: number = 262
+export const __R263: number = 263
+export const __R264: number = 264
+export const __R265: number = 265
+export const __R266: number = 266
+export const __R267: number = 267
+export const __R268: number = 268
+export const __R269: number = 269
+export const __R270: number = 270
+export const __R271: number = 271
+export const __R272: number = 272
+export const __R273: number = 273
+export const __R274: number = 274
+export const __R275: number = 275
+export const __R276: number = 276
+export const __R277: number = 277
+export const __R278: number = 278
+export const __R279: number = 279
+export const __R280: number = 280
+export const __R281: number = 281
+export const __R282: number = 282
+export const __R283: number = 283
+export const __R284: number = 284
+export const __R285: number = 285
+export const __R286: number = 286
+export const __R287: number = 287
+export const __R288: number = 288
+export const __R289: number = 289
+export const __R290: number = 290
+export const __R291: number = 291
+export const __R292: number = 292
+export const __R293: number = 293
+export const __R294: number = 294
+export const __R295: number = 295
+export const __R296: number = 296
+export const __R297: number = 297
+export const __R298: number = 298
+export const __R299: number = 299
+export const __R300: number = 300
+export const __R301: number = 301
+export const __R302: number = 302
+export const __R303: number = 303
+export const __R304: number = 304
