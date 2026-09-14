@@ -186,11 +186,14 @@ function renderHeader(opts: PdfRenderOptions): string {
   </div>`
 }
 
-function renderFooter(opts: PdfRenderOptions, pageNo: number, totalPages: number): string {
+function renderFooter(opts: PdfRenderOptions): string {
   const f = opts.footer
+    const ft = f.footnote ? esc(f.footnote) : esc(f.branding.factoryName ?? '')
+  const dt = f.showPrintDate ? ` · ${esc(todayFa())}` : ''
+  const pn = f.showPageNumbers ? `<span class="pdf-page-pill">صفحه <span class="pg"></span> از <span class="tot"></span>${f.pageText ? ' · ' + esc(f.pageText) : ''}</span>` : ''
   return `<div class="pdf-footer">
-    <span class="pdf-ft-right"><span class="pdf-ft-dot"></span><span style="overflow:hidden;text-overflow:ellipsis">${f.footnote ? esc(f.footnote) : esc(f.branding.factoryName ?? '')}</span>${f.showPrintDate ? `<span class="pdf-ft-date"> · ${esc(todayFa())}</span>` : ''}</span>
-    ${f.showPageNumbers ? `<span class="pdf-page-pill">صفحه ${pageNo} از ${totalPages}${f.pageText ? ' · ' + esc(f.pageText) : ''}</span>` : ''}
+    <span class="pdf-ft-right"><span class="pdf-ft-dot"></span><span style="overflow:hidden;text-overflow:ellipsis">${ft}${dt}</span></span>
+    ${pn}
   </div>`
 }
 
@@ -214,24 +217,10 @@ export function buildPdfHtml(input: Partial<PdfRenderOptions>): string {
   const hasBody = !!(filters || kpis || charts || tables || summary || sections)
   const empty = !hasBody && !cover ? emptyStateHtml('داده‌ای برای نمایش وجود ندارد', 'فیلترها را تغییر دهید یا بازه دیگری انتخاب کنید.') : ''
 
-  const firstTable = (opts.tables?.[0] ?? null) as unknown as import('./types').PdfTableConfig | null
-  const dataRows = (firstTable?.rows as unknown[] | undefined)?.length ?? 0
-  const extraTables = (opts.tables ?? []).slice(1)
-  const extraHtml = extraTables.length ? renderTables(extraTables) : ''
-  const tableHtml = dataRows === 0 ? `${tables}${extraHtml}` : renderTable(firstTable as never) + extraHtml
-  const tableSection = dataRows === 0
-    ? `<section class="pdf-section table-section">${sectionTitleHtml('جدول داده‌ها')}${tableHtml}</section>`
-    : `<section class="pdf-section table-section">${sectionTitleHtml('جدول داده‌ها')}${tableHtml}</section>`
+  const bodyHtml = `${cover}${filters}${kpis}${charts}${tables}${summary}${sections}${empty}`
 
-  const sheetHtml = (() => {
-    const body = `${cover}${filters}${kpis}${charts}${tableSection}${summary}${sections}${empty}`
-    return `
-  <div class="pdf-sheet">
-    <div class="pdf-hdr">${header}</div>
-    <div class="pdf-bd pdf-bd--table"><div class="pdf-body">${body}</div></div>
-    <div class="pdf-ftr">${renderFooter(opts, 1, 1)}</div>
-  </div>`
-  })()
+  
+ 
 
   return `<!DOCTYPE html>
 <html dir="${opts.rtl ? 'rtl' : 'ltr'}" lang="fa">
@@ -243,11 +232,16 @@ export function buildPdfHtml(input: Partial<PdfRenderOptions>): string {
 @font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-FD-Regular.ttf') format('truetype');font-weight:400}
 @font-face{font-family:'Vazirmatn';src:url('/fonts/Vazirmatn-FD-Bold.ttf') format('truetype');font-weight:700}
 ${css}
+.pdf-page-pill .pg::after{content:counter(page)}
+.pdf-page-pill .tot::after{content:counter(pages)}
 </style>
 </head>
 <body>
-${sheetHtml}
-</body>
+<table class="pdf-wrapper">
+  <thead><tr><td>${header}</td></tr></thead>
+  <tbody><tr><td><div class="pdf-body">${bodyHtml}</div></td></tr></tbody>
+  <tfoot><tr><td>${renderFooter(opts)}</td></tr></tfoot>
+</table></body>
 </html>`
 }
 
@@ -299,6 +293,17 @@ export function paginateTables(tables: PdfTableConfig[], rowsPerPage = 28): PdfT
 export function buildWatermark(text: string, opacity = 0.06): string {
   return `<div class="pdf-watermark" style="opacity:${opacity}">${esc(text)}</div>`
 }
+
+
+
+
+
+
+
+
+
+
+
 export function buildCoverHtml(cover?: PdfCoverConfig): string { return renderCover(cover) }
 export function buildFiltersHtml(filters?: PdfFilterConfig): string { return renderFilters(filters) }
 export function buildKpisHtml(kpis?: PdfKpiConfig): string { return renderKpis(kpis) }
@@ -307,7 +312,7 @@ export function buildTablesHtml(tables?: PdfTableConfig[]): string { return rend
 export function buildSummaryHtml(summary?: PdfRenderOptions['summary']): string { return renderSummary(summary) }
 export function buildSectionsHtml(sections?: PdfRenderOptions['sections']): string { return renderSections(sections) }
 export function buildHeaderHtml(opts: PdfRenderOptions): string { return renderHeader(opts) }
-export function buildFooterHtml(opts: PdfRenderOptions, pageNo = 1, totalPages = 1): string { return renderFooter(opts, pageNo, totalPages) }
+export function buildFooterHtml(opts: PdfRenderOptions): string { return renderFooter(opts) }
 export function isEmptyReport(opts: Partial<PdfRenderOptions>): boolean {
   return !opts.cover && !opts.filters && !opts.kpis && !opts.charts?.length && !opts.tables?.length && !opts.summary && !opts.sections?.length
 }
