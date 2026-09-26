@@ -270,7 +270,7 @@ class FactoryTabAdminFlowTests(FactoryFixtureMixin, TestCase):
         tab = FactoryTab.objects.create(factory=self.fac1, key="t1", name="تب ۱")
         self.assertEqual(
             [i.model.__name__ for i in ma.get_inlines(None, tab)],
-            ["FactoryTabInput", "FactoryTabOutput"],
+            ["FactoryTabInput", "FactoryTabOutput", "FactoryTabReport"],
         )
 
 

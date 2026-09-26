@@ -1175,7 +1175,7 @@ class FactoryTabOutputInline(admin.StackedInline):
 
 @admin.register(FactoryTab)
 class FactoryTabAdmin(admin.ModelAdmin):
-    list_display = ("factory", "name", "key", "record_type", "inputs_count", "outputs_count", "is_active", "updated_at")
+    list_display = ("factory", "name", "key", "record_type", "reports_link", "inputs_count", "outputs_count", "is_active", "updated_at")
     list_filter = ("factory", "record_type", "is_active")
     search_fields = ("name", "key", "factory__name")
 
@@ -1185,7 +1185,7 @@ class FactoryTabAdmin(admin.ModelAdmin):
     def get_inlines(self, request, obj):
         if obj is None:
             return [FactoryTabInputInline]
-        return [FactoryTabInputInline, FactoryTabOutputInline]
+        return [FactoryTabInputInline, FactoryTabOutputInline, FactoryTabReportInline]
 
     def response_add(self, request, obj, post_url_continue=None):
         self.message_user(
@@ -1205,6 +1205,37 @@ class FactoryTabAdmin(admin.ModelAdmin):
         return obj.outputs.count()
 
     outputs_count.short_description = "خروجی‌ها / فرمول‌ها"
+
+    def reports_link(self, obj):
+        n = obj.reports.count()
+        url = reverse("admin:machines_factorytabreport_changelist") + f"?tab__id__exact={obj.pk}"
+        add = reverse("admin:machines_factorytabreport_add") + f"?tab={obj.pk}"
+        return format_html(
+            '<a href="{}">{} گزارش</a> · <a class="button" href="{}">+ گزارش</a>',
+            url, n, add,
+        )
+
+    reports_link.short_description = "گزارش‌ها"
+
+
+class FactoryTabReportInline(admin.TabularInline):
+    model = FactoryTabReport
+    extra = 0
+    fields = ("name", "is_default", "is_active", "order", "report_link")
+    readonly_fields = ("report_link",)
+    show_change_link = True
+
+    def report_link(self, obj):
+        if not obj.pk:
+            return "—"
+        url = reverse("admin:machines_factorytabreport_change", args=[obj.pk])
+        run_url = f"/api/factory-tab-reports/{obj.pk}/run/"
+        return format_html(
+            '<a href="{}">ویرایش گزارش و ویجت‌ها</a> · <a href="{}" target="_blank">اجرای زنده</a>',
+            url, run_url,
+        )
+
+    report_link.short_description = "گزارش"
 
 
 @admin.register(FactoryTabRecord)
@@ -1227,39 +1258,174 @@ class FactoryTabRecordAdmin(admin.ModelAdmin):
     outputs_summary.short_description = "خروجی‌ها"
 
 
+class FactoryTabWidgetForm(forms.ModelForm):
+    """انتخاب نوع ویجت کشویی + قالب آماده config + راهنمای فیلدهای معتبر همان تب."""
+
+    class Meta:
+        model = FactoryTabWidget
+        fields = ("report", "widget_type", "title", "order", "is_active", "config")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .tab_reports import WIDGET_TYPES
+
+        self.fields["widget_type"] = forms.ChoiceField(
+            label="نوع ویجت",
+            choices=[(k, f"{k} — {v['label']}") for k, v in WIDGET_TYPES.items()],
+        )
+        tab = self._resolve_tab()
+        if tab is not None:
+            from .tab_reports import _cat_refs, _field_refs
+
+            numeric = sorted(_field_refs(tab))
+            cats = sorted(_cat_refs(tab))
+            metrics = [m.get("key") for m in (self._resolve_metrics() or []) if isinstance(m, dict)]
+            help_text = (
+                "ارجاع عددی: " + (", ".join(numeric) if numeric else "—")
+                + " | دسته‌ای: " + (", ".join(cats) if cats else "—")
+                + " | متریک: " + (", ".join(metrics) if metrics else "—")
+                + " | group_by: line/contractor/date/week/month/hour/field_value"
+                + " | تجمیع: sum/avg/min/max/count"
+            )
+            self.fields["config"].help_text = help_text
+            widget = self.fields["config"].widget
+            widget.attrs.update(
+                {
+                    "rows": 8,
+                    "cols": 60,
+                    "dir": "ltr",
+                    "placeholder": self._template_for(self.initial.get("widget_type") or getattr(self.instance, "widget_type", "") or "kpi"),
+                }
+            )
+
+    def _resolve_tab(self):
+        if getattr(self.instance, "report_id", None):
+            return self.instance.report.tab
+        report = self._resolve_report()
+        return report.tab if report is not None else None
+
+    def _resolve_report(self):
+        raw = None
+        if self.data:
+            raw = self.data.get("report")
+        if not raw and getattr(self, "request", None):
+            raw = self.request.GET.get("report")
+        if not raw and self.instance and self.instance.pk:
+            return self.instance.report
+        if not raw:
+            raw = self.initial.get("report")
+        if not raw:
+            return None
+        try:
+            return FactoryTabReport.objects.select_related("tab").get(pk=raw)
+        except (FactoryTabReport.DoesNotExist, TypeError, ValueError):
+            return None
+
+    def _resolve_metrics(self):
+        report = self._resolve_report()
+        if report is not None:
+            return report.metrics or []
+        if self.instance and self.instance.pk:
+            return self.instance.report.metrics or []
+        return []
+
+    @staticmethod
+    def _template_for(wtype):
+        return {
+            "kpi": '{"cards": [{"kind": "count"}, {"kind": "stat", "field": "in.feed", "stat": "sum"}, {"kind": "metric", "metric": "recovery"}]}',
+            "stat_table": '{"sources": ["out", "in"], "stats": ["sum", "avg", "min", "max", "count"]}',
+            "group_table": '{"group_by": "line", "fields": ["in.feed"], "stats": ["sum", "avg"]}',
+            "chart": '{"chart": "bar", "group_by": "date", "value": {"field": "in.feed", "stat": "sum"}}',
+        }.get(wtype, '{"cards": [{"kind": "count"}]}')
+
+
 class FactoryTabWidgetInline(admin.StackedInline):
     model = FactoryTabWidget
+    form = FactoryTabWidgetForm
     extra = 1
     fields = (("widget_type", "title", "order", "is_active"), "config")
 
-    def formfield_for_dbfield(self, db_field, request, **kwargs):
-        if db_field.name == "config":
-            kwargs["widget"] = forms.Textarea(
-                attrs={
-                    "rows": 6,
-                    "cols": 60,
-                    "dir": "ltr",
-                    "placeholder": '{"cards": [{"kind": "count"}]}',
-                }
-            )
-        return super().formfield_for_dbfield(db_field, request, **kwargs)
+    def get_formset(self, request, obj=None, **kwargs):
+        formset_cls = super().get_formset(request, obj, **kwargs)
+
+        class RequestFormSet(formset_cls):
+            def __init__(self, *args, **form_kwargs):
+                super().__init__(*args, **form_kwargs)
+                for form in self.forms:
+                    form.request = request
+
+        return RequestFormSet
 
 
 @admin.register(FactoryTabReport)
 class FactoryTabReportAdmin(admin.ModelAdmin):
-    list_display = ("tab", "name", "is_default", "widgets_count", "is_active", "updated_at")
+    list_display = ("tab", "name", "is_default", "widgets_count", "run_link", "is_active", "updated_at")
     list_filter = ("tab__factory", "tab", "is_active")
     search_fields = ("name", "tab__name")
+    readonly_fields = ("run_link", "metrics_help")
     inlines = [FactoryTabWidgetInline]
+    fieldsets = (
+        ("اطلاعات کلی", {"fields": ("tab", "name", "description", "is_default", "order", "is_active")}),
+        ("فیلترها و متریک‌ها", {"fields": ("filters", "metrics", "metrics_help")}),
+        ("اجرا", {"fields": ("run_link",)}),
+    )
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form = super().get_form(request, obj, change=change, **kwargs)
+        tab_id = request.GET.get("tab")
+        if tab_id and not change and "tab" in form.base_fields:
+            try:
+                form.base_fields["tab"].initial = int(tab_id)
+            except (TypeError, ValueError):
+                pass
+        return form
 
     def widgets_count(self, obj):
         return obj.widgets.count()
 
     widgets_count.short_description = "ویجت‌ها"
 
+    def run_link(self, obj):
+        if not obj.pk:
+            return "—"
+        url = f"/api/factory-tab-reports/{obj.pk}/run/"
+        return format_html(
+            '<a class="button" href="{}" target="_blank">اجرای زنده گزارش (JSON)</a>', url
+        )
+
+    run_link.short_description = "اجرا"
+
+    def metrics_help(self, obj):
+        tab = obj.tab if obj and obj.pk else None
+        if tab is None:
+            return "ابتدا تب را انتخاب و ذخیره کنید تا ارجاع‌های معتبر نمایش داده شود."
+        from .tab_reports import _field_refs
+
+        numeric = sorted(_field_refs(tab))
+        inner = (
+            "متریک: " + ", ".join(f"{r}__sum|avg|min|max|count" for r in numeric[:4])
+            + ("…" if len(numeric) > 4 else "")
+            + " + record_count. مثال: "
+            + '{"key": "recovery", "label": "بازیابی", "formula": "in.feed__sum / record_count"}'
+        )
+        return mark_safe(f'<div class="fb-vars-preview">{escape(inner)}</div>')
+
+    metrics_help.short_description = "راهنمای متریک"
+
 
 @admin.register(FactoryTabWidget)
 class FactoryTabWidgetAdmin(admin.ModelAdmin):
+    form = FactoryTabWidgetForm
     list_display = ("report", "title", "widget_type", "order", "is_active")
     list_filter = ("report__tab__factory", "widget_type", "is_active")
     search_fields = ("title", "report__name")
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        request_holder = [request]
+
+        class RequestWidgetForm(self.form):
+            def __init__(self, *args, **form_kwargs):
+                self.request = request_holder[0]
+                super().__init__(*args, **form_kwargs)
+
+        return RequestWidgetForm

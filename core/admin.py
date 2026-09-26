@@ -33,10 +33,11 @@ MODEL_GROUPS = [
             "analysisoutputdefinition",
             "factoryanalysisdefinition",
             "deliveredtonnagedefinition",
-            "factorytab",
-            "factorytabreport",
-            "factorytabwidget",
         ],
+    ),
+    (
+        "تب‌های کارخانه و گزارش‌ها",
+        ["factorytab", "factorytabreport", "factorytabwidget", "factorytabrecord"],
     ),
     (
         "ثبت‌های عملیاتی",

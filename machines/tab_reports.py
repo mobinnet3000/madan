@@ -599,6 +599,7 @@ def run_report(tab, report, base_qs, params):
     ctx = {"record_count": len(rows), "labels": labels, "metrics": metrics_map}
 
     widgets = []
+    metric_keys = [m.get("key") for m in (report.metrics or []) if isinstance(m, dict)]
     for w in report.widgets.filter(is_active=True).order_by("order", "id"):
         entry = WIDGET_TYPES.get(w.widget_type)
         if entry is None:
@@ -608,7 +609,12 @@ def run_report(tab, report, base_qs, params):
             )
             continue
         try:
-            data = entry["run"](rows, ctx, w.config or {})
+            # نرمال‌سازی مجدد در زمان اجرا: کانفیگ‌های قدیمی/دستی (ادمین/سید)
+            # که از مسیر validate عبور نکرده‌اند هم کار کنند.
+            cfg = validate_widget_config(
+                tab, w.widget_type, w.config or {}, metric_keys=metric_keys
+            )
+            data = entry["run"](rows, ctx, cfg)
             widgets.append({"id": w.id, "type": w.widget_type, "title": w.title, "data": data})
         except (ValueError, FormulaError) as e:
             widgets.append(
