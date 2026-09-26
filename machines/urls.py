@@ -46,6 +46,19 @@ from .views import (
     tonnage_output_detail_view,
     tonnage_schema_view,
     formula_validate_tonnage_view,
+    FactoryTabViewSet,
+    FactoryTabRecordViewSet,
+    FactoryTabReportViewSet,
+    factory_tab_inputs_view,
+    factory_tab_input_detail_view,
+    factory_tab_outputs_view,
+    factory_tab_output_detail_view,
+    factory_tab_schema_view,
+    formula_validate_tab_view,
+    factory_tab_report_widgets_view,
+    factory_tab_report_widget_detail_view,
+    factory_tab_report_run_view,
+    factory_tab_report_types_view,
 )
 
 router = DefaultRouter()
@@ -73,8 +86,17 @@ router.register(r"actual-analyses", ActualAnalysisViewSet, basename="actual-anal
 router.register(
     r"delivered-tonnages", DeliveredTonnageViewSet, basename="delivered-tonnages"
 )
+router.register(r"factory-tabs", FactoryTabViewSet, basename="factory-tabs")
+router.register(r"factory-tab-records", FactoryTabRecordViewSet, basename="factory-tab-records")
+router.register(r"factory-tab-reports", FactoryTabReportViewSet, basename="factory-tab-reports")
 
 urlpatterns = [
+    # باید قبل از router باشد تا "types" به‌عنوان pk تفسیر نشود
+    path(
+        "api/factory-tab-reports/types/",
+        factory_tab_report_types_view,
+        name="factory-tab-report-types",
+    ),
     path("api/", include(router.urls)),
     path("api/reports/ranges/", report_ranges_view, name="report-ranges"),
     path(
@@ -214,5 +236,52 @@ urlpatterns = [
         "api/formula/validate-tonnage/",
         formula_validate_tonnage_view,
         name="formula-validate-tonnage",
+    ),
+    # ── تب‌های داینامیک کارخانه ──
+    path(
+        "api/factory-tabs/<int:tab_id>/schema/",
+        factory_tab_schema_view,
+        name="factory-tab-schema",
+    ),
+    path(
+        "api/factory-tabs/<int:tab_id>/inputs/",
+        factory_tab_inputs_view,
+        name="factory-tab-inputs",
+    ),
+    path(
+        "api/factory-tabs/<int:tab_id>/inputs/<int:pk>/",
+        factory_tab_input_detail_view,
+        name="factory-tab-input-detail",
+    ),
+    path(
+        "api/factory-tabs/<int:tab_id>/outputs/",
+        factory_tab_outputs_view,
+        name="factory-tab-outputs",
+    ),
+    path(
+        "api/factory-tabs/<int:tab_id>/outputs/<int:pk>/",
+        factory_tab_output_detail_view,
+        name="factory-tab-output-detail",
+    ),
+    path(
+        "api/formula/validate-tab/",
+        formula_validate_tab_view,
+        name="formula-validate-tab",
+    ),
+    # ── گزارش‌های تب کارخانه ──
+    path(
+        "api/factory-tab-reports/<int:report_id>/run/",
+        factory_tab_report_run_view,
+        name="factory-tab-report-run",
+    ),
+    path(
+        "api/factory-tab-reports/<int:report_id>/widgets/",
+        factory_tab_report_widgets_view,
+        name="factory-tab-report-widgets",
+    ),
+    path(
+        "api/factory-tab-reports/<int:report_id>/widgets/<int:pk>/",
+        factory_tab_report_widget_detail_view,
+        name="factory-tab-report-widget-detail",
     ),
 ]

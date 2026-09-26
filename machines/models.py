@@ -365,6 +365,38 @@ INPUT_TYPE_CHOICES = [
     ("text", "متن (Text)"),
 ]
 
+TAB_INPUT_TYPE_CHOICES = [
+    ("number", "عدد (Number)"),
+    ("text", "متن (Text)"),
+    ("select", "انتخابی (Select)"),
+]
+
+
+def normalize_select_options(options, label=""):
+    """اعتبارسنجی و نرمال‌سازی گزینه‌های ورودی انتخابی؛ لیست رشته‌ای برمی‌گرداند."""
+    prefix = f"«{label}» " if label else ""
+    if not isinstance(options, list) or not options:
+        raise ValidationError(
+            f"{prefix}ورودی انتخابی باید حداقل یک گزینه داشته باشد."
+        )
+    if len(options) > 50:
+        raise ValidationError(f"{prefix}حداکثر ۵۰ گزینه مجاز است.")
+    cleaned = []
+    for opt in options:
+        if isinstance(opt, dict):
+            opt = opt.get("value", opt.get("label", ""))
+        if not isinstance(opt, (str, int, float)) or isinstance(opt, bool):
+            raise ValidationError(f"{prefix}هر گزینه باید متن یا عدد باشد.")
+        text = str(opt).strip()
+        if not text:
+            raise ValidationError(f"{prefix}گزینه خالی مجاز نیست.")
+        if len(text) > 100:
+            raise ValidationError(f"{prefix}طول هر گزینه حداکثر ۱۰۰ کاراکتر است.")
+        if text in cleaned:
+            raise ValidationError(f"{prefix}گزینه تکراری «{text}» مجاز نیست.")
+        cleaned.append(text)
+    return cleaned
+
 
 class Contractor(models.Model):
     factory = models.ForeignKey(
@@ -875,3 +907,327 @@ class DeliveredTonnage(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+
+
+TAB_RECORD_TYPE_CHOICES = [
+    ("range", "بازه تاریخی (از تاریخ تا تاریخ)"),
+    ("daily", "روزانه (چند رکورد در روز با ساعت)"),
+]
+
+
+class FactoryTab(models.Model):
+    """تب داینامیک کارخانه — ساختار یکسان: ورودی‌ها + خروجی‌های فرمولی."""
+
+    factory = models.ForeignKey(
+        Factory,
+        on_delete=models.CASCADE,
+        related_name="report_tabs",
+        verbose_name="کارخانه",
+    )
+    key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
+    name = models.CharField(max_length=100, verbose_name="نام تب")
+    description = models.TextField(blank=True, verbose_name="توضیحات")
+    record_type = models.CharField(
+        max_length=20,
+        choices=TAB_RECORD_TYPE_CHOICES,
+        default="range",
+        verbose_name="نوع ثبت رکورد",
+    )
+    require_line = models.BooleanField(default=True, verbose_name="خط تولید الزامی است")
+    contractor_required = models.BooleanField(
+        default=False, verbose_name="انتخاب پیمانکار الزامی است"
+    )
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین ویرایش")
+
+    class Meta:
+        verbose_name = "تب کارخانه"
+        verbose_name_plural = "تب‌های کارخانه"
+        ordering = ["factory", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["factory", "key"], name="uniq_tab_key_per_factory"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.factory.name} - {self.name}"
+
+    def clean(self):
+        super().clean()
+        if self.pk:
+            from .factory_tabs import (
+                validate_output_formula_for_tab,
+                validate_outputs_no_cycle_tab,
+            )
+
+            try:
+                validate_output_formula_for_tab(self)
+                validate_outputs_no_cycle_tab(self)
+            except ValueError as e:
+                raise ValidationError({"outputs": str(e)})
+
+
+class FactoryTabInput(models.Model):
+    tab = models.ForeignKey(
+        FactoryTab,
+        on_delete=models.CASCADE,
+        related_name="inputs",
+        verbose_name="تب",
+    )
+    key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
+    name = models.CharField(max_length=100, verbose_name="نام نمایشی")
+    input_type = models.CharField(
+        max_length=20, choices=TAB_INPUT_TYPE_CHOICES, default="number", verbose_name="نوع ورودی"
+    )
+    options = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="گزینه‌ها",
+        help_text='فقط برای نوع «انتخابی»: لیست گزینه‌ها، مثل ["الف", "ب", "ج"]',
+    )
+    unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
+    required = models.BooleanField(default=True, verbose_name="الزامی")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+
+    class Meta:
+        verbose_name = "ورودی تب"
+        verbose_name_plural = "ورودی‌های تب"
+        ordering = ["tab", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["tab", "key"], name="uniq_tab_input_key_per_tab"),
+        ]
+
+    def __str__(self):
+        return f"{self.tab.name} - {self.name}"
+
+    def clean(self):
+        super().clean()
+        if self.options is None:
+            self.options = []
+        if self.input_type == "select":
+            self.options = normalize_select_options(
+                self.options, label=self.name or self.key
+            )
+        else:
+            self.options = []
+
+
+class FactoryTabOutput(models.Model):
+    tab = models.ForeignKey(
+        FactoryTab,
+        on_delete=models.CASCADE,
+        related_name="outputs",
+        verbose_name="تب",
+    )
+    key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
+    name = models.CharField(max_length=100, verbose_name="نام نمایشی")
+    unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
+    formula = models.TextField(verbose_name="فرمول")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+
+    class Meta:
+        verbose_name = "خروجی تب"
+        verbose_name_plural = "خروجی‌های تب"
+        ordering = ["tab", "order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["tab", "key"], name="uniq_tab_output_key_per_tab"),
+        ]
+
+    def __str__(self):
+        return f"{self.tab.name} - {self.name}"
+
+
+class FactoryTabRecord(models.Model):
+    """رکورد ثبت‌شده یک تب — ورودی‌ها + خروجی‌های محاسبه‌شده."""
+
+    tab = models.ForeignKey(
+        FactoryTab,
+        on_delete=models.CASCADE,
+        related_name="records",
+        verbose_name="تب",
+    )
+    line = models.ForeignKey(
+        ProductionLine,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="tab_records",
+        verbose_name="خط تولید",
+    )
+    contractor = models.ForeignKey(
+        Contractor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tab_records",
+        verbose_name="پیمانکار",
+    )
+    date_from = models.DateField(verbose_name="تاریخ شروع", db_index=True)
+    date_to = models.DateField(verbose_name="تاریخ پایان")
+    hour = models.TimeField(null=True, blank=True, verbose_name="ساعت ثبت")
+    inputs = models.JSONField(default=dict, blank=True, verbose_name="مقادیر ورودی")
+    outputs = models.JSONField(default=dict, blank=True, verbose_name="خروجی‌های محاسبه‌شده")
+    note = models.TextField(blank=True, verbose_name="توضیحات / ملاحظات")
+    created_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_tab_records",
+        verbose_name="ثبت‌کننده",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
+
+    class Meta:
+        verbose_name = "رکورد تب"
+        verbose_name_plural = "رکوردهای تب"
+        ordering = ["-date_from", "-created_at"]
+        indexes = [
+            models.Index(fields=["tab", "date_from"]),
+            models.Index(fields=["tab", "date_to"]),
+            models.Index(fields=["line", "date_from"]),
+            models.Index(fields=["contractor"]),
+        ]
+
+    def __str__(self):
+        label = (
+            self.date_from
+            if self.date_from == self.date_to
+            else f"{self.date_from} تا {self.date_to}"
+        )
+        return f"{self.tab.name} - {label}"
+
+    def clean(self):
+        super().clean()
+        if self.tab_id and self.line_id:
+            if self.line.factory_id != self.tab.factory_id:
+                raise ValidationError(
+                    {"line": "خط تولید باید متعلق به کارخانه‌ی همین تب باشد."}
+                )
+        if self.tab_id and self.contractor_id:
+            if self.contractor.factory_id != self.tab.factory_id:
+                raise ValidationError(
+                    {"contractor": "پیمانکار باید متعلق به کارخانه‌ی همین تب باشد."}
+                )
+        if self.date_from and self.date_to and self.date_to < self.date_from:
+            raise ValidationError(
+                {"date_to": "تاریخ پایان بازه نمی‌تواند قبل از تاریخ شروع باشد."}
+            )
+        if self.tab_id and self.tab.require_line and not self.line_id:
+            raise ValidationError({"line": "انتخاب خط تولید برای این تب الزامی است."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class FactoryTabReport(models.Model):
+    """گزارش قابل‌تنظیم یک تب — Backend منطق Report فرانت را از روی Config اجرا می‌کند."""
+
+    tab = models.ForeignKey(
+        FactoryTab,
+        on_delete=models.CASCADE,
+        related_name="reports",
+        verbose_name="تب",
+    )
+    name = models.CharField(max_length=100, verbose_name="نام گزارش")
+    description = models.TextField(blank=True, verbose_name="توضیحات")
+    is_default = models.BooleanField(default=False, verbose_name="پیش‌فرض تب")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+    filters = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="فیلترهای مجاز",
+        help_text='زیرمجموعه‌ای از ["line", "contractor", "date_from", "date_to"] — خالی یعنی همه.',
+    )
+    metrics = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="متریک‌های محاسباتی",
+        help_text='مثل [{"key": "recovery", "label": "بازیابی", "formula": "out.product__sum / out.feed__sum * 100"}]',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ثبت")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="آخرین ویرایش")
+
+    class Meta:
+        verbose_name = "گزارش تب"
+        verbose_name_plural = "گزارش‌های تب"
+        ordering = ["tab", "order", "id"]
+
+    def __str__(self):
+        return f"{self.tab.name} - {self.name}"
+
+    def clean(self):
+        super().clean()
+        from .tab_reports import (
+            ALLOWED_REPORT_FILTERS,
+            normalize_report_filters,
+            validate_report_metrics,
+        )
+
+        if self.filters is None:
+            self.filters = []
+        if not isinstance(self.filters, list) or any(
+            f not in ALLOWED_REPORT_FILTERS for f in self.filters
+        ):
+            raise ValidationError(
+                {"filters": f"فیلترها باید زیرمجموعه‌ای از {list(ALLOWED_REPORT_FILTERS)} باشند."}
+            )
+        self.filters = normalize_report_filters(self.filters)
+        if self.tab_id:
+            try:
+                self.metrics = validate_report_metrics(self.tab, self.metrics or [])
+            except ValueError as e:
+                raise ValidationError({"metrics": str(e)})
+
+
+class FactoryTabWidget(models.Model):
+    """ویجت یک گزارش — نوع از رجیستری WIDGET_TYPES، پارامترها در config."""
+
+    report = models.ForeignKey(
+        FactoryTabReport,
+        on_delete=models.CASCADE,
+        related_name="widgets",
+        verbose_name="گزارش",
+    )
+    widget_type = models.CharField(max_length=20, verbose_name="نوع ویجت")
+    title = models.CharField(max_length=100, verbose_name="عنوان")
+    order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+    config = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="تنظیمات",
+        help_text="پارامترهای نوع ویجت (field/group_by/aggregation/...) — مستندات: TAB_REPORTS.md",
+    )
+
+    class Meta:
+        verbose_name = "ویجت گزارش"
+        verbose_name_plural = "ویجت‌های گزارش"
+        ordering = ["report", "order", "id"]
+
+    def __str__(self):
+        return f"{self.report.name} - {self.title}"
+
+    def clean(self):
+        super().clean()
+        if self.config is None:
+            self.config = {}
+        if self.report_id and self.report.tab_id:
+            from .tab_reports import validate_widget_config
+
+            metrics = self.report.metrics or []
+            metric_keys = [m.get("key") for m in metrics if isinstance(m, dict)]
+            try:
+                self.config = validate_widget_config(
+                    self.report.tab,
+                    self.widget_type,
+                    self.config or {},
+                    metric_keys=metric_keys,
+                )
+            except ValueError as e:
+                raise ValidationError({"config": str(e)})

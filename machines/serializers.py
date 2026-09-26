@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import (
     Factory,
     Shift,
@@ -26,6 +27,12 @@ from .models import (
     DeliveredTonnageInput,
     DeliveredTonnageOutput,
     DeliveredTonnage,
+    FactoryTab,
+    FactoryTabInput,
+    FactoryTabOutput,
+    FactoryTabRecord,
+    FactoryTabReport,
+    FactoryTabWidget,
 )
 from .jalali import jalali_and_weekday
 
@@ -325,6 +332,7 @@ class FactoryFullDetailSerializer(serializers.ModelSerializer):
     factory_analysis_definition = FactoryAnalysisDefinitionBriefSerializer(
         read_only=True
     )
+    report_tabs = serializers.SerializerMethodField()
 
     class Meta:
         model = Factory
@@ -337,11 +345,16 @@ class FactoryFullDetailSerializer(serializers.ModelSerializer):
             "failure_reasons",
             "contractors",
             "factory_analysis_definition",
+            "report_tabs",
         ]
 
     def get_shifts(self, obj):
         from .models import Shift
         return ShiftSerializer(Shift.objects.filter(line__factory=obj), many=True).data
+
+    def get_report_tabs(self, obj):
+        qs = obj.report_tabs.filter(is_active=True).prefetch_related("inputs", "outputs")
+        return FactoryTabBriefSerializer(qs, many=True).data
 
     def get_failure_reasons(self, obj):
         return FailureReasonSerializer(FailureReason.objects.all(), many=True).data
@@ -873,3 +886,280 @@ class DeliveredTonnageWriteSerializer(serializers.ModelSerializer):
             "inputs",
             "note",
         ]
+
+
+# ═══════════════════ تب‌های داینامیک کارخانه ═══════════════════
+
+
+class FactoryTabInputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FactoryTabInput
+        fields = ["id", "key", "name", "input_type", "options", "unit", "required", "order"]
+
+    def validate(self, attrs):
+        from .models import normalize_select_options
+
+        itype = attrs.get("input_type")
+        if itype is None and self.instance is not None:
+            itype = self.instance.input_type
+        if itype is None:
+            itype = "number"
+        if itype not in ("number", "text", "select"):
+            raise serializers.ValidationError(
+                {"input_type": "نوع ورودی باید یکی از number/text/select باشد."}
+            )
+        if itype == "select" or "options" in attrs:
+            opts = attrs.get(
+                "options",
+                getattr(self.instance, "options", []) or [],
+            )
+            if itype == "select":
+                label = attrs.get("name") or (
+                    self.instance.name if self.instance else ""
+                )
+                try:
+                    attrs["options"] = normalize_select_options(opts, label=label)
+                except Exception as e:  # noqa: BLE001
+                    from django.core.exceptions import ValidationError as _DVE
+
+                    if isinstance(e, _DVE):
+                        raise serializers.ValidationError({"options": e.messages})
+                    raise
+            else:
+                attrs["options"] = []
+        return attrs
+
+
+class FactoryTabOutputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FactoryTabOutput
+        fields = ["id", "key", "name", "unit", "formula", "order"]
+
+
+class FactoryTabSerializer(serializers.ModelSerializer):
+    inputs = FactoryTabInputSerializer(many=True, read_only=True)
+    outputs = FactoryTabOutputSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FactoryTab
+        fields = [
+            "id", "factory", "key", "name", "description", "record_type",
+            "require_line", "contractor_required", "order", "is_active",
+            "inputs", "outputs", "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def create(self, validated_data):
+        instance = FactoryTab.objects.create(**validated_data)
+        _sync_tab_nested(instance, self.initial_data)
+        return instance
+
+    def update(self, instance, validated_data):
+        for f in ("key", "name", "description", "record_type", "require_line",
+                  "contractor_required", "order", "is_active"):
+            if f in validated_data:
+                setattr(instance, f, validated_data[f])
+        instance.save()
+        _sync_tab_nested(instance, self.initial_data)
+        return instance
+
+
+def _sync_tab_nested(instance, data):
+    cache = getattr(instance, "_prefetched_objects_cache", None)
+    if cache is not None:
+        cache.pop("inputs", None)
+        cache.pop("outputs", None)
+    if data.get("inputs") is not None:
+        _sync_tab_inputs(instance, data["inputs"])
+    if data.get("outputs") is not None:
+        _sync_tab_outputs(instance, data["outputs"])
+    if cache is not None:
+        cache.pop("inputs", None)
+        cache.pop("outputs", None)
+    try:
+        instance.full_clean()
+    except DjangoValidationError as e:
+        raise serializers.ValidationError(
+            {"detail": "; ".join(sum(([str(m) for m in v] for v in e.message_dict.values()), []))}
+        )
+
+
+def _sync_tab_inputs(instance, items):
+    if not isinstance(items, list):
+        raise serializers.ValidationError({"inputs": "باید یک لیست باشد."})
+    existing = {i.key: i for i in instance.inputs.all()}
+    seen = set()
+    for idx, item in enumerate(items):
+        key = item.get("key")
+        if not key:
+            raise serializers.ValidationError({"inputs": f"ردیف {idx + 1}: کلید (key) الزامی است."})
+        if key in seen:
+            raise serializers.ValidationError({"inputs": f"کلید تکراری «{key}»."})
+        seen.add(key)
+        itype = item.get("input_type", "number")
+        if itype not in ("number", "text", "select"):
+            raise serializers.ValidationError(
+                {"inputs": f"ردیف {idx + 1}: نوع ورودی باید یکی از number/text/select باشد."}
+            )
+        defaults = {
+            "name": item.get("name", key),
+            "input_type": itype,
+            "options": [],
+            "unit": item.get("unit", ""),
+            "required": item.get("required", True),
+            "order": item.get("order", idx),
+        }
+        if itype == "select":
+            from .models import normalize_select_options
+
+            try:
+                defaults["options"] = normalize_select_options(
+                    item.get("options") or [], label=defaults["name"]
+                )
+            except Exception as e:  # noqa: BLE001
+                from django.core.exceptions import ValidationError as _DVE
+
+                if isinstance(e, _DVE):
+                    raise serializers.ValidationError(
+                        {"inputs": f"ردیف {idx + 1}: {'; '.join(e.messages)}"}
+                    )
+                raise
+        if key in existing:
+            for f, v in defaults.items():
+                setattr(existing[key], f, v)
+            existing[key].save()
+        else:
+            FactoryTabInput.objects.create(tab=instance, key=key, **defaults)
+    for key in set(existing.keys()) - seen:
+        existing[key].delete()
+
+
+def _sync_tab_outputs(instance, items):
+    if not isinstance(items, list):
+        raise serializers.ValidationError({"outputs": "باید یک لیست باشد."})
+    existing = {i.key: i for i in instance.outputs.all()}
+    seen = set()
+    for idx, item in enumerate(items):
+        key = item.get("key")
+        if not key:
+            raise serializers.ValidationError({"outputs": f"ردیف {idx + 1}: کلید (key) الزامی است."})
+        if key in seen:
+            raise serializers.ValidationError({"outputs": f"کلید تکراری «{key}»."})
+        seen.add(key)
+        formula = item.get("formula")
+        if not formula or not str(formula).strip():
+            raise serializers.ValidationError({"outputs": f"فرمول خروجی «{key}» خالی است."})
+        defaults = {
+            "name": item.get("name", key),
+            "unit": item.get("unit", ""),
+            "formula": formula,
+            "order": item.get("order", idx),
+        }
+        if key in existing:
+            for f, v in defaults.items():
+                setattr(existing[key], f, v)
+            existing[key].save()
+        else:
+            FactoryTabOutput.objects.create(tab=instance, key=key, **defaults)
+    for key in set(existing.keys()) - seen:
+        existing[key].delete()
+
+
+class FactoryTabBriefSerializer(serializers.ModelSerializer):
+    inputs = FactoryTabInputSerializer(many=True, read_only=True)
+    outputs = FactoryTabOutputSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FactoryTab
+        fields = [
+            "id", "key", "name", "description", "record_type",
+            "require_line", "contractor_required", "order", "is_active",
+            "inputs", "outputs",
+        ]
+
+
+class FactoryTabRecordSerializer(serializers.ModelSerializer):
+    tab = FactoryTabBriefSerializer(read_only=True)
+    line = ProductionLineMinSerializer(read_only=True)
+    contractor = ContractorSerializer(read_only=True)
+    date_from_jalali = serializers.SerializerMethodField()
+    date_to_jalali = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FactoryTabRecord
+        fields = [
+            "id", "tab", "line", "contractor",
+            "date_from", "date_to", "date_from_jalali", "date_to_jalali",
+            "hour", "inputs", "outputs", "note", "created_by", "created_at",
+        ]
+        read_only_fields = ["created_by", "created_at", "outputs"]
+
+    def get_date_from_jalali(self, obj):
+        return jalali_and_weekday(obj.date_from)["date_jalali"]
+
+    def get_date_to_jalali(self, obj):
+        return jalali_and_weekday(obj.date_to)["date_jalali"]
+
+
+class FactoryTabRecordWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FactoryTabRecord
+        fields = ["tab", "line", "contractor", "date_from", "date_to", "hour", "inputs", "note"]
+
+
+class FactoryTabWidgetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FactoryTabWidget
+        fields = ["id", "widget_type", "title", "order", "is_active", "config"]
+
+    def validate(self, attrs):
+        from .tab_reports import WIDGET_TYPES, validate_widget_config
+
+        wtype = attrs.get("widget_type") or (self.instance.widget_type if self.instance else None)
+        if wtype not in WIDGET_TYPES:
+            raise serializers.ValidationError(
+                {"widget_type": f"نوع ویجت «{wtype}» ناشناخته است؛ انواع مجاز: {sorted(WIDGET_TYPES)}"}
+            )
+        config = attrs.get("config", getattr(self.instance, "config", {}) or {})
+        if not isinstance(config, dict):
+            raise serializers.ValidationError({"config": "تنظیمات ویجت باید یک شیء باشد."})
+        report = self.context.get("report") or (self.instance.report if self.instance else None)
+        if report is not None:
+            try:
+                metric_keys = [m.get("key") for m in (report.metrics or []) if isinstance(m, dict)]
+                attrs["config"] = validate_widget_config(report.tab, wtype, config, metric_keys=metric_keys)
+            except ValueError as e:
+                raise serializers.ValidationError({"config": str(e)})
+        return attrs
+
+
+class FactoryTabReportSerializer(serializers.ModelSerializer):
+    widgets = FactoryTabWidgetSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FactoryTabReport
+        fields = [
+            "id", "tab", "name", "description", "is_default", "order", "is_active",
+            "filters", "metrics", "widgets", "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def validate(self, attrs):
+        from .tab_reports import ALLOWED_REPORT_FILTERS, normalize_report_filters, validate_report_metrics
+
+        tab = attrs.get("tab") or (self.instance.tab if self.instance else None)
+        if tab is None and self.context.get("tab") is not None:
+            tab = self.context["tab"]
+            attrs["tab"] = tab
+        if "filters" in attrs:
+            if not isinstance(attrs["filters"], list) or any(f not in ALLOWED_REPORT_FILTERS for f in attrs["filters"]):
+                raise serializers.ValidationError(
+                    {"filters": f"فیلترها باید زیرمجموعه‌ای از {list(ALLOWED_REPORT_FILTERS)} باشند."}
+                )
+            attrs["filters"] = normalize_report_filters(attrs["filters"])
+        if "metrics" in attrs and tab is not None:
+            try:
+                attrs["metrics"] = validate_report_metrics(tab, attrs["metrics"] or [])
+            except ValueError as e:
+                raise serializers.ValidationError({"metrics": str(e)})
+        return attrs

@@ -17,6 +17,7 @@
     }
     var url = data.getAttribute("data-url") || "";
     var lineId = data.getAttribute("data-line") || "";
+    var tabId = data.getAttribute("data-tab") || "";
     var textarea = el.querySelector(".formula-source");
     var result = el.querySelector(".fb-result");
     var debounce = null;
@@ -50,13 +51,16 @@
         return;
       }
       setStatus("در حال بررسی...", "checking");
+      var payload = { expression: textarea.value };
+      if (tabId) payload.tab_id = tabId;
+      else if (lineId) payload.line_id = lineId;
       fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-CSRFToken": getCookie("csrftoken"),
         },
-        body: JSON.stringify({ line_id: lineId, expression: textarea.value }),
+        body: JSON.stringify(payload),
       })
         .then(function (r) {
           return r.json().then(function (j) {

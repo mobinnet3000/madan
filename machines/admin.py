@@ -31,6 +31,12 @@ from .models import (
     DeliveredTonnageInput,
     DeliveredTonnageOutput,
     DeliveredTonnage,
+    FactoryTab,
+    FactoryTabInput,
+    FactoryTabOutput,
+    FactoryTabRecord,
+    FactoryTabReport,
+    FactoryTabWidget,
 )
 from .analysis import (
     build_schema as build_analysis_schema,
@@ -39,6 +45,7 @@ from .analysis import (
 )
 from .factory_analysis import formula_variables_for_factory
 from .tonnage import formula_variables_for_tonnage
+from .factory_tabs import formula_variables_for_tab
 import json
 
 
@@ -544,11 +551,12 @@ class FormulaInputWidget(forms.Textarea):
     کلیک روی هر متغیر، استرینگ آن را داخل فرمول (محل نشانگر) می‌نویسد.
     """
 
-    def __init__(self, attrs=None, variables=None, validate_url="", line_id=""):
+    def __init__(self, attrs=None, variables=None, validate_url="", line_id="", tab_id=""):
         super().__init__(attrs)
         self.variables = variables or []
         self.validate_url = validate_url
         self.line_id = line_id or ""
+        self.tab_id = tab_id or ""
 
     def render(self, name, value, attrs=None, renderer=None):
         attrs = dict(attrs or {})
@@ -587,6 +595,7 @@ class FormulaInputWidget(forms.Textarea):
             "</div>"
             f'<div class="fb-data" data-vars="{vars_json_attr}" '
             f'data-url="{self.validate_url}" data-line="{self.line_id}" '
+            f'data-tab="{self.tab_id}" '
             'style="display:none"></div>'
             "</div>"
         )
@@ -1064,3 +1073,193 @@ class DeliveredTonnageAdmin(admin.ModelAdmin):
         return ", ".join(f"{k}: {v}" for k, v in obj.outputs.items())
 
     outputs_summary.short_description = "خروجی‌ها"
+
+# ═══════════════════ تب‌های داینامیک کارخانه ═══════════════════
+
+
+class FactoryTabInputForm(forms.ModelForm):
+    """گزینه‌ها با کاما جدا می‌شوند، مثلا: الف، ب، ج."""
+
+    options_text = forms.CharField(
+        required=False,
+        label="گزینه‌ها (با کاما جدا کنید)",
+        widget=forms.TextInput(attrs={"size": 40, "dir": "rtl"}),
+        help_text="فقط برای نوع «انتخابی».",
+    )
+
+    class Meta:
+        model = FactoryTabInput
+        fields = ("key", "name", "input_type", "options_text", "unit", "required", "order")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and self.instance.options:
+            self.fields["options_text"].initial = "، ".join(self.instance.options)
+
+    def clean(self):
+        cleaned = super().clean()
+        from django.core.exceptions import ValidationError as _DVE
+
+        from .models import normalize_select_options
+
+        itype = cleaned.get("input_type") or (
+            self.instance.input_type if self.instance and self.instance.pk else "number"
+        )
+        raw = cleaned.get("options_text", "")
+        opts = [p.strip() for p in str(raw).replace("،", ",").split(",") if p.strip()]
+        if itype == "select":
+            label = cleaned.get("name") or cleaned.get("key") or ""
+            try:
+                normalize_select_options(opts, label=label)
+            except _DVE as e:
+                raise forms.ValidationError("; ".join(e.messages))
+        cleaned["options"] = opts
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.options = self.cleaned_data.get("options", [])
+        if commit:
+            instance.save()
+        return instance
+
+
+class FactoryTabInputInline(admin.TabularInline):
+    model = FactoryTabInput
+    form = FactoryTabInputForm
+    extra = 1
+    fields = ("key", "name", "input_type", "options_text", "unit", "required", "order")
+
+
+class FactoryTabOutputInline(admin.StackedInline):
+    model = FactoryTabOutput
+    extra = 1
+    fields = (("key", "name", "unit", "order"), "formula")
+
+    class Media:
+        js = ("madan_admin/js/formula_builder.js",)
+        css = {"all": ("madan_admin/css/formula_builder.css",)}
+
+    def get_formset(self, request, obj=None, **kwargs):
+        variables = []
+        line_id = ""
+        tab_id = ""
+        if obj is not None:
+            variables = formula_variables_for_tab(obj)
+            tab_id = obj.id
+            first_line = obj.factory.lines.first()
+            line_id = first_line.id if first_line else ""
+        validate_url = reverse("formula-validate-tab")
+        formset_cls = super().get_formset(request, obj, **kwargs)
+
+        class TabOutputFormSet(formset_cls):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                widget = FormulaInputWidget(
+                    variables=variables,
+                    validate_url=validate_url,
+                    line_id=line_id,
+                    tab_id=tab_id,
+                )
+                for form in self.forms:
+                    if "formula" in form.fields:
+                        form.fields["formula"].widget = widget
+                try:
+                    if "formula" in self.empty_form.fields:
+                        self.empty_form.fields["formula"].widget = widget
+                except Exception:  # noqa: BLE001
+                    pass
+
+        return TabOutputFormSet
+
+
+@admin.register(FactoryTab)
+class FactoryTabAdmin(admin.ModelAdmin):
+    list_display = ("factory", "name", "key", "record_type", "inputs_count", "outputs_count", "is_active", "updated_at")
+    list_filter = ("factory", "record_type", "is_active")
+    search_fields = ("name", "key", "factory__name")
+
+    class Media:
+        css = {"all": ("madan_admin/css/formula_builder.css",)}
+
+    def get_inlines(self, request, obj):
+        if obj is None:
+            return [FactoryTabInputInline]
+        return [FactoryTabInputInline, FactoryTabOutputInline]
+
+    def response_add(self, request, obj, post_url_continue=None):
+        self.message_user(
+            request,
+            "تب ساخته شد؛ حالا در همین صفحه ورودی‌ها را بازبینی و خروجی‌ها را تعریف کنید.",
+        )
+        return HttpResponseRedirect(
+            reverse("admin:machines_factorytab_change", args=(obj.pk,))
+        )
+
+    def inputs_count(self, obj):
+        return obj.inputs.count()
+
+    inputs_count.short_description = "ورودی‌ها"
+
+    def outputs_count(self, obj):
+        return obj.outputs.count()
+
+    outputs_count.short_description = "خروجی‌ها / فرمول‌ها"
+
+
+@admin.register(FactoryTabRecord)
+class FactoryTabRecordAdmin(admin.ModelAdmin):
+    list_display = ("tab", "line", "date_from", "date_to", "contractor", "outputs_summary", "created_by", "created_at")
+    list_filter = ("tab__factory", "tab", "line", "contractor", "date_from")
+    search_fields = ("tab__name", "line__name", "note")
+    readonly_fields = ("inputs", "outputs", "created_by", "created_at")
+    fieldsets = (
+        ("اطلاعات کلی", {"fields": ("tab", "line", "contractor", "date_from", "date_to", "hour")}),
+        ("ورودی‌ها / خروجی‌های محاسبه‌شده", {"fields": ("inputs", "outputs")}),
+        ("سایر", {"fields": ("note", "created_by", "created_at")}),
+    )
+
+    def outputs_summary(self, obj):
+        if not obj.outputs:
+            return "—"
+        return ", ".join(f"{k}: {v}" for k, v in obj.outputs.items())
+
+    outputs_summary.short_description = "خروجی‌ها"
+
+
+class FactoryTabWidgetInline(admin.StackedInline):
+    model = FactoryTabWidget
+    extra = 1
+    fields = (("widget_type", "title", "order", "is_active"), "config")
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == "config":
+            kwargs["widget"] = forms.Textarea(
+                attrs={
+                    "rows": 6,
+                    "cols": 60,
+                    "dir": "ltr",
+                    "placeholder": '{"cards": [{"kind": "count"}]}',
+                }
+            )
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+
+@admin.register(FactoryTabReport)
+class FactoryTabReportAdmin(admin.ModelAdmin):
+    list_display = ("tab", "name", "is_default", "widgets_count", "is_active", "updated_at")
+    list_filter = ("tab__factory", "tab", "is_active")
+    search_fields = ("name", "tab__name")
+    inlines = [FactoryTabWidgetInline]
+
+    def widgets_count(self, obj):
+        return obj.widgets.count()
+
+    widgets_count.short_description = "ویجت‌ها"
+
+
+@admin.register(FactoryTabWidget)
+class FactoryTabWidgetAdmin(admin.ModelAdmin):
+    list_display = ("report", "title", "widget_type", "order", "is_active")
+    list_filter = ("report__tab__factory", "widget_type", "is_active")
+    search_fields = ("title", "report__name")

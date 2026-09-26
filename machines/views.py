@@ -31,6 +31,12 @@ from .models import (
     DeliveredTonnageInput,
     DeliveredTonnageOutput,
     DeliveredTonnage,
+    FactoryTab,
+    FactoryTabInput,
+    FactoryTabOutput,
+    FactoryTabRecord,
+    FactoryTabReport,
+    FactoryTabWidget,
 )
 from .serializers import (
     FactorySerializer,
@@ -63,12 +69,20 @@ from .serializers import (
     DeliveredTonnageInputSerializer,
     DeliveredTonnageOutputSerializer,
     DeliveredTonnageDefinitionSerializer,
+    FactoryTabSerializer,
+    FactoryTabInputSerializer,
+    FactoryTabOutputSerializer,
+    FactoryTabRecordSerializer,
+    FactoryTabRecordWriteSerializer,
+    FactoryTabReportSerializer,
+    FactoryTabWidgetSerializer,
 )
 from .filters import (
     DeviceLogFilter,
     ProductionReportFilter,
     ActualAnalysisFilter,
     DeliveredTonnageFilter,
+    FactoryTabRecordFilter,
 )
 from .reports import RANGE_LABELS
 from .analysis import build_schema, validate_and_compute, validate_formula_for_line
@@ -82,6 +96,11 @@ from .tonnage import (
     build_schema as build_tonnage_schema,
     validate_and_compute as validate_and_compute_tonnage,
     validate_formula_for_tonnage,
+)
+from .factory_tabs import (
+    build_schema as build_tab_schema,
+    validate_and_compute as validate_and_compute_tab,
+    validate_formula_for_tab,
 )
 from accounts.services import get_user_factory, log_activity
 from accounts.permissions import HasPermission, require_permission, user_has_permission
@@ -227,6 +246,8 @@ class FactoryDetailViewSet(viewsets.ReadOnlyModelViewSet):
             "lines__tonnage_definition__outputs",
             "factory_analysis_definition__inputs",
             "factory_analysis_definition__outputs",
+            "report_tabs__inputs",
+            "report_tabs__outputs",
         )
         factory = get_user_factory(self.request.user)
         if factory is not None:
@@ -1705,3 +1726,507 @@ def formula_validate_tonnage_view(request):
     line = _get_scoped_line(request, line_id)
     errors = validate_formula_for_tonnage(line, expression)
     return Response({"ok": not errors, "errors": errors})
+
+
+# ═══════════════════ تب‌های داینامیک کارخانه ═══════════════════
+
+
+def _get_scoped_tab(request, tab_id):
+    try:
+        tab = FactoryTab.objects.select_related("factory").get(pk=tab_id)
+    except FactoryTab.DoesNotExist:
+        raise Http404
+    scope = get_user_factory(request.user)
+    if scope is not None and scope.id != tab.factory_id:
+        raise Http404
+    return tab
+
+
+class FactoryTabViewSet(viewsets.ModelViewSet):
+    serializer_class = FactoryTabSerializer
+    pagination_class = None
+    required_permission = "factory-tabs.view"
+    action_permissions = {
+        "create": "factory-tabs.manage",
+        "update": "factory-tabs.manage",
+        "partial_update": "factory-tabs.manage",
+        "destroy": "factory-tabs.manage",
+    }
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+
+    def get_queryset(self):
+        qs = FactoryTab.objects.select_related("factory").prefetch_related(
+            "inputs", "outputs"
+        )
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(factory=factory)
+        factory_q = self.request.query_params.get("factory")
+        if factory_q:
+            qs = qs.filter(factory_id=factory_q)
+        active = self.request.query_params.get("active")
+        if active == "1":
+            qs = qs.filter(is_active=True)
+        elif active == "0":
+            qs = qs.filter(is_active=False)
+        return qs.order_by("factory_id", "order", "id")
+
+    def perform_create(self, serializer):
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            serializer.save(factory=factory)
+        else:
+            serializer.save()
+        log_activity(
+            self.request.user, "create", "تب کارخانه",
+            f"{serializer.instance.factory.name} - {serializer.instance.name}",
+            self.request, factory=serializer.instance.factory,
+        )
+
+    def perform_update(self, serializer):
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            serializer.save(factory=factory)
+        else:
+            serializer.save()
+        log_activity(
+            self.request.user, "update", "تب کارخانه",
+            f"{serializer.instance.factory.name} - {serializer.instance.name}",
+            self.request, factory=serializer.instance.factory,
+        )
+
+    def perform_destroy(self, instance):
+        log_activity(
+            self.request.user, "delete", "تب کارخانه",
+            f"{instance.factory.name} - {instance.name}",
+            self.request, factory=instance.factory,
+        )
+        instance.delete()
+
+
+class FactoryTabRecordViewSet(viewsets.ModelViewSet):
+    serializer_class = FactoryTabRecordSerializer
+    filterset_class = FactoryTabRecordFilter
+    pagination_class = StandardPagination
+    required_permission = "factory-tabs.view"
+    action_permissions = {
+        "create": "factory-tabs.create",
+        "update": "factory-tabs.edit",
+        "partial_update": "factory-tabs.edit",
+        "destroy": "factory-tabs.delete",
+    }
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return FactoryTabRecordWriteSerializer
+        return FactoryTabRecordSerializer
+
+    def get_queryset(self):
+        qs = FactoryTabRecord.objects.select_related(
+            "tab__factory", "line__factory", "contractor"
+        )
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(tab__factory=factory)
+        return qs
+
+    def _make_record(self, request):
+        data = request.data
+        tab_id = data.get("tab") or data.get("tab_id")
+        if isinstance(tab_id, dict):
+            tab_id = tab_id.get("id")
+        if not tab_id:
+            raise ValueError("تب (tab) الزامی است.")
+        tab = _get_scoped_tab(request, tab_id)
+
+        line = None
+        line_id = data.get("line_id") or data.get("line")
+        if isinstance(line_id, dict):
+            line_id = line_id.get("id")
+        if line_id:
+            line = _get_scoped_line(request, line_id)
+            if line.factory_id != tab.factory_id:
+                raise ValueError("خط تولید باید متعلق به کارخانه‌ی همین تب باشد.")
+        elif tab.require_line:
+            raise ValueError("انتخاب خط تولید برای این تب الزامی است.")
+
+        from datetime import datetime
+
+        raw_from = data.get("date_from") or data.get("date")
+        raw_to = data.get("date_to") or data.get("date")
+        if not raw_from or not raw_to:
+            raise ValueError("تاریخ شروع و پایان (بازه) الزامی است.")
+        try:
+            date_from = datetime.strptime(str(raw_from), "%Y-%m-%d").date()
+            date_to = datetime.strptime(str(raw_to), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("فرمت تاریخ باید YYYY-MM-DD باشد.")
+        if date_to < date_from:
+            raise ValueError("تاریخ پایان بازه نمی‌تواند قبل از شروع باشد.")
+
+        hour = None
+        if tab.record_type == "daily":
+            raw_hour = data.get("hour")
+            if not raw_hour:
+                raise ValueError("ساعت ثبت برای تب روزانه الزامی است.")
+            try:
+                hour = datetime.strptime(str(raw_hour)[:5], "%H:%M").time()
+            except ValueError:
+                raise ValueError("فرمت ساعت باید HH:MM باشد.")
+            date_from = date_to = date_from
+
+        contractor = None
+        contractor_id = data.get("contractor_id") or data.get("contractor")
+        if isinstance(contractor_id, dict):
+            contractor_id = contractor_id.get("id")
+        if contractor_id:
+            contractor = Contractor.objects.filter(
+                pk=contractor_id, factory=tab.factory_id
+            ).first()
+            if contractor is None:
+                raise ValueError(
+                    "پیمانکار انتخاب‌شده متعلق به کارخانه‌ی همین تب نیست."
+                )
+        elif tab.contractor_required:
+            raise ValueError("انتخاب پیمانکار برای این تب الزامی است.")
+
+        inputs, outputs = validate_and_compute_tab(tab, data)
+        return tab, line, contractor, date_from, date_to, hour, inputs, outputs
+
+    def create(self, request, *args, **kwargs):
+        try:
+            tab, line, contractor, date_from, date_to, hour, inputs, outputs = (
+                self._make_record(request)
+            )
+        except ValueError as e:
+            return _error(e)
+        obj = FactoryTabRecord.objects.create(
+            tab=tab,
+            line=line,
+            contractor=contractor,
+            date_from=date_from,
+            date_to=date_to,
+            hour=hour,
+            inputs=inputs,
+            outputs=outputs,
+            note=request.data.get("note", ""),
+            created_by=request.user if hasattr(request, "user") else None,
+        )
+        log_activity(
+            request.user, "create", "رکورد تب",
+            f"{tab.name} - {date_from} تا {date_to}",
+            request, factory=tab.factory,
+        )
+        return Response(FactoryTabRecordSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            tab, line, contractor, date_from, date_to, hour, inputs, outputs = (
+                self._make_record(request)
+            )
+        except ValueError as e:
+            return _error(e)
+        instance.tab = tab
+        instance.line = line
+        instance.contractor = contractor
+        instance.date_from = date_from
+        instance.date_to = date_to
+        instance.hour = hour
+        instance.inputs = inputs
+        instance.outputs = outputs
+        if request.data.get("note") is not None:
+            instance.note = request.data.get("note", "")
+        instance.save()
+        log_activity(
+            request.user, "update", "رکورد تب",
+            f"{tab.name} - {date_from} تا {date_to}",
+            request, factory=tab.factory,
+        )
+        return Response(FactoryTabRecordSerializer(instance).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        log_activity(
+            self.request.user, "delete", "رکورد تب",
+            f"{instance.tab.name} - {instance.date_from}",
+            self.request, factory=instance.tab.factory,
+        )
+        instance.delete()
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.view")
+def factory_tab_inputs_view(request, tab_id):
+    tab = _get_scoped_tab(request, tab_id)
+    if request.method == "POST":
+        if not user_has_permission(request.user, "factory-tabs.manage"):
+            return _error("شما اجازه‌ی مدیریت تب‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        serializer = FactoryTabInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(tab=tab)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(FactoryTabInputSerializer(tab.inputs.all(), many=True).data)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.manage")
+def factory_tab_input_detail_view(request, tab_id, pk):
+    tab = _get_scoped_tab(request, tab_id)
+    item = FactoryTabInput.objects.filter(tab=tab, pk=pk).first()
+    if item is None:
+        raise Http404
+    if request.method == "DELETE":
+        item.delete()
+        return Response({"detail": "حذف شد."})
+    serializer = FactoryTabInputSerializer(item, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.view")
+def factory_tab_outputs_view(request, tab_id):
+    tab = _get_scoped_tab(request, tab_id)
+    if request.method == "POST":
+        if not user_has_permission(request.user, "factory-tabs.manage"):
+            return _error("شما اجازه‌ی مدیریت تب‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        serializer = FactoryTabOutputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.save(tab=tab)
+            tab.full_clean()
+        except Exception as e:  # noqa: BLE001
+            from django.core.exceptions import ValidationError
+            if isinstance(e, ValidationError):
+                return _error(e)
+            raise
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(FactoryTabOutputSerializer(tab.outputs.all(), many=True).data)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.manage")
+def factory_tab_output_detail_view(request, tab_id, pk):
+    tab = _get_scoped_tab(request, tab_id)
+    item = FactoryTabOutput.objects.filter(tab=tab, pk=pk).first()
+    if item is None:
+        raise Http404
+    if request.method == "DELETE":
+        item.delete()
+        return Response({"detail": "حذف شد."})
+    serializer = FactoryTabOutputSerializer(item, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    try:
+        serializer.save()
+        tab.full_clean()
+    except Exception as e:  # noqa: BLE001
+        from django.core.exceptions import ValidationError
+        if isinstance(e, ValidationError):
+            return _error(e)
+        raise
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.view")
+def factory_tab_schema_view(request, tab_id):
+    tab = _get_scoped_tab(request, tab_id)
+    return Response(build_tab_schema(tab))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.view")
+def formula_validate_tab_view(request):
+    tab_id = request.data.get("tab_id")
+    expression = request.data.get("expression") or ""
+    if not tab_id:
+        return _error("tab_id الزامی است.")
+    tab = _get_scoped_tab(request, tab_id)
+    errors = validate_formula_for_tab(tab, expression)
+    return Response({"ok": not errors, "errors": errors})
+
+
+# ═══════════════════ گزارش‌های تب کارخانه ═══════════════════
+
+
+def _get_scoped_report(request, report_id):
+    try:
+        report = FactoryTabReport.objects.select_related("tab__factory").get(pk=report_id)
+    except FactoryTabReport.DoesNotExist:
+        raise Http404
+    scope = get_user_factory(request.user)
+    if scope is not None and scope.id != report.tab.factory_id:
+        raise Http404
+    return report
+
+
+class FactoryTabReportViewSet(viewsets.ModelViewSet):
+    serializer_class = FactoryTabReportSerializer
+    pagination_class = None
+    required_permission = "factory-tabs.view"
+    action_permissions = {
+        "create": "factory-tabs.manage",
+        "update": "factory-tabs.manage",
+        "partial_update": "factory-tabs.manage",
+        "destroy": "factory-tabs.manage",
+    }
+    permission_classes = [permissions.IsAuthenticated, HasPermission]
+
+    def get_queryset(self):
+        qs = FactoryTabReport.objects.select_related("tab__factory").prefetch_related("widgets")
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            qs = qs.filter(tab__factory=factory)
+        tab_q = self.request.query_params.get("tab")
+        if tab_q:
+            qs = qs.filter(tab_id=tab_q)
+        active = self.request.query_params.get("active")
+        if active == "1":
+            qs = qs.filter(is_active=True)
+        elif active == "0":
+            qs = qs.filter(is_active=False)
+        return qs.order_by("tab_id", "order", "id")
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        tab_id = self.request.data.get("tab") if self.request.data else None
+        if isinstance(tab_id, dict):
+            tab_id = tab_id.get("id")
+        if tab_id and self.action in ("create", "update", "partial_update"):
+            ctx["tab"] = _get_scoped_tab(self.request, tab_id)
+        return ctx
+
+    def perform_create(self, serializer):
+        factory = get_user_factory(self.request.user)
+        if factory is not None:
+            tab = _get_scoped_tab(self.request, serializer.validated_data["tab"].id)
+            serializer.save(tab=tab)
+        else:
+            serializer.save()
+        log_activity(
+            self.request.user, "create", "گزارش تب",
+            f"{serializer.instance.tab.name} - {serializer.instance.name}",
+            self.request, factory=serializer.instance.tab.factory,
+        )
+
+    def perform_update(self, serializer):
+        serializer.save()
+        log_activity(
+            self.request.user, "update", "گزارش تب",
+            f"{serializer.instance.tab.name} - {serializer.instance.name}",
+            self.request, factory=serializer.instance.tab.factory,
+        )
+
+    def perform_destroy(self, instance):
+        log_activity(
+            self.request.user, "delete", "گزارش تب",
+            f"{instance.tab.name} - {instance.name}",
+            self.request, factory=instance.tab.factory,
+        )
+        instance.delete()
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.view")
+def factory_tab_report_widgets_view(request, report_id):
+    report = _get_scoped_report(request, report_id)
+    if request.method == "POST":
+        if not user_has_permission(request.user, "factory-tabs.manage"):
+            return _error("شما اجازه‌ی مدیریت گزارش‌ها را ندارید.", status.HTTP_403_FORBIDDEN)
+        serializer = FactoryTabWidgetSerializer(
+            data=request.data, context={"report": report}
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.save(report=report)
+        except Exception as e:  # noqa: BLE001
+            from django.core.exceptions import ValidationError as _DVE
+            from rest_framework.exceptions import ValidationError as _RVE
+
+            if isinstance(e, (_DVE, _RVE)):
+                return _error(e)
+            raise
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(
+        FactoryTabWidgetSerializer(
+            report.widgets.order_by("order", "id"), many=True
+        ).data
+    )
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.manage")
+def factory_tab_report_widget_detail_view(request, report_id, pk):
+    report = _get_scoped_report(request, report_id)
+    item = FactoryTabWidget.objects.filter(report=report, pk=pk).first()
+    if item is None:
+        raise Http404
+    if request.method == "DELETE":
+        item.delete()
+        return Response({"detail": "حذف شد."})
+    serializer = FactoryTabWidgetSerializer(
+        item, data=request.data, partial=True, context={"report": report}
+    )
+    serializer.is_valid(raise_exception=True)
+    try:
+        serializer.save()
+    except Exception as e:  # noqa: BLE001
+        from django.core.exceptions import ValidationError as _DVE
+        from rest_framework.exceptions import ValidationError as _RVE
+
+        if isinstance(e, (_DVE, _RVE)):
+            return _error(e)
+        raise
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.view")
+def factory_tab_report_run_view(request, report_id):
+    from .tab_reports import REPORT_MAX_RECORDS, WIDGET_TYPES, run_report
+
+    report = _get_scoped_report(request, report_id)
+    tab = report.tab
+    base_qs = FactoryTabRecord.objects.filter(tab=tab)
+    try:
+        payload = run_report(tab, report, base_qs, request.query_params)
+    except ValueError as e:
+        return _error(e)
+    payload["meta"] = {
+        "engine": "tab_reports/1",
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "max_records": REPORT_MAX_RECORDS,
+        "widget_types": sorted(WIDGET_TYPES),
+    }
+    return Response(payload)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@require_permission("factory-tabs.view")
+def factory_tab_report_types_view(request):
+    from .tab_reports import AGG_STATS, ALLOWED_REPORT_FILTERS, GROUP_BYS, WIDGET_TYPES
+
+    return Response(
+        {
+            "widget_types": sorted(WIDGET_TYPES),
+            "widget_labels": {k: v["label"] for k, v in WIDGET_TYPES.items()},
+            "aggregations": list(AGG_STATS),
+            "group_bys": list(GROUP_BYS),
+            "filters": list(ALLOWED_REPORT_FILTERS),
+        }
+    )

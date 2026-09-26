@@ -4,6 +4,7 @@ from .models import (
     ProductionReport,
     ActualAnalysis,
     DeliveredTonnage,
+    FactoryTabRecord,
 )
 
 
@@ -56,3 +57,23 @@ class DeliveredTonnageFilter(django_filters.FilterSet):
     class Meta:
         model = DeliveredTonnage
         fields = ["line", "lines", "contractor", "date"]
+
+
+class FactoryTabRecordFilter(django_filters.FilterSet):
+    date_from = django_filters.DateFilter(method="filter_overlap_start")
+    date_to = django_filters.DateFilter(method="filter_overlap_end")
+    lines = django_filters.BaseInFilter(field_name="line", lookup_expr="in")
+
+    class Meta:
+        model = FactoryTabRecord
+        fields = ["tab", "line", "lines", "contractor"]
+
+    def filter_overlap_start(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.filter(date_to__gte=value)
+
+    def filter_overlap_end(self, queryset, name, value):
+        if value is None:
+            return queryset
+        return queryset.filter(date_from__lte=value)
