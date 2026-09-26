@@ -8,8 +8,10 @@ import { EmptyState, Loading } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import { api } from '../api/client'
 import { getShifts, createShift, updateShift, deleteShift } from '../api/shifts'
+import TabDefinitionPanel from '../components/factoryTabs/TabDefinitionPanel'
+import ReportBuilderPanel from '../components/factoryTabs/ReportBuilderPanel'
 
-type Tab = 'factories' | 'lines' | 'shifts' | 'org' | 'attrs'
+type Tab = 'factories' | 'lines' | 'shifts' | 'org' | 'attrs' | 'tabs'
 type FactoryRow = { id: number; name: string; address: string }
 type LineRow = { id: number; factory: number; name: string; description: string; line_type: string; template: number }
 type ContractorRow = { id: number; factory: number; name: string; contact_name: string; phone: string; is_active: boolean }
@@ -44,6 +46,7 @@ export default function Settings() {
             ['shifts', 'شیفت هر خط', Clock],
             ['org', 'پیمانکار / علت خرابی', Users],
             ['attrs', 'ویژگی و الگو', Wrench],
+            ['tabs', 'تب‌ها و گزارش‌ها', Layers],
           ] as const).map(([k, label, Icon]) => (
             <button key={k} onClick={() => setTab(k as Tab)} className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-bold ${tab === k ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900' : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
               <Icon className="h-4 w-4" /> {label}
@@ -56,6 +59,7 @@ export default function Settings() {
       {tab === 'shifts' && <ShiftsTab factories={factories} canManage={canManage} notify={notify} />}
       {tab === 'org' && <OrgTab factories={factories} canManage={canContractor} canManageSettings={canManage} notify={notify} selectedFactory={selectedFactory} />}
       {tab === 'attrs' && <AttrsTab canManage={canManage} notify={notify} />}
+      {tab === 'tabs' && <TabsSettingsTab notify={notify} reload={reload} />}
     </div>
   )
 }
@@ -220,6 +224,37 @@ function AttrsTab({ canManage, notify }: any) {
       {tab2 === 'dtpl' && <SimpleCrud url="/device-templates/" canManage={canManage} notify={notify} cols={[{ k: 'name', label: 'نام' }, { k: 'description', label: 'توضیحات' }]} />}
       {tab2 === 'ltpl' && <SimpleCrud url="/production-line-templates/" canManage={canManage} notify={notify} cols={[{ k: 'name', label: 'نام' }, { k: 'description', label: 'توضیحات' }]} />}
       <p className="mt-3 text-xs text-slate-400">تخصیص ویژگی‌ها به الگوها از پنل ادمین Django قابل تنظیم است — ponytail: در صورت نیاز فیلد available_attributes به همین CRUD اضافه می‌شود.</p>
+    </div>
+  )
+}
+
+function TabsSettingsTab({ notify, reload }: any) {
+  const { selectedFactory } = useFactory()
+  const tabs = useMemo(() => (selectedFactory?.report_tabs ?? []).filter((t: any) => t.is_active), [selectedFactory])
+  const [tabId, setTabId] = useState<string>('')
+  useEffect(() => {
+    setTabId((prev) => {
+      if (prev && tabs.some((t: any) => String(t.id) === prev)) return prev
+      return tabs[0] ? String(tabs[0].id) : ''
+    })
+  }, [tabs, selectedFactory?.id])
+  const brief = tabs.find((t: any) => String(t.id) === tabId) ?? null
+  if (!selectedFactory) return <div className="card p-6 text-center text-sm text-slate-400">ابتدا یک کارخانه را از نوار بالا انتخاب کنید.</div>
+  return (
+    <div className="space-y-5">
+      <div className="card flex flex-wrap items-end gap-3 p-4">
+        <div className="min-w-[200px] flex-1">
+          <label className="label">تب کارخانه «{selectedFactory.name}»</label>
+          <select className="input" value={tabId} onChange={(e) => setTabId(e.target.value)}>
+            <option value="">تب جدید...</option>
+            {tabs.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        {brief && <a className="btn-ghost" href={`/factory-tabs/${brief.id}`}>باز کردن صفحه تب</a>}
+        <button className="btn-ghost" onClick={() => { setTabId(''); reload() }}>تازه‌سازی لیست</button>
+      </div>
+      <TabDefinitionPanel initialTabId={tabId} hideSelector onTabIdChange={setTabId} />
+      <ReportBuilderPanel tab={brief} />
     </div>
   )
 }

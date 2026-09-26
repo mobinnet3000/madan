@@ -63,6 +63,7 @@ export interface Factory {
     inputs: FactoryAnalysisInputDef[]
     outputs: FactoryAnalysisOutputDef[]
   } | null
+  report_tabs?: FactoryTabBrief[]
 }
 
 export interface DeviceLog {
@@ -379,4 +380,212 @@ export interface DeliveredTonnageFilters {
   date?: string
   date_from?: string
   date_to?: string
+}
+
+// ── تب‌های کارخانه (داینامیک) ──
+// پاسخ API برای ورودی/خروجی تب هم‌شکل FactoryTabInput/FactoryTabOutput است.
+// فرم ثبت رکورد از «schema» استفاده می‌کند که «type» به‌جای «input_type» دارد.
+export interface FactoryTabInputDef {
+  id: number
+  key: string
+  name: string
+  input_type: 'number' | 'text' | 'select'
+  options?: string[]
+  unit: string
+  required: boolean
+  order: number
+}
+
+export interface FactoryTabOutputDef {
+  id: number
+  key: string
+  name: string
+  unit: string
+  formula: string
+  order: number
+}
+
+export interface FactoryTabInputSchema {
+  id: number
+  key: string
+  name: string
+  type: 'number' | 'text' | 'select'
+  options: string[]
+  required: boolean
+  unit: string
+}
+
+export interface FactoryTabOutputSchema {
+  id: number
+  key: string
+  name: string
+  unit: string
+}
+
+export type FactoryTabRecordType = 'range' | 'daily'
+
+export interface FactoryTabBrief {
+  id: number
+  key: string
+  name: string
+  description: string
+  record_type: FactoryTabRecordType
+  require_line: boolean
+  contractor_required: boolean
+  order: number
+  is_active: boolean
+  inputs: FactoryTabInputDef[]
+  outputs: FactoryTabOutputDef[]
+}
+
+export interface FactoryTabFull extends FactoryTabBrief {
+  factory: number
+  created_at: string
+  updated_at: string
+}
+
+export interface FactoryTabSchema {
+  tab: {
+    id: number
+    key: string
+    name: string
+    record_type: FactoryTabRecordType
+    require_line: boolean
+  }
+  contractor: { required: boolean; options: ContractorOpt[] }
+  lines: { id: number; name: string }[]
+  inputs: FactoryTabInputSchema[]
+  outputs: FactoryTabOutputSchema[]
+  defined: boolean
+}
+
+export interface FactoryTabRecord {
+  id: number
+  tab: FactoryTabBrief
+  line: { id: number; name: string; factory: { id: number; name: string } } | null
+  contractor: ContractorOpt | null
+  date_from: string
+  date_to: string
+  date_from_jalali?: string
+  date_to_jalali?: string
+  hour: string | null
+  inputs: Record<string, number | string>
+  outputs: Record<string, number>
+  note: string
+  created_by: number | null
+  created_at: string
+}
+
+export interface FactoryTabRecordPayload {
+  tab: number
+  line_id?: number | null
+  contractor_id?: number | null
+  date_from: string
+  date_to: string
+  hour?: string | null
+  inputs: Record<string, number | string>
+  note?: string
+}
+
+export interface FactoryTabRecordFilters {
+  tab?: number
+  line?: number
+  lines?: string
+  contractor?: number
+  date_from?: string
+  date_to?: string
+}
+
+// ── گزارش‌های تب کارخانه ──
+export interface FactoryTabReportMetric {
+  key: string
+  label: string
+  formula: string
+  unit: string
+}
+
+export interface FactoryTabReport {
+  id: number
+  tab: number
+  name: string
+  description: string
+  is_default: boolean
+  order: number
+  is_active: boolean
+  filters: string[]
+  metrics: FactoryTabReportMetric[]
+  widgets?: FactoryTabWidget[]
+  created_at: string
+  updated_at: string
+}
+
+export type FactoryTabWidgetType = 'kpi' | 'stat_table' | 'group_table' | 'chart'
+
+export interface FactoryTabWidget {
+  id: number
+  widget_type: FactoryTabWidgetType
+  title: string
+  order: number
+  is_active: boolean
+  config: Record<string, unknown>
+}
+
+export interface FactoryTabReportPayload {
+  tab: number
+  name: string
+  description?: string
+  is_default?: boolean
+  order?: number
+  is_active?: boolean
+  filters?: string[]
+  metrics?: FactoryTabReportMetric[]
+}
+
+export interface ReportKpiCard {
+  label: string
+  value: number | null
+  sub: Record<string, number | null>
+}
+
+export interface ReportWidgetData {
+  cards?: ReportKpiCard[]
+  columns?: string[]
+  rows?: Record<string, unknown>[]
+  total?: Record<string, unknown> | null
+  chart?: 'bar' | 'line' | 'pie'
+  value_label?: string
+  points?: { x: string; label: string; value: number | null }[]
+}
+
+export interface ReportWidgetResult {
+  id: number
+  type: FactoryTabWidgetType
+  title: string
+  data?: ReportWidgetData
+  error?: string
+}
+
+export interface ReportMetricResult {
+  key: string
+  label: string
+  unit: string
+  value: number | null
+  error?: string | null
+}
+
+export interface FactoryTabReportRun {
+  report: { id: number; name: string; tab: { id: number; key: string; name: string } }
+  filters_applied: Record<string, string>
+  record_count: number
+  metrics: ReportMetricResult[]
+  widgets: ReportWidgetResult[]
+  meta: { engine: string; generated_at: string; max_records: number; widget_types: string[] }
+}
+
+export interface FactoryTabReportTypes {
+  widget_types: string[]
+  widget_labels: Record<string, string>
+  aggregations: string[]
+  group_bys: string[]
+  filters: string[]
 }

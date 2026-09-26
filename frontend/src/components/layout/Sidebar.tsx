@@ -2,10 +2,11 @@ import { NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Workflow, ClipboardList, FlaskConical,
-  FileBarChart, History, Mountain, X, Users, Gauge, Truck, Settings,
+  FileBarChart, History, Mountain, X, Users, Gauge, Truck, Settings, Layers,
 } from 'lucide-react'
 import { classNames } from '../../utils'
 import { useAuth } from '../../store/AuthContext'
+import { useFactory } from '../../store/FactoryContext'
 import { ROLE_BADGE, ROLE_LABELS, hasPerm } from '../../constants'
 
 const navItems: { to: string; label: string; icon: any; end: boolean; perm?: string }[] = [
@@ -23,8 +24,26 @@ const navItems: { to: string; label: string; icon: any; end: boolean; perm?: str
 
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth()
+  const { selectedFactory } = useFactory()
   const perms = user?.permissions
-  const items = navItems.filter((it) => !it.perm || hasPerm(perms, it.perm))
+  const baseItems = navItems.filter((it) => !it.perm || hasPerm(perms, it.perm))
+  const factoryTabs = (selectedFactory?.report_tabs ?? []).filter((t) => t.is_active)
+  const canFactoryTabs = hasPerm(perms, 'factory-tabs.view')
+  const productionIdx = baseItems.findIndex((it) => it.to === '/production')
+  const items = (() => {
+    if (!factoryTabs.length || !canFactoryTabs) return baseItems
+    if (productionIdx < 0) return baseItems
+    const before = baseItems.slice(0, productionIdx + 1)
+    const tabItems = factoryTabs.map((t) => ({
+      to: `/factory-tabs/${t.id}`,
+      label: t.name,
+      icon: Layers as any,
+      end: true as const,
+      perm: 'factory-tabs.view' as string,
+    }))
+    const after = baseItems.slice(productionIdx + 1)
+    return [...before, ...tabItems, ...after]
+  })()
 
   const content = (
     <aside className="flex h-full w-64 flex-col border-l border-white/5" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' }}>
