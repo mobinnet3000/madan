@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useFactory } from '../../store/FactoryContext'
 import JalaliDateInput from '../ui/JalaliDateInput'
-import { getFactoryTabSchema } from '../../api/factoryTabs'
+import { getFactoryTabSchema, getFactoryTabRecords } from '../../api/factoryTabs'
+import { formatDate } from '../../utils'
 import type { FactoryTabInputSchema, FactoryTabRecord, FactoryTabSchema } from '../../types'
 
 export type TabFormState = {
@@ -14,6 +15,7 @@ export type TabFormState = {
   hour: string
   note: string
   values: Record<string, string>
+  linked_records: Record<string, number | ''>
 }
 
 export function TabRecordForm({ form, setForm, editing, fixedTab }: {
@@ -26,6 +28,7 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
   const [schema, setSchema] = useState<FactoryTabSchema | null>(null)
   const [loadingSchema, setLoadingSchema] = useState(false)
 
+  const [linkedOptions, setLinkedOptions] = useState<Record<string, FactoryTabRecord[]>>({})
   const set = (k: keyof TabFormState, v: string) => setForm((prev) => ({ ...prev, [k]: v }))
 
   useEffect(() => {
@@ -43,10 +46,17 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
             const v = editing.inputs?.[inp.key]
             if (v !== undefined && v !== null && v !== '') seed[inp.key] = String(v)
           })
-          setForm((prev) => ({ ...prev, values: seed }))
+          const lr = (editing as unknown as { linked_records?: Record<string, number> }).linked_records ?? {}
+          setForm((prev) => ({ ...prev, values: seed, linked_records: { ...(prev.linked_records ?? {}), ...lr } }))
         } else {
           setForm((prev) => ({ ...prev, values: {} }))
         }
+        const tabs = (s as unknown as { cross_tabs?: { id: number; norm_key: string }[] }).cross_tabs ?? []
+        tabs.forEach((t) => {
+          getFactoryTabRecords({ tab: t.id } as never, 1, 20)
+            .then((r) => setLinkedOptions((p) => ({ ...p, [t.norm_key]: r.results })))
+            .catch(() => {})
+        })
       })
       .catch(() => setSchema(null))
       .finally(() => setLoadingSchema(false))
@@ -135,6 +145,29 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
           </div>
         </fieldset>
       )}
+
+      {schema && (schema as unknown as { cross_tabs?: { id:number; key:string; norm_key:string; name:string }[] }).cross_tabs?.length ? (
+        <fieldset className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-900/30 dark:bg-amber-950/20">
+          <legend className="rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">رکوردهای مرجع بین‌تبی (اختیاری)</legend>
+          <p className="mb-2 text-[11px] text-amber-700 dark:text-amber-300/80">اگر فرمول خروجی این تب به تب دیگری ارجاع می‌دهد، می‌توانید «رکورد خاص» آن تب را انتخاب کنید. خالی = میانگین هم‌بازه/هم‌خط (رفتار قبلی).</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {((schema as unknown as { cross_tabs: { id:number; key:string; norm_key:string; name:string }[] }).cross_tabs ?? []).map((t) => (
+              <div key={t.norm_key}>
+                <label className="label">{t.name} <span className="font-mono text-[10px] text-ink-400">({t.key} → {t.norm_key})</span></label>
+                <select className="input" value={String(form.linked_records?.[t.norm_key] ?? '')} onChange={(e) => {
+                  const v = e.target.value ? Number(e.target.value) : ''
+                  setForm((prev) => ({ ...prev, linked_records: { ...(prev.linked_records ?? {}), [t.norm_key]: v as number | '' } as Record<string, number | ''> }))
+                }}>
+                  <option value="">میانگین هم‌بازه (خودکار)</option>
+                  {(linkedOptions[t.norm_key] ?? []).map((r) => (
+                    <option key={r.id} value={r.id}>{formatDate(r.date_from)}{r.date_to !== r.date_from ? ` تا ${formatDate(r.date_to)}` : ''}{r.hour ? ` ${String(r.hour).slice(0,5)}` : ''} · {r.line?.name ?? 'بدون خط'}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
 
       {schema && schema.outputs.length > 0 && (
         <div className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-3 dark:border-brand-900/50 dark:bg-brand-950/20">

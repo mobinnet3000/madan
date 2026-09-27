@@ -542,6 +542,12 @@ class FactoryTabRecord(models.Model):
     inputs = models.JSONField(default=dict, blank=True, verbose_name="مقادیر ورودی")
     outputs = models.JSONField(default=dict, blank=True, verbose_name="خروجی‌های محاسبه‌شده")
     note = models.TextField(blank=True, verbose_name="توضیحات / ملاحظات")
+    linked_records = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="رکوردهای مرجع بین‌تبی",
+        help_text='نگاشت کلید تب (زیرخط‌دار) به شناسه رکورد، مثلا {"mega_tonnage": 123} — خالی یعنی میانگین هم‌بازه',
+    )
     created_by = models.ForeignKey(
         "auth.User",
         on_delete=models.SET_NULL,

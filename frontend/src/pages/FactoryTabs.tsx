@@ -30,7 +30,7 @@ import type { ExportFormat } from '../utils/exports'
 import { addReportHistoryEntry } from '../features/reportHistory'
 import { buildTabReportPdf } from '../templates/pdf/reports/tabReport'
 
-const emptyForm: TabFormState = { tab: '', line: '', contractor: '', date_from: todayISO(), date_to: todayISO(), hour: '', note: '', values: {} }
+const emptyForm: TabFormState = { tab: '', line: '', contractor: '', date_from: todayISO(), date_to: todayISO(), hour: '', note: '', values: {}, linked_records: {} }
 
 export default function FactoryTabs() {
   const { tabId: routeTabId } = useParams<{ tabId: string }>()
@@ -133,6 +133,7 @@ export default function FactoryTabs() {
       hour: (p.hour || '').slice(0, 5),
       note: p.note || '',
       values: {},
+      linked_records: { ...(p.linked_records ?? {}) },
     })
     setModalOpen(true)
   }
@@ -148,6 +149,10 @@ export default function FactoryTabs() {
       const v = (raw ?? '').trim()
       if (v !== '') inputs[k] = isNaN(Number(v)) ? v : Number(v)
     })
+    const linked_records: Record<string, number> = {}
+    Object.entries(form.linked_records ?? {}).forEach(([k, v]) => {
+      if (v !== '' && v != null && Number.isFinite(Number(v))) linked_records[k] = Number(v)
+    })
     const payload: FactoryTabRecordPayload = {
       tab: selectedTab.id,
       line_id: form.line ? Number(form.line) : null,
@@ -155,6 +160,7 @@ export default function FactoryTabs() {
       date_from: form.date_from,
       date_to: form.date_to,
       inputs,
+      linked_records: Object.keys(linked_records).length ? linked_records : undefined,
       note: form.note,
     }
     if (selectedTab.record_type === 'daily') payload.hour = form.hour
@@ -425,6 +431,13 @@ export default function FactoryTabs() {
                                   </span>
                                 ))}
                               </div>
+                              {p.linked_records_detail?.length ? (
+                                <div className="mt-1.5 flex flex-wrap gap-1 text-[11px] text-amber-700 dark:text-amber-300">
+                                  {p.linked_records_detail.map((d) => (
+                                    <span key={d.tab_key} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 dark:border-amber-800 dark:bg-amber-950/30">{d.tab_name}: {formatDate(d.date_from!)}#{d.record_id}</span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-center gap-1">

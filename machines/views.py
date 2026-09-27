@@ -719,17 +719,26 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
         elif tab.contractor_required:
             raise ValueError("انتخاب پیمانکار برای این تب الزامی است.")
 
-        from .factory_tabs import build_cross_context, validate_and_compute as _vtc
+        from .factory_tabs import (
+            build_cross_context,
+            validate_linked_records as _validate_linked,
+        )
+        from .factory_tabs import validate_and_compute as _vtc
 
-        cross_ctx = build_cross_context(tab, date_from, date_to, line)
+        raw_linked = request.data.get("linked_records")
+        if raw_linked is None:
+            raw_linked = request.data.get("linked")
+        linked_records = _validate_linked(tab, raw_linked)
+        cross_ctx = build_cross_context(
+            tab, date_from, date_to, line, linked_records=linked_records
+        )
         inputs, outputs = _vtc(tab, data, cross_ctx=cross_ctx)
-        return tab, line, contractor, date_from, date_to, hour, inputs, outputs
+        return tab, line, contractor, date_from, date_to, hour, inputs, outputs, linked_records
 
     def create(self, request, *args, **kwargs):
         try:
-            tab, line, contractor, date_from, date_to, hour, inputs, outputs = (
-                self._make_record(request)
-            )
+            (tab, line, contractor, date_from, date_to, hour, inputs, outputs,
+             linked_records) = self._make_record(request)
         except ValueError as e:
             return _error(e)
         obj = FactoryTabRecord.objects.create(
@@ -741,6 +750,7 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
             hour=hour,
             inputs=inputs,
             outputs=outputs,
+            linked_records=linked_records,
             note=request.data.get("note", ""),
             created_by=request.user if hasattr(request, "user") else None,
         )
@@ -754,9 +764,8 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         try:
-            tab, line, contractor, date_from, date_to, hour, inputs, outputs = (
-                self._make_record(request)
-            )
+            (tab, line, contractor, date_from, date_to, hour, inputs, outputs,
+             linked_records) = self._make_record(request)
         except ValueError as e:
             return _error(e)
         instance.tab = tab
@@ -767,6 +776,7 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
         instance.hour = hour
         instance.inputs = inputs
         instance.outputs = outputs
+        instance.linked_records = linked_records
         if request.data.get("note") is not None:
             instance.note = request.data.get("note", "")
         instance.save()

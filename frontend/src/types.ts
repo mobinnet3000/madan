@@ -269,6 +269,7 @@ export interface FactoryTabSchema {
   lines: { id: number; name: string }[]
   inputs: FactoryTabInputSchema[]
   outputs: FactoryTabOutputSchema[]
+  cross_tabs?: { id: number; key: string; norm_key: string; name: string; record_type: string }[]
   defined: boolean
 }
 
@@ -285,6 +286,8 @@ export interface FactoryTabRecord {
   inputs: Record<string, number | string>
   outputs: Record<string, number>
   note: string
+  linked_records?: Record<string, number>
+  linked_records_detail?: { tab_key: string; record_id: number; tab_name: string; line_name: string | null; date_from: string | null; date_to: string | null; hour: string | null; inputs: Record<string, unknown>; outputs: Record<string, unknown> }[]
   created_by: number | null
   created_at: string
 }
@@ -297,6 +300,7 @@ export interface FactoryTabRecordPayload {
   date_to: string
   hour?: string | null
   inputs: Record<string, number | string>
+  linked_records?: Record<string, number>
   note?: string
 }
 

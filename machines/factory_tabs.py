@@ -209,6 +209,16 @@ def build_schema(tab):
             "record_type": tab.record_type,
             "require_line": tab.require_line,
         },
+        "cross_tabs": [
+            {
+                "id": o.id,
+                "key": o.key,
+                "norm_key": norm_tab_key(o.key),
+                "name": o.name,
+                "record_type": o.record_type,
+            }
+            for o in other_tabs(tab).order_by("order", "id")
+        ],
         "contractor": {
             "required": bool(tab.contractor_required),
             "options": [
@@ -292,18 +302,46 @@ def validate_and_compute(tab, payload, cross_ctx=None):
     return cleaned, outputs
 
 
-def build_cross_context(tab, date_from=None, date_to=None, line=None):
-    """مقادیر ارجاع بین‌تبی برای یک رکورد: آخرین/میانگین رکوردهای هم‌بازه.
+def build_cross_context(tab, date_from=None, date_to=None, line=None, linked_records=None):
+    """مقادیر ارجاع بین‌تبی برای یک رکورد.
 
-    برای هر فیلد عددی هر تب دیگرِ همان کارخانه، در بازه‌ی تاریخی رکورد
-    (و در صورت وجود، همان خط) میانگین آن مقدار برگردانده می‌شود.
+    اگر linked_records شامل {norm_key: record_id} باشد، مقدار دقیق همان رکورد
+    (با چک کارخانه/تب) برگردانده می‌شود. در غیر این صورت میانگین رکوردهای
+    هم‌بازه/هم‌خط (سازگار با رفتار قبلی).
+
+    میانگین فقط وقتی محاسبه می‌شود که کاربر رکورد خاصی انتخاب نکرده باشد.
+    اگر میانگینی هم یافت نشود، کلیدی در ctx گذاشته نمی‌شود تا فرمول خطای
+    صریح «متغیر وجود ندارد» بدهد.
     """
     from .models import FactoryTabRecord
 
     if not tab.pk or tab.factory_id is None:
         return {}
     ctx = {}
+    linked_records = linked_records or {}
+    tab_map = other_tab_map(tab)
     for other in other_tabs(tab):
+        prefix = norm_tab_key(other.key)
+        linked_id = linked_records.get(prefix)
+        if linked_id is not None:
+            try:
+                linked_id = int(linked_id)
+            except (TypeError, ValueError):
+                linked_id = None
+        if linked_id is not None:
+            expected_tab = tab_map.get(prefix)
+            rec = FactoryTabRecord.objects.filter(pk=linked_id).first()
+            if rec is None or rec.tab_id != (expected_tab.id if expected_tab else other.id):
+                continue
+            fields = {i.key: "in" for i in other.inputs.filter(input_type="number")}
+            for o in other.outputs.all():
+                fields[o.key] = "out"
+            for key, src in fields.items():
+                bucket = rec.outputs if src == "out" else rec.inputs
+                v = (bucket or {}).get(key)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    ctx[f"{prefix}.{key}"] = float(v)
+            continue
         qs = FactoryTabRecord.objects.filter(tab=other)
         if date_from:
             qs = qs.filter(date_to__gte=date_from)
@@ -315,7 +353,6 @@ def build_cross_context(tab, date_from=None, date_to=None, line=None):
         records = list(qs)
         if not records:
             continue
-        prefix = norm_tab_key(other.key)
         fields = {i.key: "in" for i in other.inputs.filter(input_type="number")}
         for o in other.outputs.all():
             fields[o.key] = "out"
@@ -329,6 +366,37 @@ def build_cross_context(tab, date_from=None, date_to=None, line=None):
             if vals:
                 ctx[f"{prefix}.{key}"] = sum(vals) / len(vals)
     return ctx
+
+
+def validate_linked_records(tab, linked_records):
+    """اعتبارسنجی نگاشت {norm_key: record_id}."""
+    if not linked_records:
+        return {}
+    if not isinstance(linked_records, dict):
+        raise ValueError("linked_records باید یک شی (نگاشت تب→شناسه رکورد) باشد.")
+    from .models import FactoryTabRecord
+
+    norm_map = other_tab_map(tab)
+    cleaned: dict[str, int] = {}
+    for raw_key, raw_id in linked_records.items():
+        key = str(raw_key).strip().replace("-", "_")
+        if not key:
+            continue
+        if key not in norm_map:
+            raise ValueError(f"کلید تب «{raw_key}» در این کارخانه یافت نشد.")
+        try:
+            rid = int(raw_id)
+        except (TypeError, ValueError):
+            raise ValueError(f"شناسه رکورد برای «{raw_key}» باید عدد باشد.")
+        rec = FactoryTabRecord.objects.filter(pk=rid).select_related("tab").first()
+        if rec is None:
+            raise ValueError(f"رکورد {rid} برای تب «{raw_key}» یافت نشد.")
+        if rec.tab_id != norm_map[key].id:
+            raise ValueError(f"رکورد {rid} متعلق به تب «{raw_key}» نیست.")
+        if rec.tab.factory_id != tab.factory_id:
+            raise ValueError(f"رکورد {rid} متعلق به همین کارخانه نیست.")
+        cleaned[key] = rid
+    return cleaned
 
 
 def _compute_outputs(tab, env):
@@ -345,13 +413,25 @@ def _compute_outputs(tab, env):
     order = _topo_sort(
         [o.key for o in output_defs], deps_by_key={o.key: deps(o) for o in output_defs}
     )
+    cross_names = set(cross_tab_refs(tab).keys())
     results = {}
     for key in order:
         o = by_key[key]
         try:
             value = evaluate(o.formula, env)
         except FormulaError as e:
-            raise ValueError(f"خطا در محاسبه‌ی خروجی «{o.name}»: {e}")
+            msg = str(e)
+            # پیام واضح‌تر برای ارجاع بین‌تبی خالی
+            if "وجود ندارد" in msg:
+                try:
+                    needed = set(variables(o.formula))
+                except Exception:
+                    needed = set()
+                cross_needed = sorted(needed & cross_names)
+                if cross_needed:
+                    hint = "، ".join(cross_needed)
+                    msg += f" — برای «{hint}» یا رکورد خاص همان تب را انتخاب کنید یا بازه‌ای بگذارید که در تب مقصد رکورد داشته باشد (میانگین هم‌بازه فعلاً خالی است)."
+            raise ValueError(f"خطا در محاسبه‌ی خروجی «{o.name}»: {msg}")
         results[key] = round(float(value), 6)
         env[key] = results[key]
     return results

@@ -514,13 +514,15 @@ class FactoryTabRecordSerializer(serializers.ModelSerializer):
     contractor = ContractorSerializer(read_only=True)
     date_from_jalali = serializers.SerializerMethodField()
     date_to_jalali = serializers.SerializerMethodField()
+    linked_records_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = FactoryTabRecord
         fields = [
             "id", "tab", "line", "contractor",
             "date_from", "date_to", "date_from_jalali", "date_to_jalali",
-            "hour", "inputs", "outputs", "note", "created_by", "created_at",
+            "hour", "inputs", "outputs", "note", "linked_records",
+            "linked_records_detail", "created_by", "created_at",
         ]
         read_only_fields = ["created_by", "created_at", "outputs"]
 
@@ -530,11 +532,32 @@ class FactoryTabRecordSerializer(serializers.ModelSerializer):
     def get_date_to_jalali(self, obj):
         return jalali_and_weekday(obj.date_to)["date_jalali"]
 
+    def get_linked_records_detail(self, obj):
+        from .models import FactoryTabRecord as _Record
+
+        detail = []
+        for key, rid in (obj.linked_records or {}).items():
+            rec = _Record.objects.filter(pk=rid).select_related("tab", "line", "contractor").first()
+            if rec is None:
+                continue
+            detail.append({
+                "tab_key": key,
+                "record_id": rec.id,
+                "tab_name": rec.tab.name if rec.tab_id else "",
+                "line_name": rec.line.name if rec.line_id else None,
+                "date_from": rec.date_from.isoformat() if rec.date_from else None,
+                "date_to": rec.date_to.isoformat() if rec.date_to else None,
+                "hour": rec.hour.strftime("%H:%M") if rec.hour else None,
+                "inputs": rec.inputs or {},
+                "outputs": rec.outputs or {},
+            })
+        return detail
+
 
 class FactoryTabRecordWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = FactoryTabRecord
-        fields = ["tab", "line", "contractor", "date_from", "date_to", "hour", "inputs", "note"]
+        fields = ["tab", "line", "contractor", "date_from", "date_to", "hour", "inputs", "note", "linked_records"]
 
 
 class FactoryTabWidgetSerializer(serializers.ModelSerializer):
