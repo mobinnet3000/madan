@@ -9,7 +9,7 @@ from .tab_reports import (
     run_report,
     validate_widget_config,
 )
-from .test_analysis import FactoryFixtureMixin
+from .test_fixtures import FactoryFixtureMixin
 from .test_factory_tabs import _tab_payload
 
 

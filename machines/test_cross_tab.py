@@ -13,7 +13,7 @@ from .factory_tabs import (
     validate_output_formula_for_tab,
 )
 from .tab_reports import _field_refs, _split_ref, run_report, validate_widget_config
-from .test_analysis import FactoryFixtureMixin
+from .test_fixtures import FactoryFixtureMixin
 from .models import FactoryTab, FactoryTabInput, FactoryTabOutput, FactoryTabRecord
 
 

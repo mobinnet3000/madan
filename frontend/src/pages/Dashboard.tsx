@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell, AreaChart, Area } from 'recharts'
-import { Boxes, Gauge, TrendingUp, ArrowLeft, ClipboardList, Layers, Clock, Cpu, Truck, FlaskConical, AlertTriangle, Wrench, Activity, Users, Calendar, Zap, ShieldCheck, ArrowUpRight, ArrowDownRight, Sparkles, Factory, Mountain, Eye } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell, AreaChart, Area, Line } from 'recharts'
+import { Gauge, TrendingUp, ArrowLeft, ClipboardList, Layers, Clock, Cpu, AlertTriangle, Wrench, Users, Calendar, ShieldCheck, ArrowUpRight, ArrowDownRight, Sparkles, Factory, Mountain, Eye, LayoutGrid, Workflow, FileBarChart } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { getLogsPage } from '../api/logs'
-import { getProductionReports } from '../api/production'
-import { getActualAnalyses } from '../api/actual'
-import { getDeliveredTonnages } from '../api/tonnage'
-import type { DeviceLog } from '../types'
+import { getFactoryTabRecords } from '../api/factoryTabs'
+import type { DeviceLog, FactoryTabBrief } from '../types'
 import { formatDate, formatNumber, formatPercent, rangeBounds, formatHours } from '../utils'
+import { tabIcon, tabColorBg } from '../utils/tabIcons'
 import { Loading, ErrorBanner, EmptyState } from '../components/ui/States'
 import LineFlow from '../components/LineFlow'
+
+interface TabStat {
+  tab: FactoryTabBrief
+  count: number
+  lastDate: string | null
+}
 
 function Kpi({ icon, label, value, sub, accent, to, trend, trendUp }: { icon: React.ReactNode; label: string; value: string; sub?: string; accent: string; to?: string; trend?: string; trendUp?: boolean }) {
   const Card = (
@@ -38,7 +43,7 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<DeviceLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [counts, setCounts] = useState({ reports: 0, analyses: 0, tonnages: 0 })
+  const [tabStats, setTabStats] = useState<TabStat[]>([])
 
   const lineIds = useMemo(() => (selectedFactory?.lines ?? []).map(l => l.id), [selectedFactory])
 
@@ -52,12 +57,15 @@ export default function Dashboard() {
       const pages = Math.max(1, Math.ceil(first.count / 80))
       for (let p = 2; p <= pages; p++) { const nxt = await getLogsPage({ date_from: from }, p, 80); merged = merged.concat(nxt.results) }
       setLogs(merged.filter(l => lineIds.includes(l.line.id)))
-      const [rep, ana, ton] = await Promise.all([
-        getProductionReports({} as any, 1, 1).catch(() => ({ count: 0 } as any)),
-        getActualAnalyses({} as any, 1, 1).catch(() => ({ count: 0 } as any)),
-        getDeliveredTonnages({} as any, 1, 1).catch(() => ({ count: 0 } as any)),
-      ])
-      setCounts({ reports: rep.count ?? 0, analyses: ana.count ?? 0, tonnages: ton.count ?? 0 })
+      const tabs = selectedFactory.report_tabs ?? []
+      const stats = await Promise.all(tabs.map(async t => {
+        try {
+          const r = await getFactoryTabRecords({ tab: t.id }, 1, 1)
+          const last = r.results[0]
+          return { tab: t, count: r.count ?? 0, lastDate: last?.date_from ?? null }
+        } catch { return { tab: t, count: 0, lastDate: null } }
+      }))
+      setTabStats(stats)
       setError(null)
     } catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }, [selectedFactory, lineIds])
@@ -115,15 +123,17 @@ export default function Dashboard() {
     return Math.round((stats.avgEff * 0.6 + stats.avail * 0.4) * 10) / 10
   }, [stats.avgEff, stats.avail])
 
+  const totalTabRecords = useMemo(() => tabStats.reduce((s, t) => s + t.count, 0), [tabStats])
+  const emptyTabs = useMemo(() => tabStats.filter(t => t.count === 0), [tabStats])
+
   const alerts = useMemo(() => {
     if (!selectedFactory) return []
     const a: { label: string; to: string; tone: string }[] = []
-    if (!selectedFactory.factory_analysis_definition) a.push({ label: 'تعریف ریز عملکرد ثبت نشده', to: '/production', tone: 'amber' })
-    const missingTonnage = (selectedFactory.lines ?? []).filter(l => !l.tonnage_definition).length
-    if (missingTonnage) a.push({ label: `${missingTonnage} خط بدون تعریف تناژ`, to: '/tonnage', tone: 'cyan' })
+    if (!(selectedFactory.report_tabs ?? []).length) a.push({ label: 'تب گزارشی ثبت نشده — از تنظیمات تب بسازید', to: '/settings', tone: 'amber' })
+    if (emptyTabs.length) a.push({ label: `${emptyTabs.length} تب بدون رکورد — هنوز داده‌ای ثبت نشده`, to: emptyTabs[0].tab.is_active ? `/factory-tabs/${emptyTabs[0].tab.id}` : '/settings', tone: 'cyan' })
     if (stats.downtime > stats.runtime * 0.2 && stats.logCount > 5) a.push({ label: 'توقف بالا — نیاز به بررسی', to: '/logs', tone: 'rose' })
     return a
-  }, [selectedFactory, stats.downtime, stats.runtime, stats.logCount])
+  }, [selectedFactory, emptyTabs, stats.downtime, stats.runtime, stats.logCount])
 
   if (fLoading) return <Loading />
   if (!selectedFactory) return <EmptyState title="کارخانه‌ای یافت نشد" description="ابتدا از تنظیمات کارخانه بسازید." />
@@ -201,25 +211,65 @@ export default function Dashboard() {
         <Kpi icon={<Layers className="h-6 w-6 text-white" />} label="خطوط فرآوری" value={formatNumber(stats.lines)} sub={`${formatNumber(stats.devices)} دستگاه · ${formatNumber(stats.contractors)} پیمانکار`} accent="bg-slate-900 text-white dark:bg-white dark:text-slate-900" to="/lines" trend={`${stats.lines} خط`} trendUp />
         <Kpi icon={<ClipboardList className="h-6 w-6 text-white" />} label="توقفات ۳۰ روز" value={formatNumber(stats.logCount)} sub={`توقف ${formatHours(stats.downtime)} · کارکرد ${formatHours(stats.runtime)}`} accent="bg-rose-600 text-white" to="/logs" trend={stats.downtime > 0 ? formatHours(stats.downtime) : '—'} trendUp={false} />
         <Kpi icon={<Gauge className="h-6 w-6 text-white" />} label="راندمان · دسترسی" value={stats.avgEff != null ? `${Math.round(stats.avgEff * 10) / 10}٪` : '—'} sub={stats.avail != null ? `دسترسی ${Math.round(stats.avail * 10) / 10}٪` : '—'} accent="bg-emerald-600 text-white" to="/reports" trend={health != null ? `${health}٪ سلامت` : undefined} trendUp={(health ?? 0) >= 70} />
-        <Kpi icon={<TrendingUp className="h-6 w-6 text-white" />} label="تناژ ورودی → محصول" value={`${formatNumber(Math.round(stats.totalFeed))} → ${formatNumber(Math.round(stats.totalProduct))}`} sub={`باطله ${formatNumber(Math.round(Math.max(0, stats.totalFeed - stats.totalProduct)))} تن`} accent="bg-sky-600 text-white" to="/tonnage" />
+        <Kpi icon={<TrendingUp className="h-6 w-6 text-white" />} label="تناژ ورودی → محصول" value={`${formatNumber(Math.round(stats.totalFeed))} → ${formatNumber(Math.round(stats.totalProduct))}`} sub={`باطله ${formatNumber(Math.round(Math.max(0, stats.totalFeed - stats.totalProduct)))} تن`} accent="bg-sky-600 text-white" to="/logs" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi icon={<FlaskConical className="h-5 w-5 text-white" />} label="ریز عملکرد" value={formatNumber(counts.reports)} sub="ریز عملکرد خطوط تولید" accent="bg-violet-600 text-white" to="/production" />
-        <Kpi icon={<Activity className="h-5 w-5 text-white" />} label="عملکرد بخش" value={formatNumber(counts.analyses)} sub="Actual Analysis" accent="bg-amber-500 text-white" to="/performance" />
-        <Kpi icon={<Truck className="h-5 w-5 text-white" />} label="تناژ تحویلی" value={formatNumber(counts.tonnages)} sub="سوابق تناژ" accent="bg-cyan-600 text-white" to="/tonnage" />
-        <Kpi icon={<Wrench className="h-5 w-5 text-white" />} label="تعریف‌ها" value={`${(selectedFactory.lines ?? []).filter(l => l.tonnage_definition).length}/${stats.lines}`} sub="خطوط با تعریف تناژ" accent="bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900" to="/settings" />
+        <Kpi icon={<LayoutGrid className="h-5 w-5 text-white" />} label="تب‌های گزارشی" value={formatNumber(tabStats.length)} sub={`${formatNumber(totalTabRecords)} رکورد در همه تب‌ها`} accent="bg-violet-600 text-white" to="/settings" />
+        <Kpi icon={<ClipboardList className="h-5 w-5 text-white" />} label="رکوردهای تب" value={formatNumber(totalTabRecords)} sub={`${formatNumber(emptyTabs.length)} تب خالی`} accent="bg-amber-500 text-white" to={tabStats[0] ? `/factory-tabs/${tabStats[0].tab.id}` : '/settings'} />
+        <Kpi icon={<TrendingUp className="h-5 w-5 text-white" />} label="آخرین رکورد" value={tabStats.find(t => t.lastDate) ? formatDate(tabStats.find(t => t.lastDate)!.lastDate!) : '—'} sub={tabStats.find(t => t.lastDate)?.tab.name ?? 'بدون رکورد'} accent="bg-cyan-600 text-white" to={tabStats.find(t => t.lastDate) ? `/factory-tabs/${tabStats.find(t => t.lastDate)!.tab.id}` : '/settings'} />
+        <Kpi icon={<Wrench className="h-5 w-5 text-white" />} label="پیمانکار فعال" value={formatNumber((selectedFactory.contractors ?? []).filter(c => c.is_active !== false).length)} sub={`${formatNumber(stats.contractors)} پیمانکار کل`} accent="bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-900" to="/settings" />
       </div>
+
+      {tabStats.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-black tracking-tight text-slate-900 dark:text-slate-100"><LayoutGrid className="h-4 w-4 text-violet-500" /> تب‌های گزارشی کارخانه</h2>
+            <Link to="/settings" className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-black dark:bg-white dark:text-slate-900">مدیریت تب‌ها <ArrowLeft className="h-3 w-3" /></Link>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {tabStats.map(({ tab, count, lastDate }) => {
+              const Icon = tabIcon(tab.icon)
+              return (
+                <Link key={tab.id} to={`/factory-tabs/${tab.id}`} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tabColorBg(tab.color)}`}><Icon className="h-5 w-5" /></div>
+                    <span className="chip text-[10px]">{tab.record_type === 'daily' ? 'روزانه' : 'بازه‌ای'}</span>
+                  </div>
+                  <div className="mt-3 truncate text-sm font-black text-slate-900 dark:text-white" title={tab.name}>{tab.name}</div>
+                  <div className="mt-1 text-xl font-black tracking-tight text-slate-900 dark:text-white">{formatNumber(count)}<span className="mr-1 text-[11px] font-bold text-slate-400">رکورد</span></div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    {lastDate ? `آخرین ثبت: ${formatDate(lastDate)}` : 'بدون رکورد'}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-slate-400">
+                    {tab.require_line && <span className="chip !px-1.5 !py-0">خط الزامی</span>}
+                    {tab.contractor_required && <span className="chip !px-1.5 !py-0">پیمانکار الزامی</span>}
+                    {count === 0 && <span className="chip !px-1.5 !py-0 text-amber-600">خالی</span>}
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-sm font-black tracking-tight text-slate-900 dark:text-slate-100"><Sparkles className="h-4 w-4 text-orange-500" /> خطوط فرآوری — مسیر تولید</h2>
-          <Link to="/lines" className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-black dark:bg-white dark:text-slate-900"><Eye className="h-3.5 w-3.5" /> همه خطوط <ArrowLeft className="h-3 w-3" /></Link>
+          <Link to="/lines" className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-black dark:bg-white dark:text-slate-900"><Eye className="h-3.5 w-3.5" /> همه خطوط ({formatNumber(stats.lines)}) <ArrowLeft className="h-3 w-3" /></Link>
         </div>
-        {loading ? <div className="card p-6 text-center text-sm text-slate-400">در حال بارگذاری...</div> : (
-          (selectedFactory.lines ?? []).slice(0, 2).map(line => <LineFlow key={line.id} line={line} />)
+        {loading ? <div className="card p-6 text-center text-sm text-slate-400">در حال بارگذاری...</div> : (selectedFactory.lines ?? []).length === 0 ? (
+          <div className="card p-6 text-center text-sm text-slate-400">خطی ثبت نشده — از <Link to="/lines" className="font-bold text-orange-600">مدل‌سازی خطوط</Link> بسازید.</div>
+        ) : (
+          <>
+            {(selectedFactory.lines ?? []).slice(0, 2).map(line => <LineFlow key={line.id} line={line} />)}
+            {(selectedFactory.lines ?? []).length > 2 && (
+              <Link to="/lines" className="flex items-center justify-center gap-1 rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 py-3 text-xs font-bold text-slate-500 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900/40">
+                {formatNumber((selectedFactory.lines ?? []).length - 2)} خط دیگر — مشاهده همه <ArrowLeft className="h-3 w-3" />
+              </Link>
+            )}
+          </>
         )}
-        {selectedFactory.lines.length === 0 && <div className="card p-6 text-center text-sm text-slate-400">خطی ثبت نشده — از مدل‌سازی خطوط بسازید.</div>}
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -300,9 +350,9 @@ export default function Dashboard() {
                 </BarChart>
               </ResponsiveContainer>
               <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/60"><div className="text-[11px] font-bold text-slate-500">تناژ روز</div><div className="text-sm font-black">{formatNumber(counts.tonnages)}</div></div>
-                <div className="rounded-xl bg-violet-50 p-3 text-center dark:bg-violet-950/30"><div className="text-[11px] font-bold text-violet-600">ریز عملکرد</div><div className="text-sm font-black text-violet-700">{formatNumber(counts.reports)}</div></div>
-                <div className="rounded-xl bg-amber-50 p-3 text-center dark:bg-amber-950/30"><div className="text-[11px] font-bold text-amber-600">عملکرد</div><div className="text-sm font-black text-amber-700">{formatNumber(counts.analyses)}</div></div>
+                <div className="rounded-xl bg-slate-50 p-3 text-center dark:bg-slate-800/60"><div className="text-[11px] font-bold text-slate-500">رکورد تب</div><div className="text-sm font-black">{formatNumber(totalTabRecords)}</div></div>
+                <div className="rounded-xl bg-violet-50 p-3 text-center dark:bg-violet-950/30"><div className="text-[11px] font-bold text-violet-600">تب گزارشی</div><div className="text-sm font-black text-violet-700">{formatNumber(tabStats.length)}</div></div>
+                <div className="rounded-xl bg-amber-50 p-3 text-center dark:bg-amber-950/30"><div className="text-[11px] font-bold text-amber-600">تب خالی</div><div className="text-sm font-black text-amber-700">{formatNumber(emptyTabs.length)}</div></div>
               </div>
             </div>
           )}
@@ -314,13 +364,13 @@ export default function Dashboard() {
           <div className="absolute inset-0 bg-gradient-to-br from-rose-50 to-transparent opacity-0 group-hover:opacity-100 transition dark:from-rose-950/20" />
           <div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-600 text-white"><ClipboardList className="h-5 w-5" /></div><div><div className="text-sm font-black text-slate-900 dark:text-white">توقفات خط تولید</div><div className="text-xs text-slate-500">ثبت و گزارش توقفات — شیفت خط‌محور</div></div><ArrowLeft className="mr-auto h-4 w-4 text-slate-400 group-hover:text-slate-900" /></div>
         </Link>
-        <Link to="/production" className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition dark:border-slate-800 dark:bg-slate-900">
+        <Link to="/lines" className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition dark:border-slate-800 dark:bg-slate-900">
           <div className="absolute inset-0 bg-gradient-to-br from-violet-50 to-transparent opacity-0 group-hover:opacity-100 transition dark:from-violet-950/20" />
-          <div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white"><FlaskConical className="h-5 w-5" /></div><div><div className="text-sm font-black text-slate-900 dark:text-white">ریز عملکرد</div><div className="text-xs text-slate-500">آنالیز کارخانه + فرمول</div></div><ArrowLeft className="mr-auto h-4 w-4 text-slate-400 group-hover:text-slate-900" /></div>
+          <div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white"><Workflow className="h-5 w-5" /></div><div><div className="text-sm font-black text-slate-900 dark:text-white">مدل‌سازی خط فرآوری</div><div className="text-xs text-slate-500">خطوط، دستگاه‌ها و ویژگی‌های فنی</div></div><ArrowLeft className="mr-auto h-4 w-4 text-slate-400 group-hover:text-slate-900" /></div>
         </Link>
-        <Link to="/performance" className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition dark:border-slate-800 dark:bg-slate-900">
+        <Link to="/reports" className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition dark:border-slate-800 dark:bg-slate-900">
           <div className="absolute inset-0 bg-gradient-to-br from-amber-50 to-transparent opacity-0 group-hover:opacity-100 transition dark:from-amber-950/20" />
-          <div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white"><Activity className="h-5 w-5" /></div><div><div className="text-sm font-black text-slate-900 dark:text-white">عملکرد بخش تولید</div><div className="text-xs text-slate-500">Actual Analysis</div></div><ArrowLeft className="mr-auto h-4 w-4 text-slate-400 group-hover:text-slate-900" /></div>
+          <div className="relative flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white"><FileBarChart className="h-5 w-5" /></div><div><div className="text-sm font-black text-slate-900 dark:text-white">گزارش‌ها و خروجی</div><div className="text-xs text-slate-500">گزارش توقفات با خروجی PDF/Excel/CSV</div></div><ArrowLeft className="mr-auto h-4 w-4 text-slate-400 group-hover:text-slate-900" /></div>
         </Link>
       </div>
 

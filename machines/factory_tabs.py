@@ -7,7 +7,26 @@
 """
 
 from .formula import FormulaError, evaluate, variables, validate_expr
-from .analysis import _topo_sort
+
+
+def _topo_sort(keys, deps_by_key):
+    visited = {}
+    order = []
+
+    def visit(key, stack):
+        visited[key] = 1
+        for dep in deps_by_key[key]:
+            if visited.get(dep) == 1:
+                raise ValueError(f"وابستگی دایره‌ای بین خروجی‌ها: {key} -> {dep}")
+            if visited.get(dep) is None:
+                visit(dep, stack + [dep])
+        visited[key] = 2
+        order.append(key)
+
+    for key in keys:
+        if visited.get(key) is None:
+            visit(key, [key])
+    return order
 
 
 def formula_variables_for_tab(tab):

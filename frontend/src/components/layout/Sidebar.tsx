@@ -1,8 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, Workflow, ClipboardList, FlaskConical,
-  FileBarChart, History, Mountain, X, Users, Gauge, Truck, Settings, Layers,
+  LayoutDashboard, Workflow, ClipboardList,
+  FileBarChart, History, Mountain, X, Users, Settings,
 } from 'lucide-react'
 import { classNames } from '../../utils'
 import { useAuth } from '../../store/AuthContext'
@@ -15,9 +15,6 @@ const navItems: { to: string; label: string; icon: any; end: boolean; perm?: str
   { to: '/', label: 'داشبورد', icon: LayoutDashboard, end: true, perm: 'dashboard.view' },
   { to: '/lines', label: 'مدل‌سازی خط فرآوری', icon: Workflow, end: false, perm: 'lines.view' },
   { to: '/logs', label: 'توقفات خط تولید', icon: ClipboardList, end: false, perm: 'logs.view' },
-  { to: '/production', label: 'ریز عملکرد خطوط تولید', icon: FlaskConical, end: false, perm: 'production.view' },
-  { to: '/tonnage', label: 'تناژ تحویلی خطوط تولید', icon: Truck, end: false, perm: 'tonnage.view' },
-  { to: '/performance', label: 'عملکرد بخش تولید', icon: Gauge, end: false, perm: 'analysis.view' },
   { to: '/reports', label: 'گزارش‌ها و خروجی', icon: FileBarChart, end: false, perm: 'reports.view' },
   { to: '/settings', label: 'تنظیمات کارخانه و خط', icon: Settings, end: false, perm: 'settings.view' },
   { to: '/users', label: 'مدیریت کاربران و دسترسی‌ها', icon: Users, end: false, perm: 'users.view' },
@@ -31,11 +28,11 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   const baseItems = navItems.filter((it) => !it.perm || hasPerm(perms, it.perm))
   const factoryTabs = (selectedFactory?.report_tabs ?? []).filter((t) => t.is_active)
   const canFactoryTabs = hasPerm(perms, 'factory-tabs.view')
-  const productionIdx = baseItems.findIndex((it) => it.to === '/production')
+  // تب‌های کارخانه جدا کنار ۳ تب قدیم سابق — هر تب یک آیتم مستقل در سایدبار
   const items = (() => {
     if (!factoryTabs.length || !canFactoryTabs) return baseItems
-    if (productionIdx < 0) return baseItems
-    const before = baseItems.slice(0, productionIdx + 1)
+    const reportsIdx = baseItems.findIndex((it) => it.to === '/reports')
+    const insertAt = reportsIdx >= 0 ? reportsIdx : baseItems.length - 2
     const tabItems = factoryTabs.map((t) => ({
       to: `/factory-tabs/${t.id}`,
       label: t.name,
@@ -43,8 +40,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       end: true as const,
       perm: 'factory-tabs.view' as string,
     }))
-    const after = baseItems.slice(productionIdx + 1)
-    return [...before, ...tabItems, ...after]
+    return [...baseItems.slice(0, insertAt), ...tabItems, ...baseItems.slice(insertAt)]
   })()
 
   const content = (

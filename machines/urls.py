@@ -6,46 +6,15 @@ from .views import (
     DeviceViewSet,
     DeviceLogViewSet,
     FactoryDetailViewSet,
-    ProductionReportViewSet,
     ProductionLineViewSet,
+    ContractorViewSet,
     FailureReasonViewSet,
     AttributeViewSet,
     ProductionLineAttributeViewSet,
     DeviceTemplateViewSet,
     ProductionLineTemplateViewSet,
-    ContractorViewSet,
-    AnalysisTypeDefinitionViewSet,
-    ActualAnalysisViewSet,
-    performance_report_view,
-    report_ranges_view,
     line_attributes_view,
     device_attributes_view,
-    line_analysis_schema_view,
-    line_analysis_positions_view,
-    line_analysis_position_detail_view,
-    line_analysis_definition_view,
-    line_analysis_definition_upsert_view,
-    line_additional_inputs_view,
-    line_additional_input_detail_view,
-    line_outputs_view,
-    line_output_detail_view,
-    production_line_detail_view,
-    formula_validate_view,
-    factory_analysis_definition_view,
-    factory_analysis_inputs_view,
-    factory_analysis_input_detail_view,
-    factory_analysis_outputs_view,
-    factory_analysis_output_detail_view,
-    factory_analysis_schema_view,
-    formula_validate_factory_view,
-    DeliveredTonnageViewSet,
-    tonnage_definition_view,
-    tonnage_inputs_view,
-    tonnage_input_detail_view,
-    tonnage_outputs_view,
-    tonnage_output_detail_view,
-    tonnage_schema_view,
-    formula_validate_tonnage_view,
     FactoryTabViewSet,
     FactoryTabRecordViewSet,
     FactoryTabReportViewSet,
@@ -67,25 +36,13 @@ router.register(r"factories", FactoryViewSet, basename="factories")
 router.register(r"shifts", ShiftViewSet, basename="shifts")
 router.register(r"production-lines", ProductionLineViewSet, basename="production-lines")
 router.register(r"devices", DeviceViewSet, basename="devices")
+router.register(r"contractors", ContractorViewSet, basename="contractors")
 router.register(r"failure-reasons", FailureReasonViewSet, basename="failure-reasons")
 router.register(r"attributes", AttributeViewSet, basename="attributes")
 router.register(r"production-line-attributes", ProductionLineAttributeViewSet, basename="pl-attributes")
 router.register(r"device-templates", DeviceTemplateViewSet, basename="device-templates")
 router.register(r"production-line-templates", ProductionLineTemplateViewSet, basename="pl-templates")
 router.register(r"device-logs", DeviceLogViewSet, basename="device-logs")
-router.register(
-    r"production-reports", ProductionReportViewSet, basename="production-reports"
-)
-router.register(r"contractors", ContractorViewSet, basename="contractors")
-router.register(
-    r"analysis-type-definitions",
-    AnalysisTypeDefinitionViewSet,
-    basename="analysis-type-definitions",
-)
-router.register(r"actual-analyses", ActualAnalysisViewSet, basename="actual-analyses")
-router.register(
-    r"delivered-tonnages", DeliveredTonnageViewSet, basename="delivered-tonnages"
-)
 router.register(r"factory-tabs", FactoryTabViewSet, basename="factory-tabs")
 router.register(r"factory-tab-records", FactoryTabRecordViewSet, basename="factory-tab-records")
 router.register(r"factory-tab-reports", FactoryTabReportViewSet, basename="factory-tab-reports")
@@ -98,10 +55,6 @@ urlpatterns = [
         name="factory-tab-report-types",
     ),
     path("api/", include(router.urls)),
-    path("api/reports/ranges/", report_ranges_view, name="report-ranges"),
-    path(
-        "api/reports/performance/", performance_report_view, name="report-performance"
-    ),
     path(
         "api/lines/<int:uid>/attributes/", line_attributes_view, name="line-attributes"
     ),
@@ -109,133 +62,6 @@ urlpatterns = [
         "api/devices/<int:uid>/attributes/",
         device_attributes_view,
         name="device-attributes",
-    ),
-    # ── سیستم آنالیز داینامیک ──
-    path(
-        "api/production-lines/<int:line_id>/",
-        production_line_detail_view,
-        name="production-line-detail",
-    ),
-    path(
-        "api/formula/validate/",
-        formula_validate_view,
-        name="formula-validate",
-    ),
-    path(
-        "api/formula/validate-factory/",
-        formula_validate_factory_view,
-        name="formula-validate-factory",
-    ),
-    path(
-        "api/factory-analysis-definition/schema/",
-        factory_analysis_schema_view,
-        name="factory-analysis-schema",
-    ),
-    path(
-        "api/factories/<int:factory_id>/analysis-definition/",
-        factory_analysis_definition_view,
-        name="factory-analysis-definition",
-    ),
-    path(
-        "api/factories/<int:factory_id>/analysis-definition/inputs/",
-        factory_analysis_inputs_view,
-        name="factory-analysis-inputs",
-    ),
-    path(
-        "api/factories/<int:factory_id>/analysis-definition/inputs/<int:pk>/",
-        factory_analysis_input_detail_view,
-        name="factory-analysis-input-detail",
-    ),
-    path(
-        "api/factories/<int:factory_id>/analysis-definition/outputs/",
-        factory_analysis_outputs_view,
-        name="factory-analysis-outputs",
-    ),
-    path(
-        "api/factories/<int:factory_id>/analysis-definition/outputs/<int:pk>/",
-        factory_analysis_output_detail_view,
-        name="factory-analysis-output-detail",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/analysis-definition/",
-        line_analysis_schema_view,
-        name="line-analysis-schema",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/analysis-positions/",
-        line_analysis_positions_view,
-        name="line-positions",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/analysis-positions/<int:pk>/",
-        line_analysis_position_detail_view,
-        name="line-position-detail",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/line-analysis-definition/",
-        line_analysis_definition_view,
-        name="line-definition",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/line-analysis-definition/upsert/",
-        line_analysis_definition_upsert_view,
-        name="line-definition-upsert",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/additional-inputs/",
-        line_additional_inputs_view,
-        name="line-add-inputs",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/additional-inputs/<int:pk>/",
-        line_additional_input_detail_view,
-        name="line-add-input-detail",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/outputs/",
-        line_outputs_view,
-        name="line-outputs",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/outputs/<int:pk>/",
-        line_output_detail_view,
-        name="line-output-detail",
-    ),
-    # ── تناژ تحویلی خطوط تولید ──
-    path(
-        "api/tonnage/definition/schema/",
-        tonnage_schema_view,
-        name="tonnage-schema",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/tonnage-definition/",
-        tonnage_definition_view,
-        name="tonnage-definition",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/tonnage-definition/inputs/",
-        tonnage_inputs_view,
-        name="tonnage-inputs",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/tonnage-definition/inputs/<int:pk>/",
-        tonnage_input_detail_view,
-        name="tonnage-input-detail",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/tonnage-definition/outputs/",
-        tonnage_outputs_view,
-        name="tonnage-outputs",
-    ),
-    path(
-        "api/production-lines/<int:line_id>/tonnage-definition/outputs/<int:pk>/",
-        tonnage_output_detail_view,
-        name="tonnage-output-detail",
-    ),
-    path(
-        "api/formula/validate-tonnage/",
-        formula_validate_tonnage_view,
-        name="formula-validate-tonnage",
     ),
     # ── تب‌های داینامیک کارخانه ──
     path(

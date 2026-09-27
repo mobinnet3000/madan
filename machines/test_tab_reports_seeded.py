@@ -3,7 +3,7 @@ from django.test import TestCase
 
 from .models import FactoryTab, FactoryTabRecord, FactoryTabReport
 from .tab_reports import run_report
-from .test_analysis import FactoryFixtureMixin
+from .test_fixtures import FactoryFixtureMixin
 
 
 class SeededReportsRunTests(FactoryFixtureMixin, TestCase):

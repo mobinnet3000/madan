@@ -13,9 +13,6 @@ import Login from './components/layout/Login'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Lines = lazy(() => import('./pages/Lines'))
 const Logs = lazy(() => import('./pages/Logs'))
-const ProductionReports = lazy(() => import('./pages/ProductionReports'))
-const Tonnage = lazy(() => import('./pages/Tonnage'))
-const Performance = lazy(() => import('./pages/Performance'))
 const FactoryTabs = lazy(() => import('./pages/FactoryTabs'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -76,9 +73,6 @@ function AppInner() {
                     <Route path="/" element={<Page><Dashboard /></Page>} />
                     <Route path="/lines" element={<Page><Lines /></Page>} />
                     <Route path="/logs" element={<Page><Logs /></Page>} />
-                    <Route path="/production" element={<Page><ProductionReports /></Page>} />
-                    <Route path="/tonnage" element={<Page><Tonnage /></Page>} />
-                    <Route path="/performance" element={<Page><Performance /></Page>} />
                     <Route path="/factory-tabs/:tabId" element={<Page><FactoryTabs /></Page>} />
                     <Route path="/reports" element={<Page><Reports /></Page>} />
                     <Route path="/settings" element={<Page><Settings /></Page>} />

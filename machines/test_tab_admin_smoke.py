@@ -8,7 +8,7 @@ from machines.models import (
     FactoryTabReport,
 )
 
-from .test_analysis import FactoryFixtureMixin
+from .test_fixtures import FactoryFixtureMixin
 
 
 class TabAdminSmokeTests(FactoryFixtureMixin, TestCase):

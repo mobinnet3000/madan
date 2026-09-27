@@ -78,8 +78,8 @@ def make_report(tab, name, metrics, widgets, filters, is_default=False, order=0,
 
 def seed_tonnage_tab(factory, order=0):
     tab = make_tab(
-        factory, "tonnage-delivery", "تناژ تحویلی روزانه",
-        "تحویل روزانه با ساعت و نوع خودرو.", "daily", True, True,
+        factory, "factory-tonnage", "تناژ تحویلی (جایگزین تب قدیم)",
+        "تحویل روزانه با ساعت و نوع خودرو — جایگزین DeliveredTonnage.", "daily", True, True,
         inputs=[
             {"key": "tonnage", "name": "تناژ تحویلی", "unit": "تن"},
             {"key": "cars", "name": "تعداد کامیون", "unit": "دستگاه"},
@@ -90,7 +90,6 @@ def seed_tonnage_tab(factory, order=0):
         ],
         outputs=[
             {"key": "avg_per_car", "name": "میانگین هر خودرو", "unit": "تن", "formula": "tonnage / cars"},
-            {"key": "total_tonnage", "name": "جمع تناژ تحویلی", "unit": "تن", "formula": "tonnage + 0 * cars"},
         ],
         order=order, icon="truck", color="emerald",
     )
@@ -116,51 +115,50 @@ def seed_tonnage_tab(factory, order=0):
     )
     return tab
 
-
 def seed_performance_tab(factory, order=1):
     tab = make_tab(
-        factory, "line-performance", "ریز عملکرد خط تولید",
-        "عملکرد هر خط در بازه‌های زمانی.", "range", True, True,
+        factory, "factory-performance", "عملکرد بخش تولید (جایگزین تب قدیم)",
+        "عملکرد بخش تولید — جایگزین ActualAnalysis.", "range", True, True,
         inputs=[
-            {"key": "feed_t", "name": "تناژ خوراک", "unit": "تن"},
-            {"key": "product_t", "name": "تناژ محصول", "unit": "تن"},
-            {"key": "waste_t", "name": "تناژ باطله", "unit": "تن"},
             {"key": "feed_fe", "name": "Fe خوراک", "unit": "درصد"},
             {"key": "product_fe", "name": "Fe محصول", "unit": "درصد"},
-            {"key": "grade", "name": "نام گرید", "input_type": "text", "required": False},
+            {"key": "feo", "name": "FeO", "unit": "درصد", "required": False},
+            {"key": "sio2", "name": "SiO₂", "unit": "درصد", "required": False},
         ],
         outputs=[
-            {"key": "recovery", "name": "بازیابی", "unit": "درصد", "formula": "(product_t - waste_t) / (feed_t - waste_t) * 100"},
-            {"key": "grade_out", "name": "عیار", "unit": "درصد", "formula": "max(product_fe, feed_fe)"},
-            {"key": "total_feed", "name": "جمع خوراک", "unit": "تن", "formula": "feed_t + 0 * waste_t"},
+            {"key": "recovery", "name": "بازیابی", "unit": "درصد", "formula": "product_fe / feed_fe * 100"},
+            {"key": "grade_gap", "name": "اختلاف عیار", "unit": "درصد", "formula": "product_fe - feed_fe"},
         ],
-        order=order, icon="flask", color="violet",
+        order=order, icon="gauge", color="amber",
     )
     make_report(
-        tab, "گزارش عملکرد خط",
+        tab, "گزارش عملکرد",
         metrics=[
-            {"key": "recovery", "label": "بازیابی وزنی", "unit": "درصد", "formula": "(in.product_t__sum - in.waste_t__sum) / (in.feed_t__sum - in.waste_t__sum) * 100"},
-            {"key": "avg_grade", "label": "میانگین عیار", "unit": "درصد", "formula": "out.grade_out__avg"},
-            {"key": "t_coverage", "label": "پوشش تناژ", "unit": "تن", "formula": "in.feed_t__sum / record_count"},
+            {"key": "recovery_avg", "label": "میانگین بازیابی", "unit": "درصد", "formula": "out.recovery__avg"},
+            {"key": "gap_avg", "label": "میانگین اختلاف عیار", "unit": "درصد", "formula": "out.grade_gap__avg"},
         ],
         widgets=[
             ("kpi", "شاخص‌ها", {"cards": [
                 {"kind": "count", "label": "تعداد رکورد"},
-                {"kind": "stat", "field": "in.feed_t", "stat": "sum", "label": "جمع خوراک", "sub_stats": ["avg", "max"]},
-                {"kind": "metric", "metric": "recovery", "label": "بازیابی وزنی"},
-                {"kind": "metric", "metric": "avg_grade", "label": "میانگین عیار"},
+                {"kind": "stat", "field": "out.recovery", "stat": "avg", "label": "میانگین بازیابی", "sub_stats": ["min", "max"]},
+                {"kind": "metric", "metric": "gap_avg", "label": "اختلاف عیار"},
             ]}),
             ("stat_table", "آمار پارامترها", {"sources": ["out", "in"], "stats": ["sum", "avg", "min", "max", "count"]}),
-            ("group_table", "به تفکیک خط", {"group_by": "line", "fields": ["in.feed_t", "out.recovery"], "stats": ["sum", "avg"], "sort": "count_desc"}),
-            ("group_table", "به تفکیک پیمانکار", {"group_by": "contractor", "fields": ["in.feed_t"], "stats": ["sum", "avg"], "sort": "value_desc", "sort_field": "in.feed_t", "sort_stat": "sum"}),
-            ("group_table", "هفتگی", {"group_by": "week", "fields": ["in.feed_t"], "stats": ["sum"], "sort": "label_asc", "limit": 12}),
-            ("chart", "روند روزانه", {"chart": "line", "group_by": "date", "value": {"field": "in.feed_t", "stat": "sum"}, "sort": "label_asc", "limit": 30}),
-            ("chart", "ماهانه", {"chart": "bar", "group_by": "month", "value": {"field": "in.feed_t", "stat": "sum"}, "sort": "label_asc", "limit": 12}),
-            ("chart", "سهم خط‌ها", {"chart": "pie", "group_by": "line", "value": {"field": "in.feed_t", "stat": "sum"}, "sort": "value_desc", "limit": 10}),
+            ("group_table", "به تفکیک خط", {"group_by": "line", "fields": ["out.recovery", "in.feed_fe"], "stats": ["avg"], "sort": "count_desc"}),
+            ("group_table", "هفتگی", {"group_by": "week", "fields": ["out.recovery"], "stats": ["avg"], "sort": "label_asc", "limit": 12}),
+            ("chart", "روند روزانه بازیابی", {"chart": "line", "group_by": "date", "value": {"field": "out.recovery", "stat": "avg"}, "sort": "label_asc", "limit": 30}),
+            ("chart", "ماهانه", {"chart": "bar", "group_by": "month", "value": {"field": "out.recovery", "stat": "avg"}, "sort": "label_asc", "limit": 12}),
+            ("chart", "سهم خط‌ها", {"chart": "pie", "group_by": "line", "value": {"field": "out.recovery", "stat": "avg"}, "sort": "value_desc", "limit": 10}),
         ],
         filters=["line", "contractor", "date_from", "date_to"], is_default=True,
     )
     return tab
+
+def seed_tonnage_tab_alias(factory, order):
+    return seed_tonnage_tab(factory, order)
+
+def seed_performance_tab_alias(factory, order):
+    return seed_performance_tab(factory, order)
 
 
 def seed_shift_tab(factory, order=2):

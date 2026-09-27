@@ -3,7 +3,7 @@
 from django.test import TestCase
 
 from .factory_tabs import build_schema, validate_and_compute
-from .test_analysis import FactoryFixtureMixin
+from .test_fixtures import FactoryFixtureMixin
 
 
 def _tab_payload(**over):

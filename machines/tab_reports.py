@@ -8,9 +8,28 @@
 
 from datetime import datetime
 
-from .analysis import _topo_sort
 from .formula import FormulaError, evaluate, validate_expr, variables
 from .jalali import to_jalali
+
+
+def _topo_sort(keys, deps_by_key):
+    visited = {}
+    order = []
+
+    def visit(key, stack):
+        visited[key] = 1
+        for dep in deps_by_key[key]:
+            if visited.get(dep) == 1:
+                raise ValueError(f"وابستگی دایره‌ای بین خروجی‌ها: {key} -> {dep}")
+            if visited.get(dep) is None:
+                visit(dep, stack + [dep])
+        visited[key] = 2
+        order.append(key)
+
+    for key in keys:
+        if visited.get(key) is None:
+            visit(key, [key])
+    return order
 
 ALLOWED_REPORT_FILTERS = ("line", "contractor", "date_from", "date_to")
 REPORT_MAX_RECORDS = 10000
