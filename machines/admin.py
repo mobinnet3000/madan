@@ -1175,8 +1175,8 @@ class FactoryTabOutputInline(admin.StackedInline):
 
 @admin.register(FactoryTab)
 class FactoryTabAdmin(admin.ModelAdmin):
-    list_display = ("factory", "name", "key", "record_type", "reports_link", "inputs_count", "outputs_count", "is_active", "updated_at")
-    list_filter = ("factory", "record_type", "is_active")
+    list_display = ("factory", "name", "key", "icon", "record_type", "reports_link", "inputs_count", "outputs_count", "is_active", "updated_at")
+    list_filter = ("factory", "record_type", "is_active", "icon")
     search_fields = ("name", "key", "factory__name")
 
     class Media:

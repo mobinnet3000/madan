@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Activity } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Activity, Settings2 } from 'lucide-react'
 import TabReportPanel from '../components/factoryTabs/TabReportPanel'
+import TabSettingsPanel, { TabIconBadge } from '../components/factoryTabs/TabSettingsPanel'
+import ReportBuilderPanel from '../components/factoryTabs/ReportBuilderPanel'
 import { TabRecordForm, type TabFormState } from '../components/factoryTabs/TabRecordForm'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
@@ -26,12 +28,13 @@ import { tabOutputLabel } from '../utils/outputLabels'
 import { exportData } from '../utils/exports'
 import type { ExportFormat } from '../utils/exports'
 import { addReportHistoryEntry } from '../features/reportHistory'
+import { buildTabReportPdf } from '../templates/pdf/reports/tabReport'
 
 const emptyForm: TabFormState = { tab: '', line: '', contractor: '', date_from: todayISO(), date_to: todayISO(), hour: '', note: '', values: {} }
 
 export default function FactoryTabs() {
   const { tabId: routeTabId } = useParams<{ tabId: string }>()
-  const { selectedFactory } = useFactory()
+  const { selectedFactory, reload } = useFactory()
   const { user } = useAuth()
   const { notify } = useToast()
   const canCreate = hasPerm(user?.permissions, 'factory-tabs.create')
@@ -47,7 +50,7 @@ export default function FactoryTabs() {
   const activeTabId = selectedTab ? String(selectedTab.id) : ''
   const isDaily = selectedTab?.record_type === 'daily'
 
-  const [tab, setTab] = useState<'records' | 'report'>('records')
+  const [tab, setTab] = useState<'records' | 'report' | 'settings'>('records')
   const [items, setItems] = useState<FactoryTabRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -172,6 +175,15 @@ export default function FactoryTabs() {
 
   const setFilter = (k: keyof FactoryTabRecordFilters, v: string) => { setPage(1); setFilters((prev) => ({ ...prev, [k]: v === '' ? undefined : (v as never) })) }
 
+  const reportParams = useCallback(() => {
+    const params: Record<string, unknown> = {}
+    if (filters.line) params.line = filters.line
+    if (filters.contractor) params.contractor = filters.contractor
+    if (filters.date_from) params.date_from = filters.date_from
+    if (filters.date_to) params.date_to = filters.date_to
+    return params
+  }, [filters])
+
   const handleExport = async (fmt: ExportFormat) => {
     if (!canExport) { notify('شما دسترسی خروجی ندارید', 'error'); return }
     if (!selectedTab) { notify('تبی انتخاب نشده است', 'error'); return }
@@ -199,7 +211,6 @@ export default function FactoryTabs() {
       const outputKeys = Array.from(new Set(allRecords.flatMap(r => Object.keys(r.outputs || {})))).sort((a, b) => a.localeCompare(b, 'fa'))
       const rows: Record<string, string | number>[] = allRecords.map(r => {
         const row: Record<string, string | number> = {
-          'تب': selectedTab.name,
           'تاریخ': isDaily ? formatDate(r.date_from) : `${formatDate(r.date_from)} تا ${formatDate(r.date_to)}`,
           'خط': r.line?.name || '—',
           'پیمانکار': r.contractor?.name || '—',
@@ -212,7 +223,30 @@ export default function FactoryTabs() {
         if (r.note) row['یادداشت'] = r.note.slice(0, 60)
         return row
       })
-      await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt, outputLabelMap: Object.fromEntries(outputKeys.map(k => [k, tabOutputLabel(selectedTab, k)])) })
+
+      if (fmt === 'pdf') {
+        // PDF گزارش‌محور: KPI/نمودار/جدول‌های گزارش اول، جدول رکوردها آخر
+        const { buildPdfHtml } = await import('../utils/pdf/renderer')
+        const { htmlToPdf } = await import('../utils/pdf/printer')
+        let run: FactoryTabReportRun | null = runData
+        if (!run) {
+          try { run = await runFactoryTabReport(Number(reportId), reportParams()) }
+          catch { run = null }
+        }
+        const opts = buildTabReportPdf({
+          title, factoryName: selectedFactory?.name ?? '',
+          factoryAddress: selectedFactory?.address,
+          dateFrom, dateTo, tab: selectedTab, run: run!, detailRows: rows, chips,
+        })
+        htmlToPdf(buildPdfHtml(opts), baseName, { title })
+      } else {
+        await exportData(rows, {
+          fileName: baseName, title, factoryName: selectedFactory?.name ?? '',
+          dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, format: fmt,
+          outputLabelMap: Object.fromEntries(outputKeys.map(k => [k, tabOutputLabel(selectedTab, k)])),
+        })
+      }
+
       addReportHistoryEntry({
         kind: 'general', factoryName: selectedFactory?.name, fileName: `${baseName}.${fmt}`, title, format: fmt,
         recordCount: allRecords.length,
@@ -232,11 +266,12 @@ export default function FactoryTabs() {
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex gap-3">
-            <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:flex"><Layers className="h-5 w-5" /></div>
+            <TabIconBadge icon={selectedTab?.icon} color={selectedTab?.color} className="h-5 w-5" />
             <div>
               <h1 className="flex items-center gap-2 text-[17px] font-extrabold tracking-tight text-slate-900 dark:text-white">{selectedTab?.name ?? 'تب کارخانه'} <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline-flex">{selectedFactory?.name ?? '—'}</span></h1>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Activity className="h-3 w-3" />{formatNumber(totalCount)} رکورد</span>
+                {selectedTab && <span className="rounded-full border border-slate-200 px-2.5 py-1 font-mono text-[11px] text-slate-500 dark:border-slate-700 dark:text-slate-400">{selectedTab.key}</span>}
               </div>
             </div>
           </div>
@@ -278,9 +313,22 @@ export default function FactoryTabs() {
         >
           <BarChart3 className="h-4 w-4" /> گزارش و نمودار
         </button>
+        {hasPerm(user?.permissions, 'factory-tabs.manage') && (
+          <button
+            onClick={() => setTab('settings')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'settings' ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400' : 'text-ink-500 dark:text-slate-400'}`}
+          >
+            <Settings2 className="h-4 w-4" /> تنظیمات تب
+          </button>
+        )}
       </div>
 
-      {!selectedTab ? (
+      {tab === 'settings' && selectedTab ? (
+        <div className="space-y-5">
+          <TabSettingsPanel tabId={selectedTab.id} onChanged={reload} />
+          <ReportBuilderPanel tab={selectedTab} />
+        </div>
+      ) : !selectedTab ? (
         <EmptyState
           icon={<Layers className="h-10 w-10" />}
           title="این تب یافت نشد"

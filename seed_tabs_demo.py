@@ -30,17 +30,19 @@ def compute(tab, payload):
 
 
 def make_tab(factory, key, name, description, record_type, require_line,
-             contractor_required, inputs, outputs, order=0, is_active=True):
+             contractor_required, inputs, outputs, order=0, is_active=True,
+             icon="layers", color="slate"):
     tab, created = FactoryTab.objects.get_or_create(
         factory=factory, key=key,
         defaults=dict(
             name=name, description=description, record_type=record_type,
             require_line=require_line, contractor_required=contractor_required,
-            order=order, is_active=is_active,
+            order=order, is_active=is_active, icon=icon, color=color,
         ),
     )
     if not created:
-        return tab
+        tab.icon, tab.color = icon, color
+        tab.save(update_fields=["icon", "color"])
     for idx, spec in enumerate(inputs):
         FactoryTabInput.objects.create(
             tab=tab, key=spec["key"], name=spec["name"],
@@ -90,7 +92,7 @@ def seed_tonnage_tab(factory, order=0):
             {"key": "avg_per_car", "name": "میانگین هر خودرو", "unit": "تن", "formula": "tonnage / cars"},
             {"key": "total_tonnage", "name": "جمع تناژ تحویلی", "unit": "تن", "formula": "tonnage + 0 * cars"},
         ],
-        order=order,
+        order=order, icon="truck", color="emerald",
     )
     make_report(
         tab, "گزارش تحویل روزانه",
@@ -132,7 +134,7 @@ def seed_performance_tab(factory, order=1):
             {"key": "grade_out", "name": "عیار", "unit": "درصد", "formula": "max(product_fe, feed_fe)"},
             {"key": "total_feed", "name": "جمع خوراک", "unit": "تن", "formula": "feed_t + 0 * waste_t"},
         ],
-        order=order,
+        order=order, icon="flask", color="violet",
     )
     make_report(
         tab, "گزارش عملکرد خط",
@@ -174,7 +176,7 @@ def seed_shift_tab(factory, order=2):
         outputs=[
             {"key": "downtime_ratio", "name": "نسبت توقف", "formula": "downtime_h / 8 * 100"},
         ],
-        order=order,
+        order=order, icon="clock", color="amber",
     )
     make_report(
         tab, "گزارش توقف شیفت‌ها",

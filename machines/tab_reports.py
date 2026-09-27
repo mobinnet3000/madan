@@ -26,12 +26,20 @@ def normalize_report_filters(filters):
 
 
 def _field_refs(tab):
-    """ارجاع‌های عددی tab: {"out.key": label, "in.key": label}."""
+    """ارجاع‌های عددی: {"out.key"/"in.key": label} + ارجاع‌های بین‌تبی."""
+    from .factory_tabs import cross_tab_refs, norm_tab_key, other_tabs
+
     refs = {}
     for o in tab.outputs.all():
         refs[f"out.{o.key}"] = o.name
     for i in tab.inputs.filter(input_type="number"):
         refs[f"in.{i.key}"] = i.name
+    for other in other_tabs(tab):
+        prefix = norm_tab_key(other.key)
+        for i in other.inputs.filter(input_type="number"):
+            refs[f"{prefix}.in.{i.key}"] = f"{other.name} › {i.name}"
+        for o in other.outputs.all():
+            refs[f"{prefix}.out.{o.key}"] = f"{other.name} › {o.name}"
     return refs
 
 
@@ -40,11 +48,21 @@ def _cat_refs(tab):
     return {f"in.{i.key}": i.name for i in tab.inputs.filter(input_type__in=("select", "text"))}
 
 
+def _is_cross(ref):
+    return len((ref or "").split(".")) == 3
+
+
 def _split_ref(ref):
-    source, _, key = (ref or "").partition(".")
-    if source not in ("out", "in") or not key or "." in key:
+    parts = (ref or "").split(".")
+    if len(parts) == 3:
+        if parts[1] not in ("out", "in"):
+            raise ValueError(
+                f"ارجاع فیلد «{ref}» نامعتبر است؛ قالب بین‌تبی: key.out.key یا key.in.key"
+            )
+        return parts[1], f"{parts[0]}.{parts[2]}"
+    if len(parts) != 2 or parts[0] not in ("out", "in") or not parts[1]:
         raise ValueError(f"ارجاع فیلد «{ref}» نامعتبر است؛ قالب درست: out.key یا in.key")
-    return source, key
+    return parts[0], parts[1]
 
 
 def validate_report_metrics(tab, metrics):
@@ -198,6 +216,10 @@ def _group_key_label(row, group_by, field=None):
 
 
 def _ref_values(rows, ref):
+    parts = (ref or "").split(".")
+    if len(parts) == 3:
+        tab_key, source, key = parts
+        return [row.get(f"cross.{tab_key}.{key}") for row in rows]
     source, key = _split_ref(ref)
     bucket = "out" if source == "out" else "in_num"
     return [row[bucket].get(key) for row in rows]
@@ -278,6 +300,16 @@ def _run_kpi(rows, ctx, config):
 
 # ── ویجت: جدول آماری هر فیلد ──
 
+def _ref_source(ref):
+    """منبع یک ارجاع (out/in) برای چک sources — بین‌تبی هم پشتیبانی می‌شود."""
+    parts = (ref or "").split(".")
+    if len(parts) == 3:
+        if parts[1] not in ("out", "in"):
+            raise ValueError(f"ارجاع فیلد «{ref}» نامعتبر است.")
+        return parts[1]
+    return parts[0]
+
+
 def _validate_stat_table(tab, config, metric_keys=None):
     numeric = _field_refs(tab)
     sources = config.get("sources", ["out"])
@@ -285,12 +317,12 @@ def _validate_stat_table(tab, config, metric_keys=None):
         raise ValueError("sources باید زیرمجموعه‌ای از [out, in] باشد.")
     fields = config.get("fields")
     if fields is None:
-        fields = [r for r in numeric if r.split(".")[0] in sources]
+        fields = [r for r in numeric if _ref_source(r) in sources]
     if not isinstance(fields, list) or not fields or len(fields) > 50:
         raise ValueError("fields باید لیستی از ۱ تا ۵۰ ارجاع فیلد باشد.")
     for f in fields:
         _check_ref(f, numeric)
-        if f.split(".")[0] not in sources:
+        if _ref_source(f) not in sources:
             raise ValueError(f"فیلد «{f}» با sources انتخابی سازگار نیست.")
     return {"sources": sources, "fields": fields, "stats": _check_stats(config.get("stats"))}
 

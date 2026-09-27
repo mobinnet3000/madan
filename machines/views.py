@@ -1,7 +1,7 @@
 from django.http import FileResponse, Http404
 from datetime import datetime
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -99,6 +99,7 @@ from .tonnage import (
 )
 from .factory_tabs import (
     build_schema as build_tab_schema,
+    formula_variables_for_tab,
     validate_and_compute as validate_and_compute_tab,
     validate_formula_for_tab,
 )
@@ -1771,6 +1772,12 @@ class FactoryTabViewSet(viewsets.ModelViewSet):
             qs = qs.filter(is_active=False)
         return qs.order_by("factory_id", "order", "id")
 
+    @action(detail=True, methods=["get"], url_path="formula-vars")
+    def formula_vars(self, request, pk=None):
+        """متغیرهای مجاز فرمول این تب (شامل ارجاع ورودی/خروجی تب‌های دیگر)."""
+        tab = self.get_object()
+        return Response(formula_variables_for_tab(tab))
+
     def perform_create(self, serializer):
         factory = get_user_factory(self.request.user)
         if factory is not None:
@@ -1891,7 +1898,10 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
         elif tab.contractor_required:
             raise ValueError("انتخاب پیمانکار برای این تب الزامی است.")
 
-        inputs, outputs = validate_and_compute_tab(tab, data)
+        from .factory_tabs import build_cross_context, validate_and_compute as _vtc
+
+        cross_ctx = build_cross_context(tab, date_from, date_to, line)
+        inputs, outputs = _vtc(tab, data, cross_ctx=cross_ctx)
         return tab, line, contractor, date_from, date_to, hour, inputs, outputs
 
     def create(self, request, *args, **kwargs):

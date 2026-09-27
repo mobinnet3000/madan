@@ -30,6 +30,16 @@ export function getFactoryTabSchema(tabId: number) {
   return api.get<FactoryTabSchema>(`/factory-tabs/${tabId}/schema/`).then((r) => r.data)
 }
 
+export interface TabFormulaVar {
+  var: string
+  label: string
+  group: string
+}
+
+export function getFactoryTabFormulaVars(tabId: number) {
+  return api.get<TabFormulaVar[]>(`/factory-tabs/${tabId}/formula-vars/`).then((r) => r.data)
+}
+
 export function validateTabFormula(tabId: number, expression: string) {
   return api
     .post<{ ok: boolean; errors: string[] }>('/formula/validate-tab/', {

@@ -424,11 +424,35 @@ export interface FactoryTabOutputSchema {
 
 export type FactoryTabRecordType = 'range' | 'daily'
 
+export type FactoryTabIcon =
+  | 'layers' | 'truck' | 'gauge' | 'flask' | 'activity' | 'bar-chart' | 'trending-up'
+  | 'box' | 'clipboard-list' | 'database' | 'filter' | 'layers-3' | 'pie-chart'
+  | 'line-chart' | 'package' | 'factory' | 'scale' | 'clock' | 'map-pin' | 'cpu'
+  | 'wrench' | 'zap' | 'droplet' | 'thermometer' | 'settings' | 'target' | 'grid'
+
+export type FactoryTabColor =
+  | 'slate' | 'orange' | 'emerald' | 'violet' | 'sky' | 'rose' | 'teal' | 'amber'
+  | 'indigo' | 'lime' | 'cyan' | 'fuchsia'
+
+export const FACTORY_TAB_ICONS: FactoryTabIcon[] = [
+  'layers', 'truck', 'gauge', 'flask', 'activity', 'bar-chart', 'trending-up',
+  'box', 'clipboard-list', 'database', 'filter', 'layers-3', 'pie-chart',
+  'line-chart', 'package', 'factory', 'scale', 'clock', 'map-pin', 'cpu',
+  'wrench', 'zap', 'droplet', 'thermometer', 'settings', 'target', 'grid',
+]
+
+export const FACTORY_TAB_COLORS: FactoryTabColor[] = [
+  'slate', 'orange', 'emerald', 'violet', 'sky', 'rose', 'teal', 'amber',
+  'indigo', 'lime', 'cyan', 'fuchsia',
+]
+
 export interface FactoryTabBrief {
   id: number
   key: string
   name: string
   description: string
+  icon: FactoryTabIcon
+  color: FactoryTabColor
   record_type: FactoryTabRecordType
   require_line: boolean
   contractor_required: boolean

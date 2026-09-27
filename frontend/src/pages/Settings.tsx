@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Settings as SettingsIcon, Building2, Workflow, Clock, Users, AlertTriangle, Wrench, Layers, Plus, Pencil, Trash2, Save, X, ShieldCheck } from 'lucide-react'
+import { Settings as SettingsIcon, Building2, Workflow, Clock, Users, Wrench, Layers, Plus, Pencil, Trash2, Save, ShieldCheck, Settings2 } from 'lucide-react'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { hasPerm } from '../constants'
@@ -8,8 +8,8 @@ import { EmptyState, Loading } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import { api } from '../api/client'
 import { getShifts, createShift, updateShift, deleteShift } from '../api/shifts'
-import TabDefinitionPanel from '../components/factoryTabs/TabDefinitionPanel'
-import ReportBuilderPanel from '../components/factoryTabs/ReportBuilderPanel'
+import { createFactoryTab } from '../api/factoryTabs'
+import { TabIconBadge } from '../components/factoryTabs/TabSettingsPanel'
 
 type Tab = 'factories' | 'lines' | 'shifts' | 'org' | 'attrs' | 'tabs'
 type FactoryRow = { id: number; name: string; address: string }
@@ -230,31 +230,71 @@ function AttrsTab({ canManage, notify }: any) {
 
 function TabsSettingsTab({ notify, reload }: any) {
   const { selectedFactory } = useFactory()
+  const { user } = useAuth()
   const tabs = useMemo(() => (selectedFactory?.report_tabs ?? []).filter((t: any) => t.is_active), [selectedFactory])
-  const [tabId, setTabId] = useState<string>('')
-  useEffect(() => {
-    setTabId((prev) => {
-      if (prev && tabs.some((t: any) => String(t.id) === prev)) return prev
-      return tabs[0] ? String(tabs[0].id) : ''
-    })
-  }, [tabs, selectedFactory?.id])
-  const brief = tabs.find((t: any) => String(t.id) === tabId) ?? null
-  if (!selectedFactory) return <div className="card p-6 text-center text-sm text-slate-400">ابتدا یک کارخانه را از نوار بالا انتخاب کنید.</div>
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ name: '', key: '', description: '' })
+
+  const canManage = hasPerm(user?.permissions, 'factory-tabs.manage')
+
+  if (!selectedFactory) {
+    return <div className="card p-6 text-center text-sm text-slate-400">ابتدا یک کارخانه را از نوار بالا انتخاب کنید.</div>
+  }
+
+  const submit = async () => {
+    if (!form.name.trim()) { notify('نام تب الزامی است', 'error'); return }
+    if (!form.key.trim()) { notify('کلید تب الزامی است', 'error'); return }
+    setSaving(true)
+    try {
+      await createFactoryTab({
+        factory: selectedFactory.id,
+        key: form.key.trim(), name: form.name.trim(), description: form.description,
+        record_type: 'range', require_line: true, contractor_required: false,
+        order: tabs.length, is_active: true, inputs: [], outputs: [],
+      })
+      notify('تب ساخته شد؛ تنظیمات آن را از صفحه خود تب انجام دهید')
+      setOpen(false); setForm({ name: '', key: '', description: '' })
+      reload()
+    } catch (e: any) { notify(e.message, 'error') }
+    finally { setSaving(false) }
+  }
+
   return (
-    <div className="space-y-5">
-      <div className="card flex flex-wrap items-end gap-3 p-4">
-        <div className="min-w-[200px] flex-1">
-          <label className="label">تب کارخانه «{selectedFactory.name}»</label>
-          <select className="input" value={tabId} onChange={(e) => setTabId(e.target.value)}>
-            <option value="">تب جدید...</option>
-            {tabs.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+    <div className="space-y-4">
+      <div className="card p-4">
+        <div className="mb-1 text-sm font-bold text-ink-700 dark:text-slate-200">تب‌های کارخانه «{selectedFactory.name}»</div>
+        <p className="mb-3 text-xs text-ink-500 dark:text-slate-400">
+          اینجا فقط <b>تب جدید</b> ساخته می‌شود. ورودی/خروجی/فرمول، گزارش و ویجت‌ها را از صفحه خودِ تب تنظیم کنید.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((t: any) => (
+            <a key={t.id} href={`/factory-tabs/${t.id}`}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ink-700 hover:border-brand-300 hover:text-brand-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              <TabIconBadge icon={t.icon} color={t.color} className="h-3.5 w-3.5" />
+              {t.name}
+              <Settings2 className="h-3.5 w-3.5 opacity-50" />
+            </a>
+          ))}
+          {tabs.length === 0 && <span className="text-xs text-slate-400">هنوز تبی ساخته نشده است.</span>}
         </div>
-        {brief && <a className="btn-ghost" href={`/factory-tabs/${brief.id}`}>باز کردن صفحه تب</a>}
-        <button className="btn-ghost" onClick={() => { setTabId(''); reload() }}>تازه‌سازی لیست</button>
+        {canManage && (
+          <div className="mt-4 flex justify-end">
+            <button className="btn-primary" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> افزودن تب جدید</button>
+          </div>
+        )}
       </div>
-      <TabDefinitionPanel initialTabId={tabId} hideSelector onTabIdChange={setTabId} />
-      <ReportBuilderPanel tab={brief} />
+      <Modal open={open} onClose={() => setOpen(false)} title="افزودن تب جدید" subtitle={`کارخانه ${selectedFactory.name}`}
+        footer={<><button className="btn-ghost" onClick={() => setOpen(false)}>انصراف</button><button className="btn-primary" onClick={submit} disabled={saving}><Save className="h-4 w-4" /> {saving ? '...' : 'ساخت تب'}</button></>}>
+        <div className="space-y-3">
+          <div><label className="label">نام تب *</label><input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="مثلا: تناژ تحویلی روزانه" /></div>
+          <div><label className="label">کلید (key) *</label><input className="input font-mono" dir="ltr" value={form.key} onChange={e => setForm({ ...form, key: e.target.value.replace(/\s+/g, '-') })} placeholder="tonnage-delivery" /></div>
+          <div><label className="label">توضیحات</label><textarea className="input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
+          <p className="rounded-lg bg-ink-50 px-3 py-2 text-[11px] text-ink-500 dark:bg-slate-800/60 dark:text-slate-400">
+            بعد از ساخت، وارد صفحه تب شوید → زبانه «تنظیمات تب»: ورودی‌ها، خروجی‌ها/فرمول‌ها، آیکون و رنگ، سپس گزارش و ویجت‌ها.
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }

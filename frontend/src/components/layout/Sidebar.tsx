@@ -8,6 +8,8 @@ import { classNames } from '../../utils'
 import { useAuth } from '../../store/AuthContext'
 import { useFactory } from '../../store/FactoryContext'
 import { ROLE_BADGE, ROLE_LABELS, hasPerm } from '../../constants'
+import type { FactoryTabIcon } from '../../types'
+import { tabIcon } from '../../utils/tabIcons'
 
 const navItems: { to: string; label: string; icon: any; end: boolean; perm?: string }[] = [
   { to: '/', label: 'داشبورد', icon: LayoutDashboard, end: true, perm: 'dashboard.view' },
@@ -37,7 +39,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     const tabItems = factoryTabs.map((t) => ({
       to: `/factory-tabs/${t.id}`,
       label: t.name,
-      icon: Layers as any,
+      icon: tabIcon(t.icon),
       end: true as const,
       perm: 'factory-tabs.view' as string,
     }))

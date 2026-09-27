@@ -1072,9 +1072,9 @@ class FactoryTabBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = FactoryTab
         fields = [
-            "id", "key", "name", "description", "record_type",
-            "require_line", "contractor_required", "order", "is_active",
-            "inputs", "outputs",
+            "id", "key", "name", "description", "icon", "color",
+            "record_type", "require_line", "contractor_required", "order",
+            "is_active", "inputs", "outputs",
         ]
 
 

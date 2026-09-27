@@ -914,6 +914,18 @@ TAB_RECORD_TYPE_CHOICES = [
     ("daily", "روزانه (چند رکورد در روز با ساعت)"),
 ]
 
+TAB_ICON_CHOICES = [(k, k) for k in (
+    "layers", "truck", "gauge", "flask", "activity", "bar-chart", "trending-up",
+    "box", "clipboard-list", "database", "filter", "layers-3", "pie-chart",
+    "line-chart", "package", "factory", "scale", "clock", "map-pin", "cpu",
+    "wrench", "zap", "droplet", "thermometer", "settings", "target", "grid",
+)]
+
+TAB_COLOR_CHOICES = [(k, k) for k in (
+    "slate", "orange", "emerald", "violet", "sky", "rose", "teal", "amber",
+    "indigo", "lime", "cyan", "fuchsia",
+)]
+
 
 class FactoryTab(models.Model):
     """تب داینامیک کارخانه — ساختار یکسان: ورودی‌ها + خروجی‌های فرمولی."""
@@ -927,6 +939,8 @@ class FactoryTab(models.Model):
     key = models.SlugField(max_length=60, verbose_name="کلید (Key)")
     name = models.CharField(max_length=100, verbose_name="نام تب")
     description = models.TextField(blank=True, verbose_name="توضیحات")
+    icon = models.CharField(max_length=30, choices=TAB_ICON_CHOICES, default="layers", verbose_name="آیکون")
+    color = models.CharField(max_length=20, choices=TAB_COLOR_CHOICES, default="slate", verbose_name="رنگ")
     record_type = models.CharField(
         max_length=20,
         choices=TAB_RECORD_TYPE_CHOICES,

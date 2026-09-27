@@ -9,9 +9,11 @@ import {
   createFactoryTabWidget,
   deleteFactoryTabReport,
   deleteFactoryTabWidget,
+  getFactoryTabFormulaVars,
   getFactoryTabReports,
   updateFactoryTabReport,
   updateFactoryTabWidget,
+  type TabFormulaVar,
 } from '../../api/factoryTabs'
 import type {
   FactoryTabBrief,
@@ -60,7 +62,6 @@ export default function ReportBuilderPanel({ tab }: { tab: FactoryTabBrief | nul
   const [metrics, setMetrics] = useState<FactoryTabReportMetric[]>([emptyMetric()])
   const [focusMetric, setFocusMetric] = useState<number | null>(null)
   const metricRefs = useRef<Record<number, HTMLTextAreaElement | null>>({})
-
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingWidget, setEditingWidget] = useState<FactoryTabWidget | null>(null)
   const [wType, setWType] = useState<FactoryTabWidgetType>('kpi')
@@ -83,23 +84,42 @@ export default function ReportBuilderPanel({ tab }: { tab: FactoryTabBrief | nul
   const [wActive, setWActive] = useState(true)
   const [wSaving, setWSaving] = useState(false)
 
+  const [metricKeys, setMetricKeys] = useState<string[]>([])
+  const [formulaVars, setFormulaVars] = useState<TabFormulaVar[]>([])
+
   const report = useMemo(() => reports.find((r) => String(r.id) === reportId) ?? null, [reports, reportId])
 
   const numericRefs = useMemo(() => {
-    if (!tab) return [] as { ref: string; label: string }[]
-    const out = tab.outputs.map((o) => ({ ref: `out.${o.key}`, label: o.name }))
-    const inn = tab.inputs.filter((i) => i.input_type === 'number').map((i) => ({ ref: `in.${i.key}`, label: i.name }))
-    return [...out, ...inn]
-  }, [tab])
+    if (!tab) return [] as { ref: string; label: string; group?: string }[]
+    const out = tab.outputs.map((o) => ({ ref: `out.${o.key}`, label: o.name, group: 'خروجی‌های این تب' }))
+    const inn = tab.inputs.filter((i) => i.input_type === 'number').map((i) => ({ ref: `in.${i.key}`, label: i.name, group: 'ورودی‌های عددی این تب' }))
+    const cross = formulaVars
+      .filter((v) => v.var.includes('.'))
+      .map((v) => ({ ref: `${v.var.split('.')[0]}.in.${v.var.split('.').slice(1).join('.')}`, label: v.label, group: v.group }))
+    return [...out, ...inn, ...cross]
+  }, [tab, formulaVars])
+
   const catRefs = useMemo(() => {
     if (!tab) return [] as { ref: string; label: string }[]
     return tab.inputs.filter((i) => i.input_type === 'select' || i.input_type === 'text').map((i) => ({ ref: `in.${i.key}`, label: i.name }))
   }, [tab])
-  const metricKeys = useMemo(() => metrics.map((m) => m.key.trim()).filter(Boolean), [metrics])
-  const formulaVars = useMemo(() => {
-    const vars: { var: string; label: string }[] = [{ var: 'record_count', label: 'تعداد رکورد' }]
-    numericRefs.forEach((r) => AGGS.forEach((a) => vars.push({ var: `${r.ref}__${a}`, label: `${r.label} (${AGG_LABEL[a]})` })))
-    metricKeys.forEach((k) => vars.push({ var: k, label: `متریک: ${k}` }))
+
+  useEffect(() => {
+    setMetricKeys(metrics.map((m) => m.key.trim()).filter(Boolean))
+  }, [metrics])
+
+  const formulaVars2 = useMemo(() => {
+    const vars: { var: string; label: string; group: string }[] = [
+      { var: 'record_count', label: 'تعداد رکورد', group: 'پایه' },
+    ]
+    numericRefs.forEach((r) => {
+      AGGS.forEach((a) => vars.push({
+        var: `${r.ref}__${a}`,
+        label: `${r.label} (${AGG_LABEL[a]})`,
+        group: r.group ?? 'فیلدها',
+      }))
+    })
+    metricKeys.forEach((k) => vars.push({ var: k, label: `متریک: ${k}`, group: 'متریک‌ها' }))
     return vars
   }, [numericRefs, metricKeys])
 
@@ -107,7 +127,11 @@ export default function ReportBuilderPanel({ tab }: { tab: FactoryTabBrief | nul
     if (!tab) { setLoading(false); setReports([]); setReportId(''); return }
     setLoading(true)
     try {
-      const list = await getFactoryTabReports({ tab: tab.id })
+      const [list, vars] = await Promise.all([
+        getFactoryTabReports({ tab: tab.id }),
+        getFactoryTabFormulaVars(tab.id).catch(() => [] as TabFormulaVar[]),
+      ])
+      setFormulaVars(vars)
       setReports(list)
       setReportId((prev) => {
         if (list.some((r) => String(r.id) === prev)) return prev
@@ -408,12 +432,14 @@ export default function ReportBuilderPanel({ tab }: { tab: FactoryTabBrief | nul
                     />
                     {canManage && (
                       <div className="w-full shrink-0 sm:w-64">
-                        <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto">
-                          {formulaVars.map((v) => (
-                            <button key={v.var} type="button" className="chip" onClick={() => insertMetricVar(v.var)} title={v.var}>{v.label}</button>
-                          ))}
-                        </div>
-                        <div className="mt-1 text-[10px] text-ink-400 dark:text-slate-500">کلیک = درج متغیر در فرمول</div>
+                      <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">
+                        {formulaVars2.map((v) => (
+                          <button key={v.var} type="button" className="chip" onClick={() => insertMetricVar(v.var)} title={`${v.group} · ${v.var}`}>
+                            {v.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-1 text-[10px] text-ink-400 dark:text-slate-500">کلیک = درج متغیر در فرمول</div>
                       </div>
                     )}
                   </div>

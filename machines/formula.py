@@ -310,8 +310,8 @@ class FormulaParser:
                     if nxt.kind != "NAME":
                         raise FormulaError(f"بعد از نقطه «.» در «{'.'.join(parts)}.» نام متغیر مورد انتظار است.")
                     parts.append(self._expect_name())
-                    if len(parts) > 2:
-                        raise FormulaError(f"مسیر متغیر «{'.'.join(parts)}» نامعتبر است — حداکثر یک نقطه مجاز است (مثلا «position.input»).")
+                    if len(parts) > 3:
+                        raise FormulaError(f"مسیر متغیر «{'.'.join(parts)}» نامعتبر است — حداکثر دو نقطه مجاز است (مثلا «tab.out.key»).")
                 else:
                     break
             if self._peek().kind == "OP" and self._peek().value == "(":

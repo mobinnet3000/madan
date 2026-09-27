@@ -22,9 +22,14 @@ class FormulaValidationTests(TestCase):
                 validate_expr(c)
 
     def test_malformed_tokens_rejected(self):
-        for c in ["2foo", "()", "a.b.c", "1 = 2", "a.", "1 $ 2"]:
+        # «a.b.c» معتبر است: مسیر سه‌بخشی = ارجاع بین‌تبی (key.in.key)
+        for c in ["2foo", "()", "a.b.c.d", "1 = 2", "a.", "1 $ 2"]:
             with self.assertRaises(FormulaError, msg=c):
                 validate_expr(c)
+
+    def test_three_part_path_allowed(self):
+        validate_expr("a.b.c")
+        self.assertEqual(set(variables("tonnage_delivery.in.tonnage + feed")), {"tonnage_delivery.in.tonnage", "feed"})
 
     def test_valid_still_works(self):
         self.assertAlmostEqual(evaluate("(feed.fe - tail.fe) / (product.fe - tail.fe) * 100",
