@@ -72,16 +72,16 @@ venv\Scripts\activate        # ویندوز
 
 # نصب کتابخانه‌ها
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 
 # دیتابیس
-python manage.py migrate
+python backend/manage.py migrate
 
 # داده‌های نمونه (اختیاری ولی پیشنهادی)
-python seed_demo.py
+python backend/seed_mega_factory.py
 
 # اجرای سرور
-python manage.py runserver 0.0.0.0:8000
+python backend/manage.py runserver 0.0.0.0:8000
 ```
 
 بک‌اند حالا روی `http://127.0.0.1:8000` در دسترس است.
@@ -126,26 +126,30 @@ cloudflared tunnel --url http://localhost:5173
 
 ```
 madan/
-├─ accounts/        # کاربران، نقش‌ها، احراز هویت (Django)
-├─ core/            # تنظیمات اصلی Django (settings, urls)
-├─ machines/        # مدل‌ها، سریالایزرها و APIهای اصلی (کارخانه/خط/دستگاه/لاگ/تحلیل)
-├─ media/           # تصاویر دستگاه‌ها (توسط seed ساخته می‌شود)
-├─ static/          # فایل‌های استاتیک جمع‌آوری‌شده (gitignore شده)
-├─ frontend/        # پروژه React + Vite
+├─ backend/         # Django + DRF
+│  ├─ core/         # تنظیمات اصلی (settings, urls, wsgi, passenger_wsgi.py)
+│  ├─ accounts/     # کاربران، نقش‌ها، احراز هویت
+│  ├─ machines/     # مدل‌ها، سریالایزرها و APIهای اصلی
+│  ├─ templates/    # admin templates
+│  ├─ media/        # تصاویر دستگاه‌ها (توسط seed ساخته می‌شود)
+│  ├─ db.sqlite3    # دیتابیس تحویل با git
+│  ├─ manage.py
+│  ├─ seed_mega_factory.py # تولید داده نمونه
+│  └─ requirements.txt
+├─ frontend/        # React + Vite
 │  ├─ src/
 │  │  ├─ api/       # توابع ارتباط با بک‌اند
-│  │  ├─ components/# کامپوننت‌های UI و لایه‌بندی
-│  │  ├─ pages/     # صفحات (Dashboard, Lines, Logs, Analysis, Reports, ...)
-│  │  ├─ store/     # مدیریت وضعیت (Auth, Factory)
-│  │  └─ types.ts   # تایپ‌های TypeScript
+│  │  ├─ components/# کامپوننت‌های UI
+│  │  ├─ pages/     # صفحات
+│  │  ├─ store/     # Auth, Factory
+│  │  └─ types.ts
 │  ├─ vite.config.ts# پروکسی /api و /media به بک‌اند
+│  ├─ .htaccess      # SPA fallback — همراه dist به public_html می‌رود
 │  └─ package.json
-├─ seed_demo.py     # اسکریپت تولید داده‌های نمونه
-├─ requirements.txt # کتابخانه‌های پایتون
 ├─ setup.bat        # نصب خودکار (ویندوز)
 ├─ start.bat        # اجرای همزمان بک‌اند و فرانت‌اند
 ├─ start.sh         # اجرای همزمان (لینوکس/مک)
-└─ README.md
+└─ DEPLOY.md        # راهنمای دیپلوی cPanel
 ```
 
 ---
@@ -160,8 +164,8 @@ madan/
   python manage.py makemigrations
   python manage.py migrate
   ```
-- **تغییر داده‌های نمونه:** فایل `seed_demo.py` را ویرایش و دوباره اجرا کنید
-  (اول `del db.sqlite3` برای شروع تازه).
+- **تغییر داده‌های نمونه:** فایل `backend/seed_mega_factory.py` را ویرایش و دوباره اجرا کنید
+  (اول `del backend\db.sqlite3` برای شروع تازه).
 
 فرانت‌اند به‌صورت خودکار با ذخیره فایل (Hot Reload) به‌روز می‌شود.
 

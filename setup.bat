@@ -25,14 +25,14 @@ echo [*] Upgrading pip...
 python -m pip install --upgrade pip
 
 echo [*] Installing Python dependencies...
-pip install -r requirements.txt
+pip install -r backend\requirements.txt
 
 echo [*] Applying database migrations...
-python manage.py makemigrations
-python manage.py migrate
+python backend\manage.py makemigrations
+python backend\manage.py migrate
 
 echo [*] Seeding demo data (this may take a minute)...
-python seed_demo.py
+python backend\seed_mega_factory.py
 
 REM ---- Node frontend ----
 echo [*] Installing frontend dependencies...

@@ -1,0 +1,1 @@
+import{f as c,c as o,a as g}from"./base-BioTSYp8.js";const a=o("/device-logs/"),l=(e={},t=1,s=30)=>c("/device-logs/",e,t,s),i=(e={},t=200,s)=>g("/device-logs/",e,t,s),n=a.create,f=a.update,p=a.delete;export{n as c,p as d,i as f,l as g,f as u};

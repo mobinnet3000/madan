@@ -15,10 +15,10 @@ if [ ! -d "venv" ]; then
   echo "[*] Creating Python virtual environment..."
   python3 -m venv venv
   ./venv/bin/pip install --upgrade pip
-  ./venv/bin/pip install -r requirements.txt
-  ./venv/bin/python manage.py migrate
+  ./venv/bin/pip install -r backend/requirements.txt
+  ./venv/bin/python backend/manage.py migrate
   echo "[*] Seeding demo data (this may take a minute)..."
-  ./venv/bin/python seed_demo.py
+  ./venv/bin/python backend/seed_mega_factory.py
 fi
 
 # ---- Node frontend ----
@@ -32,7 +32,7 @@ npm run build
 cd ..
 
 # ---- Launch both ----
-./venv/bin/python manage.py runserver 0.0.0.0:8000 &
+./venv/bin/python backend/manage.py runserver 0.0.0.0:8000 &
 BACKEND_PID=$!
 cd frontend && npm run dev &
 FRONTEND_PID=$!

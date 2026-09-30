@@ -1,3 +1,0 @@
-template: <ProductionLineTemplate: TPL>
-schema: {'capacity': {'type': 'number', 'default': 0, 'title': 'capacity (t/h)'}}
-built OK widget='JSONFormWidget'

@@ -20,25 +20,40 @@ ENV/
 
 # Django
 *.log
-db.sqlite3
+!backend/logs/.gitkeep
+!backend/media/.gitkeep
+!backend/staticfiles/.gitkeep
 db.sqlite3-journal
+db.sqlite3-shm
+db.sqlite3-wal
+db.sqlite3.b
+db.sqlite3.backup
+db.sqlite3.*backup*
+*.sqlite3-journal
 /static/
 /staticfiles/
+backend/staticfiles/*
+!backend/staticfiles/.gitkeep
+backend/media/*
+!backend/media/.gitkeep
 /media/
 django_err.log
 django_out.log
 local_settings.py
+!backend/db.sqlite3
 
 # Environment / secrets
 .env
 .env.*
+backend/.env
+backend/.env.*
 !.env.example
+!backend/.env.example
 
 # ---------------------------------------------------------------------------
 # Node / Frontend
 # ---------------------------------------------------------------------------
 frontend/node_modules/
-frontend/dist/
 frontend/.vite/
 frontend/*.local
 frontend/vite.config.js

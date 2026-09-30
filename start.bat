@@ -10,7 +10,7 @@ echo   Frontend: http://localhost:5173  (or 5174 / 5175 if busy)
 echo ============================================================
 
 REM Backend window
-start "Madan Backend" cmd /k "call venv\Scripts\activate.bat && python manage.py runserver 0.0.0.0:8000"
+start "Madan Backend" cmd /k "call venv\Scripts\activate.bat && python backend\manage.py runserver 0.0.0.0:8000"
 
 REM Frontend window
 start "Madan Frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
