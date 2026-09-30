@@ -3,9 +3,9 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/bataniir/mback.ba3tani.ir
     - export PATH=$HOME/venv/bin:$PATH
-    - cd $DEPLOYPATH && pip install -r backend/requirements.txt --quiet || pip3 install -r backend/requirements.txt --quiet
-    - cd $DEPLOYPATH && python backend/manage.py migrate --noinput || python3 backend/manage.py migrate --noinput
-    - cd $DEPLOYPATH && python backend/manage.py collectstatic --noinput || python3 backend/manage.py collectstatic --noinput
-    - cd $DEPLOYPATH && mkdir -p $HOME/public_html && cp -r frontend/dist/* $HOME/public_html/ 2>/dev/null; cp frontend/.htaccess $HOME/public_html/.htaccess 2>/dev/null || true
-    - if command -v npm >/dev/null 2>&1; then cd $DEPLOYPATH/frontend && npm ci --silent 2>/dev/null; npm run build --silent 2>/dev/null && mkdir -p $HOME/public_html && cp -r dist/* $HOME/public_html/ && cp .htaccess $HOME/public_html/.htaccess 2>/dev/null || true; fi
-    - touch $DEPLOYPATH/tmp/restart.txt 2>/dev/null || mkdir -p $DEPLOYPATH/tmp && touch $DEPLOYPATH/tmp/restart.txt
+    - cd $DEPLOYPATH && pip install -r backend/requirements.txt --quiet || pip3 install -r backend/requirements.txt --quiet || true
+    - cd $DEPLOYPATH && python backend/manage.py migrate --noinput 2>&1 || python3 backend/manage.py migrate --noinput 2>&1 || true
+    - cd $DEPLOYPATH && python backend/manage.py collectstatic --noinput 2>&1 || python3 backend/manage.py collectstatic --noinput 2>&1 || true
+    - cd $DEPLOYPATH && FRONT_DEST=$HOME/madan.ba3tani.ir; [ -d "$FRONT_DEST" ] || FRONT_DEST=$HOME/public_html; mkdir -p "$FRONT_DEST"; cp -r frontend/dist/* "$FRONT_DEST/" 2>/dev/null || true; cp frontend/.htaccess "$FRONT_DEST/.htaccess" 2>/dev/null || true; echo "Frontend -> $FRONT_DEST"
+    - if command -v npm >/dev/null 2>&1; then echo "Rebuilding frontend on server"; cd $DEPLOYPATH/frontend && npm ci --silent 2>&1 || npm install --silent 2>&1; npm run build --silent 2>&1 && { FRONT_DEST=$HOME/madan.ba3tani.ir; [ -d "$FRONT_DEST" ] || FRONT_DEST=$HOME/public_html; mkdir -p "$FRONT_DEST"; cp -r dist/* "$FRONT_DEST/" && cp .htaccess "$FRONT_DEST/.htaccess" 2>/dev/null || true; echo "Rebuilt frontend -> $FRONT_DEST"; }; fi
+    - touch $DEPLOYPATH/tmp/restart.txt 2>/dev/null || mkdir -p $DEPLOYPATH/tmp && touch $DEPLOYPATH/tmp/restart.txt; echo "Backend restart signal sent"
