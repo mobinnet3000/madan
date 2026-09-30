@@ -2,16 +2,24 @@ name: Auto Deploy to cPanel
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
-jobs:
-  build-and-trigger:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
 
-      - uses: actions/setup-node@v4
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -22,27 +30,10 @@ jobs:
         run: |
           npm ci
           npm run build
-          echo "dist built:" && ls -lh dist/ | head -20
+          cp .htaccess dist/.htaccess || cp frontend/.htaccess dist/.htaccess 2>/dev/null || true
+          ls -la dist/
 
-      - name: Try cPanel Git Pull via API (auto)
-        env:
-          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
-          CPANEL_USER: ${{ secrets.CPANEL_USER }}
-          CPANEL_TOKEN: ${{ secrets.CPANEL_TOKEN }}
-        run: |
-          if [ -z "$CPANEL_HOST" ] || [ -z "$CPANEL_TOKEN" ]; then
-            echo "::notice::CPANEL_HOST/TOKEN not set — skipping API pull."
-            echo "Site will update after you click Pull/Deploy in cPanel -> Git Version Control"
-            echo "Or set secrets CPANEL_HOST/CPANEL_USER/CPANEL_TOKEN to make it fully automatic."
-            exit 0
-          fi
-          RESP=$(curl -sk -u "$CPANEL_USER:$CPANEL_TOKEN" \
-            "https://$CPANEL_HOST:2083/execute/VersionControl/update?repository_root=%2Fhome%2F$CPANEL_USER%2Fmback.ba3tani.ir")
-          echo "$RESP"
-          echo "$RESP" | grep -q '"status":1' && echo "cPanel pull triggered — .cpanel.yml tasks will run (pip/migrate/collectstatic/frontend copy)" || echo "::warning::cPanel API failed — pull manually in cPanel"
-
-      - name: FTP deploy frontend (fallback if API not configured)
-        if: ${{ secrets.FTP_SERVER != '' }}
+      - name: Deploy frontend to cPanel (dist + .htaccess)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -51,9 +42,30 @@ jobs:
           port: ${{ secrets.FTP_PORT || 21 }}
           protocol: ftps
           local-dir: ./frontend/dist/
-          server-dir: ${{ secrets.FTP_FRONTEND_DIR || '/madan.ba3tani.ir/' }}
+          server-dir: /madan.ba3tani.ir/
+          dry-run: false
           exclude: |
             **/.git*
+            **/.git*/**
             **/node_modules/**
-          dry-run: false
-          log-level: minimal
+
+      - name: Trigger cPanel Git Pull (backend)
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_TOKEN: ${{ secrets.CPANEL_TOKEN }}
+        run: |
+          if [ -z "$CPANEL_HOST" ] || [ -z "$CPANEL_USER" ] || [ -z "$CPANEL_TOKEN" ]; then
+            echo "::warning::CPANEL_* secrets not set — skipping backend pull (frontend already deployed)."
+            exit 0
+          fi
+          set -e
+          resp=$(curl -sk -u "$CPANEL_USER:$CPANEL_TOKEN" "https://$CPANEL_HOST:2083/execute/VersionControl/update?repository_root=%2Fhome%2F$CPANEL_USER%2Fmback.ba3tani.ir")
+          echo "$resp"
+          echo "$resp" | grep -q '"status": *1' || { echo "::warning::cPanel pull may have failed — check response above."; exit 0; }
+
+      - name: Post-deploy reminder
+        if: always()
+        run: |
+          echo "Frontend: uploaded to /madan.ba3tani.ir/ (dist + .htaccess)"
+          echo "Backend: pulled via cPanel Git — if models changed, run on server: python backend/manage.py migrate && python backend/manage.py collectstatic --noinput && restart Passenger"

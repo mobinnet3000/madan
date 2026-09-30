@@ -56,7 +56,6 @@ backend/.env.*
 frontend/node_modules/
 frontend/.vite/
 frontend/*.local
-frontend/vite.config.js
 frontend/vite.config.d.ts
 frontend/*.tsbuildinfo
 npm-debug.log*

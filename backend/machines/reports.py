@@ -162,16 +162,8 @@ def get_date_range(range_key, start_date=None, end_date=None):
         return start_date, end_date
     return today - timedelta(days=30), today
 
-def _p(value, decimals=1):
-    if value is None:
-        return '۰'
-    return f'{value:,.{decimals}f}'.translate(str.maketrans('0123456789-,.', '۰۱۲۳۴۵۶۷۸۹-،.'))
-
-def _factory_header(factory):
-    return [
-        f'شرکت: {factory.name}',
-        f'آدرس: {factory.address}',
-    ]
+_p_alias = _p
+_factory_header_alias = _factory_header
 
 # ────────────────────────────────── EXCEL ──────────────────────────────────
 

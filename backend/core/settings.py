@@ -1,13 +1,23 @@
 import os
 from pathlib import Path
 from decouple import config, Csv
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ── Core ──
-SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-change-me-in-production!!')
 DEBUG = config('DJANGO_DEBUG', default=True, cast=bool)
+_SECRET = config('DJANGO_SECRET_KEY', default=None)
+if not _SECRET:
+    if DEBUG:
+        _SECRET = 'django-insecure-change-me-in-production!!'
+    else:
+        raise ImproperlyConfigured('DJANGO_SECRET_KEY must be set when DEBUG=False')
+if not DEBUG and _SECRET.startswith('django-insecure-'):
+    raise ImproperlyConfigured('DJANGO_SECRET_KEY is insecure; set a strong value in backend/.env')
+SECRET_KEY = _SECRET
 ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=Csv())
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 if DEBUG:
     for _h in ('127.0.0.1', 'localhost', '[::1]', 'testserver'):
         if _h not in ALLOWED_HOSTS:

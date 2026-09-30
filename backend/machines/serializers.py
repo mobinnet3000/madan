@@ -177,22 +177,28 @@ class FactoryFullDetailSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "address", "shifts", "lines", "failure_reasons", "contractors", "report_tabs"]
 
     def get_shifts(self, obj):
+        cached = []
+        for line in getattr(obj, "lines").all():
+            cached.extend(list(getattr(line, "shifts").all()))
+        if cached:
+            return ShiftSerializer(cached, many=True).data
         from .models import Shift
         return ShiftSerializer(Shift.objects.filter(line__factory=obj), many=True).data
 
     def get_lines(self, obj):
-        lines = obj.lines.select_related("template").prefetch_related("devices__template", "devices__template__available_attributes", "shifts", "template__available_attributes")
+        lines = getattr(obj, "lines").all()
         out = []
         for l in lines:
-            out.append({"id": l.id, "name": l.name, "description": l.description, "line_type": l.line_type, "template_name": l.template.name if l.template_id else "", "attributes_values": l.attributes_values, "attribute_defs": _attr_defs(l.template.available_attributes.all()) if l.template_id else [], "devices": DeviceSerializer(l.devices.all(), many=True).data, "shifts": ShiftSerializer(l.shifts.all(), many=True).data})
+            tmpl_attrs = l.template.available_attributes.all() if l.template_id and hasattr(l.template, "available_attributes") else []
+            out.append({"id": l.id, "name": l.name, "description": l.description, "line_type": l.line_type, "template_name": l.template.name if l.template_id else "", "attributes_values": l.attributes_values, "attribute_defs": _attr_defs(tmpl_attrs) if l.template_id else [], "devices": DeviceSerializer(l.devices.all(), many=True).data, "shifts": ShiftSerializer(l.shifts.all(), many=True).data})
         return out
 
     def get_failure_reasons(self, obj):
         return FailureReasonSerializer(FailureReason.objects.all(), many=True).data
 
     def get_report_tabs(self, obj):
-        qs = obj.report_tabs.filter(is_active=True).prefetch_related("inputs", "outputs")
-        return FactoryTabBriefSerializer(qs, many=True).data
+        tabs = [t for t in getattr(obj, "report_tabs").all() if t.is_active]
+        return FactoryTabBriefSerializer(tabs, many=True).data
 
 
 class FactoryMinSerializer(serializers.ModelSerializer):

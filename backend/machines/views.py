@@ -426,18 +426,26 @@ def performance_report_view(request):
     if df:
         try:
             date_from_o = datetime.strptime(df, "%Y-%m-%d").date()
-        except:
-            pass
+        except (ValueError, TypeError):
+            return Response({"detail": "date_from باید YYYY-MM-DD باشد."}, status=status.HTTP_400_BAD_REQUEST)
     if dt:
         try:
             date_to_o = datetime.strptime(dt, "%Y-%m-%d").date()
-        except:
-            pass
+        except (ValueError, TypeError):
+            return Response({"detail": "date_to باید YYYY-MM-DD باشد."}, status=status.HTTP_400_BAD_REQUEST)
+    if fmt not in ("pdf", "excel", "xlsx"):
+        return Response({"detail": "format باید pdf یا excel باشد."}, status=status.HTTP_400_BAD_REQUEST)
+    if fmt == "xlsx":
+        fmt = "excel"
 
     try:
         buf, ext = gen_report(factory_id, range_key, date_from_o, date_to_o, fmt=fmt)
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
+    except ValueError as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger("machines").exception("generate_performance_report failed")
+        return Response({"detail": "خطا در تولید گزارش."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     ctype = (
         "application/pdf"
