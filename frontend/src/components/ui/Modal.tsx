@@ -10,7 +10,7 @@ interface ModalProps {
   subtitle?: string
   children: ReactNode
   footer?: ReactNode
-  size?: 'md' | 'lg' | 'xl'
+  size?: 'md' | 'lg' | 'xl' | '2xl' | 'full'
 }
 
 export default function Modal({ open, onClose, title, subtitle, children, footer, size = 'md' }: ModalProps) {
@@ -38,7 +38,7 @@ export default function Modal({ open, onClose, title, subtitle, children, footer
             role="dialog" aria-modal="true" aria-label={title}
             className={classNames(
               'relative z-10 w-full rounded-2xl bg-white/90 shadow-xl backdrop-blur-xl dark:bg-slate-900/90 dark:border dark:border-slate-700/50',
-              size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg',
+              size === 'full' ? 'max-w-[96vw]' : size === '2xl' ? 'max-w-6xl' : size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg',
             )}>
             <div className="flex items-start justify-between border-b border-ink-100/60 px-6 py-4 dark:border-slate-700/40">
               <div className="min-w-0">

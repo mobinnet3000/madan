@@ -220,6 +220,7 @@ export interface FactoryTabOutputSchema {
   key: string
   name: string
   unit: string
+  formula?: string
   conditions?: {
     lines?: number[]
   }

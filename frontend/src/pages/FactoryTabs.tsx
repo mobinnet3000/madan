@@ -1,10 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Activity, Settings2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Activity, Settings2, TableProperties } from 'lucide-react'
 import TabReportPanel from '../components/factoryTabs/TabReportPanel'
 import TabSettingsPanel, { TabIconBadge } from '../components/factoryTabs/TabSettingsPanel'
 import ReportBuilderPanel from '../components/factoryTabs/ReportBuilderPanel'
 import { TabRecordForm, type TabFormState } from '../components/factoryTabs/TabRecordForm'
+import BulkRecordModal from '../components/factoryTabs/BulkRecordModal'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { hasPerm } from '../constants'
@@ -15,10 +16,11 @@ import {
   fetchAllFactoryTabRecords,
   getFactoryTabRecords,
   getFactoryTabReports,
+  getFactoryTabSchema,
   runFactoryTabReport,
   updateFactoryTabRecord,
 } from '../api/factoryTabs'
-import type { FactoryTabBrief, FactoryTabRecord, FactoryTabRecordFilters, FactoryTabRecordPayload, FactoryTabReport, FactoryTabReportRun } from '../types'
+import type { FactoryTabBrief, FactoryTabRecord, FactoryTabRecordFilters, FactoryTabRecordPayload, FactoryTabReport, FactoryTabReportRun, FactoryTabSchema } from '../types'
 import { EmptyState, ErrorBanner, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
@@ -73,6 +75,19 @@ export default function FactoryTabs() {
   const [loadingReport, setLoadingReport] = useState(false)
   const [exporting, setExporting] = useState<ExportFormat | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [tabSchema, setTabSchema] = useState<FactoryTabSchema | null>(null)
+  const [bulkModalOpen, setBulkModalOpen] = useState(false)
+  const isSuperAdmin = Boolean(
+    user?.is_superuser || user?.role === 'admin' || hasPerm(user?.permissions, 'factory-tabs.manage')
+  )
+
+  useEffect(() => {
+    if (activeTabId) {
+      getFactoryTabSchema(Number(activeTabId)).then(setTabSchema).catch(() => setTabSchema(null))
+    } else {
+      setTabSchema(null)
+    }
+  }, [activeTabId])
 
   const load = useCallback(() => {
     if (!activeTabId) { setItems([]); setTotalCount(0); setLoading(false); return }
@@ -383,6 +398,15 @@ export default function FactoryTabs() {
               )}
               {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
             </div>
+            {tab === 'records' && isSuperAdmin && selectedTab && (
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm font-bold text-brand-700 shadow-xs hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                onClick={() => setBulkModalOpen(true)}
+              >
+                <TableProperties className="h-4 w-4" />
+                ورود گروهی رکوردها
+              </button>
+            )}
             {tab === 'records' && canCreate && selectedTab && <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت رکورد جدید</button>}
           </div>
         </div>
@@ -684,6 +708,16 @@ export default function FactoryTabs() {
         footer={<><button className="btn-ghost" onClick={() => setConfirmId(null)}>انصراف</button><button className="btn-danger" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> حذف قطعی</button></>}>
         <p className="text-sm text-ink-700 dark:text-slate-300">آیا از حذف این رکورد اطمینان دارید؟</p>
       </Modal>
+
+      {bulkModalOpen && selectedTab && (
+        <BulkRecordModal
+          open={bulkModalOpen}
+          onClose={() => setBulkModalOpen(false)}
+          tab={selectedTab}
+          schema={tabSchema}
+          onSuccess={load}
+        />
+      )}
     </div>
   )
 }
