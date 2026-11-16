@@ -375,3 +375,178 @@ class FactoryTabSelectInputTests(FactoryFixtureMixin, TestCase):
             ]
         )
         self.assertEqual(r.status_code, 400, r.content)
+
+
+class FactoryTabModesAndConditionsTests(FactoryFixtureMixin, TestCase):
+    """تست حالت‌های ۳ گانه (الزامی/اختیاری/غیرفعال) برای خط، پیمانکار، ساعت و شرط خط روی ورودی/خروجی."""
+
+    def test_line_mode_disabled_allows_no_line(self):
+        r = self.client.post(
+            "/api/factory-tabs/",
+            {
+                **_tab_payload(key="no-line-tab", name="تب بدون خط"),
+                "factory": self.fac1.id,
+                "line_mode": "disabled",
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201, r.content)
+        tid = r.data["id"]
+        self.assertEqual(r.data["line_mode"], "disabled")
+
+        # ثبت رکورد بدون انتخاب خط باید با موفقیت انجام شود و خط null باشد
+        rec_res = self.client.post(
+            "/api/factory-tab-records/",
+            {
+                "tab": tid,
+                "date_from": "2026-08-01",
+                "date_to": "2026-08-01",
+                "inputs": {"feed": 100, "product": 50},
+            },
+            format="json",
+        )
+        self.assertEqual(rec_res.status_code, 201, rec_res.content)
+        self.assertIsNone(rec_res.data["line"])
+
+    def test_contractor_mode_required_enforces_contractor(self):
+        r = self.client.post(
+            "/api/factory-tabs/",
+            {
+                **_tab_payload(key="contractor-tab", name="تب با پیمانکار"),
+                "factory": self.fac1.id,
+                "contractor_mode": "required",
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201, r.content)
+        tid = r.data["id"]
+
+        # بدون پیمانکار باید خطا دهد
+        bad = self.client.post(
+            "/api/factory-tab-records/",
+            {
+                "tab": tid,
+                "line_id": self.line1.id,
+                "date_from": "2026-08-01",
+                "date_to": "2026-08-01",
+                "inputs": {"feed": 100, "product": 50},
+            },
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400, bad.content)
+
+        # با پیمانکار باید ثبت شود
+        ok = self.client.post(
+            "/api/factory-tab-records/",
+            {
+                "tab": tid,
+                "line_id": self.line1.id,
+                "contractor_id": self.c1.id,
+                "date_from": "2026-08-01",
+                "date_to": "2026-08-01",
+                "inputs": {"feed": 100, "product": 50},
+            },
+            format="json",
+        )
+        self.assertEqual(ok.status_code, 201, ok.content)
+        self.assertEqual(ok.data["contractor"]["id"], self.c1.id)
+
+    def test_hour_mode_disabled_in_daily_tab(self):
+        r = self.client.post(
+            "/api/factory-tabs/",
+            {
+                **_tab_payload(key="no-hour-tab", name="تب روزانه بدون ساعت"),
+                "factory": self.fac1.id,
+                "record_type": "daily",
+                "hour_mode": "disabled",
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201, r.content)
+        tid = r.data["id"]
+
+        # بدون ساعت ثبت می‌شود
+        rec = self.client.post(
+            "/api/factory-tab-records/",
+            {
+                "tab": tid,
+                "line_id": self.line1.id,
+                "date_from": "2026-08-01",
+                "date_to": "2026-08-01",
+                "inputs": {"feed": 100, "product": 50},
+            },
+            format="json",
+        )
+        self.assertEqual(rec.status_code, 201, rec.content)
+        self.assertIsNone(rec.data["hour"])
+
+    def test_field_line_conditions_matching_and_non_matching(self):
+        """اگر شرط خط برای ورودی یا خروجی تنظیم شده باشد و خط متفاوت باشد، مقدار آن در دیتابیس ۰ ذخیره می‌شود."""
+        r = self.client.post(
+            "/api/factory-tabs/",
+            {
+                "key": "cond-tab",
+                "name": "تب شرطی",
+                "factory": self.fac1.id,
+                "record_type": "range",
+                "line_mode": "optional",
+                "inputs": [
+                    {"key": "feed", "name": "خوراک عمومی", "input_type": "number", "required": True},
+                    {
+                        "key": "extra_feed",
+                        "name": "خوراک اختصاصی خط ۲",
+                        "input_type": "number",
+                        "required": True,
+                        "conditions": {"lines": [self.line2.id]},
+                    },
+                ],
+                "outputs": [
+                    {"key": "total", "name": "مجموع", "formula": "feed + extra_feed"},
+                    {
+                        "key": "line2_bonus",
+                        "name": "پاداش خط ۲",
+                        "formula": "extra_feed * 2",
+                        "conditions": {"lines": [self.line2.id]},
+                    },
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201, r.content)
+        tid = r.data["id"]
+
+        # ثبت رکورد برای خط ۱ (شرط extra_feed برقرار نیست):
+        # کاربر extra_feed ارسال نمی‌کند اما سیستم خطا نمی‌گیرد و مقدار آن و خروجی وابسته را ۰ در دیتابیس می‌گذارد.
+        rec_line1 = self.client.post(
+            "/api/factory-tab-records/",
+            {
+                "tab": tid,
+                "line_id": self.line1.id,
+                "date_from": "2026-08-01",
+                "date_to": "2026-08-01",
+                "inputs": {"feed": 80},
+            },
+            format="json",
+        )
+        self.assertEqual(rec_line1.status_code, 201, rec_line1.content)
+        self.assertEqual(rec_line1.data["inputs"]["extra_feed"], 0.0)
+        self.assertEqual(rec_line1.data["outputs"]["total"], 80.0)
+        self.assertEqual(rec_line1.data["outputs"]["line2_bonus"], 0.0)
+
+        # ثبت رکورد برای خط ۲ (شرط extra_feed برقرار است):
+        rec_line2 = self.client.post(
+            "/api/factory-tab-records/",
+            {
+                "tab": tid,
+                "line_id": self.line2.id,
+                "date_from": "2026-08-01",
+                "date_to": "2026-08-01",
+                "inputs": {"feed": 80, "extra_feed": 20},
+            },
+            format="json",
+        )
+        self.assertEqual(rec_line2.status_code, 201, rec_line2.content)
+        self.assertEqual(rec_line2.data["inputs"]["extra_feed"], 20.0)
+        self.assertEqual(rec_line2.data["outputs"]["total"], 100.0)
+        self.assertEqual(rec_line2.data["outputs"]["line2_bonus"], 40.0)
+

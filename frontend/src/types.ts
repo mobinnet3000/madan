@@ -171,6 +171,8 @@ export interface Contractor extends ContractorOpt {
 }
 
 // ── تناژ تحویلی خطوط تولید ──
+export type TabFieldMode = 'required' | 'optional' | 'disabled'
+
 // ── تب‌های کارخانه (داینامیک) ──
 // پاسخ API برای ورودی/خروجی تب هم‌شکل FactoryTabInput/FactoryTabOutput است.
 // فرم ثبت رکورد از «schema» استفاده می‌کند که «type» به‌جای «input_type» دارد.
@@ -183,6 +185,9 @@ export interface FactoryTabInputDef {
   unit: string
   required: boolean
   order: number
+  conditions?: {
+    lines?: number[]
+  }
 }
 
 export interface FactoryTabOutputDef {
@@ -192,6 +197,9 @@ export interface FactoryTabOutputDef {
   unit: string
   formula: string
   order: number
+  conditions?: {
+    lines?: number[]
+  }
 }
 
 export interface FactoryTabInputSchema {
@@ -202,6 +210,9 @@ export interface FactoryTabInputSchema {
   options: string[]
   required: boolean
   unit: string
+  conditions?: {
+    lines?: number[]
+  }
 }
 
 export interface FactoryTabOutputSchema {
@@ -209,6 +220,9 @@ export interface FactoryTabOutputSchema {
   key: string
   name: string
   unit: string
+  conditions?: {
+    lines?: number[]
+  }
 }
 
 export type FactoryTabRecordType = 'range' | 'daily'
@@ -243,6 +257,9 @@ export interface FactoryTabBrief {
   icon: FactoryTabIcon
   color: FactoryTabColor
   record_type: FactoryTabRecordType
+  line_mode?: TabFieldMode
+  contractor_mode?: TabFieldMode
+  hour_mode?: TabFieldMode
   require_line: boolean
   contractor_required: boolean
   order: number
@@ -264,6 +281,9 @@ export interface FactoryTabSchema {
     name: string
     record_type: FactoryTabRecordType
     require_line: boolean
+    line_mode?: TabFieldMode
+    contractor_mode?: TabFieldMode
+    hour_mode?: TabFieldMode
   }
   contractor: { required: boolean; options: ContractorOpt[] }
   lines: { id: number; name: string }[]

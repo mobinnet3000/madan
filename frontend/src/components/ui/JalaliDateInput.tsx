@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Calendar, ChevronRight, ChevronLeft, X } from 'lucide-react'
 import {
   isoToJalaliParts,
@@ -49,6 +49,97 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
   const [view, setView] = useState({ jy: parts?.jy || today?.jy || 1404, jm: parts?.jm || 1 })
   const [text, setText] = useState(parts ? fa(parts.jy, parts.jm, parts.jd) : '')
   const wrapRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({
+    position: 'absolute',
+    top: 'calc(100% + 4px)',
+    right: 0,
+    zIndex: 60,
+  })
+
+  const updatePosition = useCallback(() => {
+    if (!wrapRef.current) return
+    const wrapEl = wrapRef.current
+    const wrapRect = wrapEl.getBoundingClientRect()
+
+    // Find the enclosing boundary element (modal body, dialog, card widget, or viewport)
+    let boundaryEl: HTMLElement | null = null
+    let curr = wrapEl.parentElement
+    while (curr && curr !== document.body) {
+      const s = window.getComputedStyle(curr)
+      const isOverflow = /(auto|scroll|hidden)/.test(s.overflow + s.overflowX + s.overflowY)
+      const isDialogOrCard =
+        curr.getAttribute('role') === 'dialog' ||
+        curr.classList.contains('card-glass') ||
+        curr.classList.contains('card')
+      if (isOverflow || isDialogOrCard) {
+        boundaryEl = curr
+        break
+      }
+      curr = curr.parentElement
+    }
+
+    const bRect = boundaryEl
+      ? boundaryEl.getBoundingClientRect()
+      : { left: 8, right: window.innerWidth - 8, top: 8, bottom: window.innerHeight - 8 }
+
+    const margin = 10
+    const bLeft = Math.max(bRect.left + margin, 8)
+    const bRight = Math.min(bRect.right - margin, window.innerWidth - 8)
+    const bTop = Math.max(bRect.top + margin, 8)
+    const bBottom = Math.min(bRect.bottom - margin, window.innerHeight - 8)
+
+    const popupWidth = popupRef.current?.offsetWidth || 260
+    const popupHeight = popupRef.current?.offsetHeight || 310
+
+    // Natural RTL offset (right-aligned to wrapEl):
+    // wrapRect.left + xNatural + popupWidth = wrapRect.right
+    // => xNatural = wrapRect.width - popupWidth
+    const xNatural = wrapRect.width - popupWidth
+
+    // Allowed X range relative to wrapEl.left so popup stays strictly inside [bLeft, bRight]:
+    const minX = bLeft - wrapRect.left
+    const maxX = bRight - popupWidth - wrapRect.left
+
+    let x = xNatural
+    if (minX <= maxX) {
+      x = Math.max(minX, Math.min(maxX, xNatural))
+    } else {
+      x = minX
+    }
+
+    // Vertical placement:
+    const spaceBelow = bBottom - wrapRect.bottom
+    const spaceAbove = wrapRect.top - bTop
+    const isUpward = spaceBelow < popupHeight && spaceAbove > spaceBelow
+
+    setPopupStyle({
+      position: 'absolute',
+      left: `${Math.round(x)}px`,
+      ...(isUpward
+        ? { bottom: 'calc(100% + 4px)', top: 'auto' }
+        : { top: 'calc(100% + 4px)', bottom: 'auto' }),
+      zIndex: 60,
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (open) {
+      updatePosition()
+    }
+  }, [open, updatePosition])
+
+  useEffect(() => {
+    if (!open) return
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open, updatePosition])
 
   useEffect(() => {
     const p = isoToJalaliParts(value)
@@ -145,7 +236,11 @@ export default function JalaliDateInput({ value, onChange, allowEmpty = true, cl
       </div>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-[260px] rounded-2xl border border-ink-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div
+          ref={popupRef}
+          style={popupStyle}
+          className="w-[260px] rounded-2xl border border-ink-200 bg-white p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+        >
           <div className="mb-2 flex items-center justify-between">
             <button type="button" className="btn-ghost !h-8 !w-8 !p-0" onClick={() => go(-1)} title="ماه قبل"><ChevronRight className="h-4 w-4" /></button>
             <div className="text-sm font-bold text-ink-800 dark:text-slate-100">

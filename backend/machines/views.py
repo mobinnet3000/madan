@@ -677,14 +677,17 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
         tab = _get_scoped_tab(request, tab_id)
 
         line = None
+        line_mode = getattr(tab, "line_mode", "required" if getattr(tab, "require_line", True) else "optional")
         line_id = data.get("line_id") or data.get("line")
         if isinstance(line_id, dict):
             line_id = line_id.get("id")
-        if line_id:
+        if line_mode == "disabled":
+            line = None
+        elif line_id:
             line = _get_scoped_line(request, line_id)
             if line.factory_id != tab.factory_id:
                 raise ValueError("خط تولید باید متعلق به کارخانه‌ی همین تب باشد.")
-        elif tab.require_line:
+        elif line_mode == "required":
             raise ValueError("انتخاب خط تولید برای این تب الزامی است.")
 
         from datetime import datetime
@@ -702,21 +705,28 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
             raise ValueError("تاریخ پایان بازه نمی‌تواند قبل از شروع باشد.")
 
         hour = None
-        if tab.record_type == "daily":
+        hour_mode = getattr(tab, "hour_mode", "required" if getattr(tab, "record_type", "range") == "daily" else "disabled")
+        if hour_mode != "disabled":
             raw_hour = data.get("hour")
-            if not raw_hour:
-                raise ValueError("ساعت ثبت برای تب روزانه الزامی است.")
-            try:
-                hour = datetime.strptime(str(raw_hour)[:5], "%H:%M").time()
-            except ValueError:
-                raise ValueError("فرمت ساعت باید HH:MM باشد.")
+            if not raw_hour and hour_mode == "required":
+                raise ValueError("ساعت ثبت برای این تب الزامی است.")
+            if raw_hour:
+                try:
+                    hour = datetime.strptime(str(raw_hour)[:5], "%H:%M").time()
+                except ValueError:
+                    raise ValueError("فرمت ساعت باید HH:MM باشد.")
+
+        if tab.record_type == "daily":
             date_from = date_to = date_from
 
         contractor = None
+        contractor_mode = getattr(tab, "contractor_mode", "required" if getattr(tab, "contractor_required", False) else "optional")
         contractor_id = data.get("contractor_id") or data.get("contractor")
         if isinstance(contractor_id, dict):
             contractor_id = contractor_id.get("id")
-        if contractor_id:
+        if contractor_mode == "disabled":
+            contractor = None
+        elif contractor_id:
             contractor = Contractor.objects.filter(
                 pk=contractor_id, factory=tab.factory_id
             ).first()
@@ -724,7 +734,7 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
                 raise ValueError(
                     "پیمانکار انتخاب‌شده متعلق به کارخانه‌ی همین تب نیست."
                 )
-        elif tab.contractor_required:
+        elif contractor_mode == "required":
             raise ValueError("انتخاب پیمانکار برای این تب الزامی است.")
 
         from .factory_tabs import (
@@ -740,7 +750,7 @@ class FactoryTabRecordViewSet(viewsets.ModelViewSet):
         cross_ctx = build_cross_context(
             tab, date_from, date_to, line, linked_records=linked_records
         )
-        inputs, outputs = _vtc(tab, data, cross_ctx=cross_ctx)
+        inputs, outputs = _vtc(tab, data, line=line, cross_ctx=cross_ctx)
         return tab, line, contractor, date_from, date_to, hour, inputs, outputs, linked_records
 
     def create(self, request, *args, **kwargs):

@@ -152,8 +152,8 @@ export default function DowntimeReportPanel({ records }: { records: DeviceLog[] 
         </div>
         <div className="card p-4">
           <div className="flex items-center gap-1.5 text-xs text-ink-500 dark:text-slate-400"><Gauge className="h-3.5 w-3.5" />میانگین راندمان</div>
-          <div className="mt-1 text-xl font-extrabold text-ink-900 dark:text-white">{computed.avgEff != null ? `${Math.round(computed.avgEff * 10) / 10}٪` : '—'}</div>
-          <div className="text-[11px] text-ink-400">کمینه {computed.minEff ? `${Math.round(computed.minEff * 10) / 10}٪` : '—'} · بیشینه {computed.maxEff ? `${Math.round(computed.maxEff * 10) / 10}٪` : '—'}</div>
+          <div className="mt-1 text-xl font-extrabold text-ink-900 dark:white">{computed.avgEff != null ? `${Math.round(computed.avgEff * 100) / 100}٪` : '—'}</div>
+          <div className="text-[11px] text-ink-400">کمینه {computed.minEff ? `${Math.round(computed.minEff * 100) / 100}٪` : '—'} · بیشینه {computed.maxEff ? `${Math.round(computed.maxEff * 100) / 100}٪` : '—'}</div>
         </div>
       </div>
 
@@ -194,9 +194,9 @@ export default function DowntimeReportPanel({ records }: { records: DeviceLog[] 
                 <td className="px-4 py-3 font-medium">راندمان (٪)</td>
                 <td className="px-4 py-3">{formatNumber(computed.byLine.size ? [...computed.byLine.values()].reduce((a, v) => a + v.effs.length, 0) : 0)}</td>
                 <td className="px-4 py-3">—</td>
-                <td className="px-4 py-3 font-semibold">{computed.avgEff != null ? `${Math.round(computed.avgEff * 10) / 10}٪` : '—'}</td>
-                <td className="px-4 py-3">{computed.minEff ? `${Math.round(computed.minEff * 10) / 10}٪` : '—'}</td>
-                <td className="px-4 py-3">{computed.maxEff ? `${Math.round(computed.maxEff * 10) / 10}٪` : '—'}</td>
+                <td className="px-4 py-3 font-semibold">{computed.avgEff != null ? `${Math.round(computed.avgEff * 100) / 100}٪` : '—'}</td>
+                <td className="px-4 py-3">{computed.minEff ? `${Math.round(computed.minEff * 100) / 100}٪` : '—'}</td>
+                <td className="px-4 py-3">{computed.maxEff ? `${Math.round(computed.maxEff * 100) / 100}٪` : '—'}</td>
               </tr>
             </tbody>
           </table>
@@ -343,7 +343,7 @@ export default function DowntimeReportPanel({ records }: { records: DeviceLog[] 
                   <td className="px-4 py-3" dir="ltr">{formatHours(v.count ? v.sumDown / v.count : 0)}</td>
                   <td className="px-4 py-3 font-semibold text-emerald-600" dir="ltr">{formatHours(v.sumRun)}</td>
                   <td className="px-4 py-3" dir="ltr">{formatHours(v.count ? v.sumRun / v.count : 0)}</td>
-                  <td className="px-4 py-3 font-semibold">{v.effs.length ? `${Math.round(v.effs.reduce((a, b) => a + b, 0) / v.effs.length * 10) / 10}٪` : '—'}</td>
+                  <td className="px-4 py-3 font-semibold">{v.effs.length ? `${Math.round(v.effs.reduce((a, b) => a + b, 0) / v.effs.length * 100) / 100}٪` : '—'}</td>
                 </tr>
               ))}
               <tr className="bg-ink-50/80 font-bold dark:bg-slate-800/80">
@@ -353,7 +353,7 @@ export default function DowntimeReportPanel({ records }: { records: DeviceLog[] 
                 <td className="px-4 py-3" dir="ltr">{formatHours(computed.count ? computed.totalDown / computed.count : 0)}</td>
                 <td className="px-4 py-3 text-emerald-700" dir="ltr">{formatHours(computed.totalRun)}</td>
                 <td className="px-4 py-3" dir="ltr">{formatHours(computed.count ? computed.totalRun / computed.count : 0)}</td>
-                <td className="px-4 py-3">{computed.avgEff != null ? `${Math.round(computed.avgEff * 10) / 10}٪` : '—'}</td>
+                <td className="px-4 py-3">{computed.avgEff != null ? `${Math.round(computed.avgEff * 100) / 100}٪` : '—'}</td>
               </tr>
             </tbody>
           </table>

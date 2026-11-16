@@ -250,7 +250,12 @@ function TabsSettingsTab({ notify, reload }: any) {
       await createFactoryTab({
         factory: selectedFactory.id,
         key: form.key.trim(), name: form.name.trim(), description: form.description,
-        record_type: 'range', require_line: true, contractor_required: false,
+        record_type: 'range',
+        line_mode: 'required',
+        contractor_mode: 'optional',
+        hour_mode: 'disabled',
+        require_line: true,
+        contractor_required: false,
         order: tabs.length, is_active: true, inputs: [], outputs: [],
       })
       notify('تب ساخته شد؛ تنظیمات آن را از صفحه خود تب انجام دهید')

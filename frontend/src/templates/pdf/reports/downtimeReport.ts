@@ -118,52 +118,52 @@ export function buildDowntimeReport(input: DowntimeReportInput): PdfRenderOption
 
   const charts: PdfChartConfig[] = []
 
-  const sumDownByLine = lineNames.map(n => Math.round((byLine.get(n)!.sumDown) * 10) / 10)
+  const sumDownByLine = lineNames.map(n => Math.round((byLine.get(n)!.sumDown) * 100) / 100)
   charts.push({ type: 'bar', title: 'مجموع توقف به تفکیک خط (ساعت)', labels: lineNames.map(l => l.length > 14 ? l.slice(0, 14) + '…' : l), datasets: [{ label: 'توقف جمع', data: sumDownByLine, color: '#dc2626' }], showLegend: false })
-  const avgDownByLine = lineNames.map(n => { const e = byLine.get(n)!; return Math.round((e.sumDown / (e.count || 1)) * 10) / 10 })
+  const avgDownByLine = lineNames.map(n => { const e = byLine.get(n)!; return Math.round((e.sumDown / (e.count || 1)) * 100) / 100 })
   charts.push({ type: 'bar', title: 'میانگین توقف به تفکیک خط (ساعت)', labels: lineNames.map(l => l.length > 14 ? l.slice(0, 14) + '…' : l), datasets: [{ label: 'توقف میانگین', data: avgDownByLine, color: '#f97316' }], showLegend: false })
 
-  const sumRunByLine = lineNames.map(n => Math.round((byLine.get(n)!.sumRun) * 10) / 10)
+  const sumRunByLine = lineNames.map(n => Math.round((byLine.get(n)!.sumRun) * 100) / 100)
   charts.push({ type: 'bar', title: 'مجموع کارکرد به تفکیک خط (ساعت)', labels: lineNames.map(l => l.length > 14 ? l.slice(0, 14) + '…' : l), datasets: [{ label: 'کارکرد جمع', data: sumRunByLine, color: '#059669' }], showLegend: false })
 
-  const avgEffByLine = lineNames.map(n => { const e = byLine.get(n)!; const a = e.effs.length ? e.effs.reduce((x, y) => x + y, 0) / e.effs.length : 0; return Math.round(a * 10) / 10 })
+  const avgEffByLine = lineNames.map(n => { const e = byLine.get(n)!; const a = e.effs.length ? e.effs.reduce((x, y) => x + y, 0) / e.effs.length : 0; return Math.round(a * 100) / 100 })
   charts.push({ type: 'bar', title: 'میانگین راندمان به تفکیک خط (٪)', labels: lineNames.map(l => l.length > 14 ? l.slice(0, 14) + '…' : l), datasets: [{ label: 'راندمان میانگین', data: avgEffByLine, color: '#0f2040' }], showLegend: false })
 
   if (dateKeys.length >= 2) {
     const useKeys = dateKeys.length > 24 ? (() => { const step = Math.ceil(dateKeys.length / 24); const p: string[] = []; for (let i = 0; i < dateKeys.length; i += step) p.push(dateKeys[i]); return p })() : dateKeys
-    const sumDownDaily = useKeys.map(d => Math.round((byDate.get(d)!.sumDown) * 10) / 10)
+    const sumDownDaily = useKeys.map(d => Math.round((byDate.get(d)!.sumDown) * 100) / 100)
     charts.push({ type: 'bar', title: `روند روزانه توقف (مجموع)${dateKeys.length > 24 ? ` — ${dateKeys.length} روز در ${useKeys.length} نقطه` : ''}`, labels: useKeys.map(d => formatDate(d).slice(5)), datasets: [{ label: 'توقف', data: sumDownDaily, color: '#dc2626' }], showLegend: false })
-    const avgDownDaily = useKeys.map(d => { const e = byDate.get(d)!; return Math.round((e.sumDown / (e.count || 1)) * 10) / 10 })
+    const avgDownDaily = useKeys.map(d => { const e = byDate.get(d)!; return Math.round((e.sumDown / (e.count || 1)) * 100) / 100 })
     charts.push({ type: 'bar', title: 'روند روزانه توقف (میانگین)', labels: useKeys.map(d => formatDate(d).slice(5)), datasets: [{ label: 'توقف میانگین', data: avgDownDaily, color: '#f97316' }], showLegend: false })
   }
 
   if (weekKeys.length >= 2) {
-    const wkDown = weekKeys.map(k => Math.round((byWeek.get(k)!.sumDown) * 10) / 10)
+    const wkDown = weekKeys.map(k => Math.round((byWeek.get(k)!.sumDown) * 100) / 100)
     charts.push({ type: 'bar', title: 'مجموع هفتگی توقف (ساعت)', labels: weekKeys, datasets: [{ label: 'توقف هفتگی', data: wkDown, color: '#1e3a5f' }], showLegend: false })
   }
   if (monthKeys.length >= 2) {
-    const mDown = monthKeys.map(k => Math.round((byMonth.get(k)!.sumDown) * 10) / 10)
+    const mDown = monthKeys.map(k => Math.round((byMonth.get(k)!.sumDown) * 100) / 100)
     charts.push({ type: 'bar', title: 'مجموع ماهانه توقف (ساعت)', labels: monthKeys.map(k => formatMonthLabel(k)), datasets: [{ label: 'توقف ماهانه', data: mDown, color: '#7c3aed' }], showLegend: false })
   }
 
   const causeLabels = [...byCause.keys()].sort((a, b) => (byCause.get(b)!.sumDown) - (byCause.get(a)!.sumDown)).slice(0, 8)
   if (causeLabels.length) {
-    charts.push({ type: 'pie', title: `سهم علل توقف (بر اساس مجموع ساعت — Top ${causeLabels.length})`, labels: causeLabels.map(c => c.length > 22 ? c.slice(0, 22) + '…' : c), datasets: [{ label: 'توقف', data: causeLabels.map(c => Math.round(byCause.get(c)!.sumDown * 10) / 10) }], showLegend: false })
+    charts.push({ type: 'pie', title: `سهم علل توقف (بر اساس مجموع ساعت — Top ${causeLabels.length})`, labels: causeLabels.map(c => c.length > 22 ? c.slice(0, 22) + '…' : c), datasets: [{ label: 'توقف', data: causeLabels.map(c => Math.round(byCause.get(c)!.sumDown * 100) / 100) }], showLegend: false })
     charts.push({ type: 'pie', title: 'سهم علل توقف (بر اساس تعداد رکورد)', labels: causeLabels.map(c => c.length > 22 ? c.slice(0, 22) + '…' : c), datasets: [{ label: 'تعداد', data: causeLabels.map(c => byCause.get(c)!.count) }], showLegend: false })
   }
 
   const deviceLabels = [...byDevice.keys()].sort((a, b) => (byDevice.get(b)!.sumDown) - (byDevice.get(a)!.sumDown)).slice(0, 8)
   if (deviceLabels.length > 1) {
-    charts.push({ type: 'pie', title: `سهم دستگاه‌ها در توقف (Top ${deviceLabels.length})`, labels: deviceLabels.map(c => c.length > 18 ? c.slice(0, 18) + '…' : c), datasets: [{ label: 'توقف', data: deviceLabels.map(c => Math.round(byDevice.get(c)!.sumDown * 10) / 10) }], showLegend: false })
+    charts.push({ type: 'pie', title: `سهم دستگاه‌ها در توقف (Top ${deviceLabels.length})`, labels: deviceLabels.map(c => c.length > 18 ? c.slice(0, 18) + '…' : c), datasets: [{ label: 'توقف', data: deviceLabels.map(c => Math.round(byDevice.get(c)!.sumDown * 100) / 100) }], showLegend: false })
   }
 
   if (byShift.size > 1) {
     const shLabels = [...byShift.keys()].sort((a, b) => (byShift.get(b)!.sumDown) - (byShift.get(a)!.sumDown))
-    charts.push({ type: 'pie', title: 'سهم شیفت‌ها در توقف', labels: shLabels.map(c => c.length > 14 ? c.slice(0, 14) + '…' : c), datasets: [{ label: 'توقف', data: shLabels.map(c => Math.round(byShift.get(c)!.sumDown * 10) / 10) }], showLegend: false })
+    charts.push({ type: 'pie', title: 'سهم شیفت‌ها در توقف', labels: shLabels.map(c => c.length > 14 ? c.slice(0, 14) + '…' : c), datasets: [{ label: 'توقف', data: shLabels.map(c => Math.round(byShift.get(c)!.sumDown * 100) / 100) }], showLegend: false })
   }
 
   if (lineNames.length > 1) {
-    charts.push({ type: 'donut', title: 'توزیع توقف بین خطوط (سهم از مجموع)', labels: lineNames.slice(0, 8).map(l => l.length > 16 ? l.slice(0, 16) + '…' : l), datasets: [{ label: 'توقف', data: lineNames.slice(0, 8).map(l => Math.round((byLine.get(l)!.sumDown) * 10) / 10) }], showLegend: false })
+    charts.push({ type: 'donut', title: 'توزیع توقف بین خطوط (سهم از مجموع)', labels: lineNames.slice(0, 8).map(l => l.length > 16 ? l.slice(0, 16) + '…' : l), datasets: [{ label: 'توقف', data: lineNames.slice(0, 8).map(l => Math.round((byLine.get(l)!.sumDown) * 100) / 100) }], showLegend: false })
   }
 
   const tableRows = rows.map(r => ({
@@ -174,7 +174,7 @@ export function buildDowntimeReport(input: DowntimeReportInput): PdfRenderOption
     علت: r.cause || '—',
     توقف: formatHours(r.downtime_hours),
     کارکرد: formatHours(r.runtime_hours),
-    راندمان: r.efficiency != null ? `${Math.round(r.efficiency * 10) / 10}٪` : '—',
+    راندمان: r.efficiency != null ? `${Math.round(r.efficiency * 100) / 100}٪` : '—',
   }))
 
   const ctx = {

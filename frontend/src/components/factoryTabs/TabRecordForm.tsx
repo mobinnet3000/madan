@@ -65,10 +65,25 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
 
   const rangeInvalid = form.date_from && form.date_to && form.date_to < form.date_from
   const isDaily = schema?.tab.record_type === 'daily'
+  const lineMode = schema?.tab.line_mode ?? (schema?.tab.require_line ? 'required' : 'optional')
+  const contractorMode = schema?.tab.contractor_mode ?? (schema?.contractor.required ? 'required' : 'optional')
+  const hourMode = schema?.tab.hour_mode ?? (isDaily ? 'required' : 'disabled')
   const allTabs = (selectedFactory?.report_tabs ?? []).filter((t) => t.is_active)
 
+  const selectedLineId = lineMode !== 'disabled' && form.line ? Number(form.line) : null
+  const isFieldVisible = (field: { conditions?: { lines?: number[] } }) => {
+    const lines = field.conditions?.lines
+    if (!lines || lines.length === 0) return true
+    if (!selectedLineId) return false
+    return lines.includes(selectedLineId)
+  }
+
+  const visibleInputs = (schema?.inputs ?? []).filter(isFieldVisible)
+  const hiddenInputsCount = (schema?.inputs ?? []).length - visibleInputs.length
+  const visibleOutputs = (schema?.outputs ?? []).filter(isFieldVisible)
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-h-[360px] pb-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {fixedTab ? (
           <div>
@@ -84,20 +99,24 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
           </select>
         </div>
         )}
-        <div>
-          <label className="label">خط تولید {schema?.tab.require_line ? '*' : ''}</label>
-          <select className="input" value={form.line} onChange={(e) => set('line', e.target.value)}>
-            <option value="">بدون خط</option>
-            {(schema ? schema.lines : selectedFactory?.lines ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">پیمانکار</label>
-          <select className="input" value={form.contractor} onChange={(e) => set('contractor', e.target.value)}>
-            <option value="">بدون پیمانکار</option>
-            {(schema ? schema.contractor.options : selectedFactory?.contractors ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
+        {lineMode !== 'disabled' && (
+          <div>
+            <label className="label">خط تولید {lineMode === 'required' ? '*' : ''}</label>
+            <select className="input" value={form.line} onChange={(e) => set('line', e.target.value)}>
+              <option value="">{lineMode === 'required' ? 'انتخاب خط تولید...' : 'بدون خط'}</option>
+              {(schema ? schema.lines : selectedFactory?.lines ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+        )}
+        {contractorMode !== 'disabled' && (
+          <div>
+            <label className="label">پیمانکار {contractorMode === 'required' ? '*' : ''}</label>
+            <select className="input" value={form.contractor} onChange={(e) => set('contractor', e.target.value)}>
+              <option value="">{contractorMode === 'required' ? 'انتخاب پیمانکار...' : 'بدون پیمانکار'}</option>
+              {(schema ? schema.contractor.options : selectedFactory?.contractors ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <label className="label">{isDaily ? 'تاریخ تحویل *' : 'از تاریخ (بازه) *'}</label>
           <JalaliDateInput value={form.date_from} onChange={(iso) => set('date_from', iso)} />
@@ -108,9 +127,9 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
             <JalaliDateInput value={form.date_to} onChange={(iso) => set('date_to', iso)} />
           </div>
         )}
-        {isDaily && (
+        {hourMode !== 'disabled' && (
           <div>
-            <label className="label">ساعت ثبت *</label>
+            <label className="label">ساعت ثبت {hourMode === 'required' ? '*' : ''}</label>
             <input type="time" className="input" value={form.hour} onChange={(e) => set('hour', e.target.value)} />
           </div>
         )}
@@ -135,14 +154,25 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
 
       {schema && schema.inputs.length > 0 && (
         <fieldset className="rounded-xl border border-ink-100 p-3 dark:border-slate-700">
-          <legend className="rounded-lg bg-ink-50 px-2 py-0.5 text-xs font-bold text-ink-700 dark:bg-slate-800 dark:text-slate-200">
-            ورودی‌های تب
+          <legend className="flex items-center gap-2 rounded-lg bg-ink-50 px-2 py-0.5 text-xs font-bold text-ink-700 dark:bg-slate-800 dark:text-slate-200">
+            <span>ورودی‌های تب</span>
+            {hiddenInputsCount > 0 && (
+              <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400">
+                ({hiddenInputsCount} فیلد به دلیل شرط خط تولید پنهان است و مقدار آن ۰ منظور می‌شود)
+              </span>
+            )}
           </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {schema.inputs.map((inp) => (
-              <InputField key={inp.id} inp={inp} value={form.values[inp.key] ?? ''} setForm={setForm} />
-            ))}
-          </div>
+          {visibleInputs.length === 0 ? (
+            <div className="py-2 text-center text-xs text-ink-400 dark:text-slate-500">
+              هیچ ورودی‌ای برای خط انتخاب‌شده فعال نیست.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleInputs.map((inp) => (
+                <InputField key={inp.id} inp={inp} value={form.values[inp.key] ?? ''} setForm={setForm} />
+              ))}
+            </div>
+          )}
         </fieldset>
       )}
 
@@ -169,11 +199,11 @@ export function TabRecordForm({ form, setForm, editing, fixedTab }: {
         </fieldset>
       ) : null}
 
-      {schema && schema.outputs.length > 0 && (
+      {schema && visibleOutputs.length > 0 && (
         <div className="rounded-lg border border-dashed border-brand-200 bg-brand-50/40 p-3 dark:border-brand-900/50 dark:bg-brand-950/20">
           <div className="mb-1.5 text-xs font-bold text-brand-700 dark:text-brand-300">خروجی‌های خودکار (پس از ثبت محاسبه می‌شوند)</div>
           <div className="flex flex-wrap gap-1.5">
-            {schema.outputs.map((o) => (
+            {visibleOutputs.map((o) => (
               <span key={o.id} className="chip">{o.name} {o.unit && <span className="text-[10px] text-ink-400">{o.unit}</span>}</span>
             ))}
           </div>

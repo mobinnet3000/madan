@@ -384,6 +384,13 @@ TAB_COLOR_CHOICES = [(k, k) for k in (
 )]
 
 
+TAB_FIELD_MODE_CHOICES = [
+    ("required", "الزامی"),
+    ("optional", "اختیاری"),
+    ("disabled", "غیرفعال (حذف از تب)"),
+]
+
+
 class FactoryTab(models.Model):
     """تب داینامیک کارخانه — ساختار یکسان: ورودی‌ها + خروجی‌های فرمولی."""
 
@@ -403,6 +410,24 @@ class FactoryTab(models.Model):
         choices=TAB_RECORD_TYPE_CHOICES,
         default="range",
         verbose_name="نوع ثبت رکورد",
+    )
+    line_mode = models.CharField(
+        max_length=20,
+        choices=TAB_FIELD_MODE_CHOICES,
+        default="required",
+        verbose_name="وضعیت خط تولید",
+    )
+    contractor_mode = models.CharField(
+        max_length=20,
+        choices=TAB_FIELD_MODE_CHOICES,
+        default="optional",
+        verbose_name="وضعیت پیمانکار",
+    )
+    hour_mode = models.CharField(
+        max_length=20,
+        choices=TAB_FIELD_MODE_CHOICES,
+        default="optional",
+        verbose_name="وضعیت ساعت ورود",
     )
     require_line = models.BooleanField(default=True, verbose_name="خط تولید الزامی است")
     contractor_required = models.BooleanField(
@@ -440,6 +465,22 @@ class FactoryTab(models.Model):
             except ValueError as e:
                 raise ValidationError({"outputs": str(e)})
 
+    def save(self, *args, **kwargs):
+        if self.line_mode:
+            self.require_line = (self.line_mode == "required")
+        elif self.require_line is not None:
+            self.line_mode = "required" if self.require_line else "optional"
+
+        if self.contractor_mode:
+            self.contractor_required = (self.contractor_mode == "required")
+        elif self.contractor_required is not None:
+            self.contractor_mode = "required" if self.contractor_required else "optional"
+
+        if not self.hour_mode:
+            self.hour_mode = "required" if self.record_type == "daily" else "disabled"
+
+        super().save(*args, **kwargs)
+
 
 class FactoryTabInput(models.Model):
     tab = models.ForeignKey(
@@ -462,6 +503,12 @@ class FactoryTabInput(models.Model):
     unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
     required = models.BooleanField(default=True, verbose_name="الزامی")
     order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+    conditions = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="شرط‌های نمایش",
+        help_text='مثال: {"lines": [1, 2]}',
+    )
 
     class Meta:
         verbose_name = "ورودی تب"
@@ -498,6 +545,12 @@ class FactoryTabOutput(models.Model):
     unit = models.CharField(max_length=50, blank=True, verbose_name="واحد اندازه‌گیری")
     formula = models.TextField(verbose_name="فرمول")
     order = models.PositiveIntegerField(default=0, verbose_name="ترتیب")
+    conditions = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="شرط‌های نمایش",
+        help_text='مثال: {"lines": [1, 2]}',
+    )
 
     class Meta:
         verbose_name = "خروجی تب"
@@ -579,22 +632,38 @@ class FactoryTabRecord(models.Model):
 
     def clean(self):
         super().clean()
-        if self.tab_id and self.line_id:
-            if self.line.factory_id != self.tab.factory_id:
-                raise ValidationError(
-                    {"line": "خط تولید باید متعلق به کارخانه‌ی همین تب باشد."}
-                )
-        if self.tab_id and self.contractor_id:
-            if self.contractor.factory_id != self.tab.factory_id:
-                raise ValidationError(
-                    {"contractor": "پیمانکار باید متعلق به کارخانه‌ی همین تب باشد."}
-                )
         if self.date_from and self.date_to and self.date_to < self.date_from:
             raise ValidationError(
                 {"date_to": "تاریخ پایان بازه نمی‌تواند قبل از تاریخ شروع باشد."}
             )
-        if self.tab_id and self.tab.require_line and not self.line_id:
-            raise ValidationError({"line": "انتخاب خط تولید برای این تب الزامی است."})
+        if self.tab_id:
+            line_mode = getattr(self.tab, "line_mode", "required" if getattr(self.tab, "require_line", True) else "optional")
+            contractor_mode = getattr(self.tab, "contractor_mode", "required" if getattr(self.tab, "contractor_required", False) else "optional")
+            hour_mode = getattr(self.tab, "hour_mode", "required" if getattr(self.tab, "record_type", "range") == "daily" else "disabled")
+
+            if line_mode == "disabled":
+                self.line = None
+            elif line_mode == "required" and not self.line_id:
+                raise ValidationError({"line": "انتخاب خط تولید برای این تب الزامی است."})
+
+            if contractor_mode == "disabled":
+                self.contractor = None
+            elif contractor_mode == "required" and not self.contractor_id:
+                raise ValidationError({"contractor": "انتخاب پیمانکار برای این تب الزامی است."})
+
+            if hour_mode == "disabled":
+                self.hour = None
+            elif hour_mode == "required" and not self.hour:
+                raise ValidationError({"hour": "ساعت ثبت برای این تب الزامی است."})
+
+            if self.line_id and self.line.factory_id != self.tab.factory_id:
+                raise ValidationError(
+                    {"line": "خط تولید باید متعلق به کارخانه‌ی همین تب باشد."}
+                )
+            if self.contractor_id and self.contractor.factory_id != self.tab.factory_id:
+                raise ValidationError(
+                    {"contractor": "پیمانکار باید متعلق به کارخانه‌ی همین تب باشد."}
+                )
 
     def save(self, *args, **kwargs):
         self.full_clean()

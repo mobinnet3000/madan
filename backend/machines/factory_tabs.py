@@ -201,13 +201,19 @@ def build_schema(tab):
         else []
     )
     lines = factory.lines.order_by("name") if factory.id else []
+    line_mode = getattr(tab, "line_mode", "required" if getattr(tab, "require_line", True) else "optional")
+    contractor_mode = getattr(tab, "contractor_mode", "required" if getattr(tab, "contractor_required", False) else "optional")
+    hour_mode = getattr(tab, "hour_mode", "required" if getattr(tab, "record_type", "range") == "daily" else "disabled")
     return {
         "tab": {
             "id": tab.id,
             "key": tab.key,
             "name": tab.name,
             "record_type": tab.record_type,
-            "require_line": tab.require_line,
+            "require_line": bool(line_mode == "required"),
+            "line_mode": line_mode,
+            "contractor_mode": contractor_mode,
+            "hour_mode": hour_mode,
         },
         "cross_tabs": [
             {
@@ -220,7 +226,8 @@ def build_schema(tab):
             for o in other_tabs(tab).order_by("order", "id")
         ],
         "contractor": {
-            "required": bool(tab.contractor_required),
+            "required": bool(contractor_mode == "required"),
+            "mode": contractor_mode,
             "options": [
                 {
                     "id": c.id,
@@ -241,18 +248,25 @@ def build_schema(tab):
                 "options": list(i.options or []),
                 "required": i.required,
                 "unit": i.unit,
+                "conditions": getattr(i, "conditions", None) or {},
             }
             for i in tab.inputs.all()
         ],
         "outputs": [
-            {"id": o.id, "key": o.key, "name": o.name, "unit": o.unit}
+            {
+                "id": o.id,
+                "key": o.key,
+                "name": o.name,
+                "unit": o.unit,
+                "conditions": getattr(o, "conditions", None) or {},
+            }
             for o in tab.outputs.all()
         ],
         "defined": True,
     }
 
 
-def validate_and_compute(tab, payload, cross_ctx=None):
+def validate_and_compute(tab, payload, line=None, cross_ctx=None):
     """اعتبارسنجی و محاسبه‌ی یک رکورد تب بر اساس Inputهای ارسالی.
 
     cross_ctx: دیکشنری مقادیر ارجاع بین‌تبی («<normkey>.<field>» → عدد)
@@ -266,8 +280,15 @@ def validate_and_compute(tab, payload, cross_ctx=None):
     if unknown:
         raise ValueError("ورودی‌های ناشناخته: " + ", ".join(sorted(unknown)))
 
+    line_id = getattr(line, "id", None) if line is not None else None
     cleaned = {}
     for key, inp in allowed.items():
+        cond_lines = (getattr(inp, "conditions", None) or {}).get("lines")
+        if cond_lines and (line_id is None or line_id not in cond_lines):
+            # شرط خط تولید برقرار نیست -> فیلد صفر در نظر گرفته می‌شود
+            cleaned[key] = 0.0 if inp.input_type == "number" else 0
+            continue
+
         if key not in raw or raw[key] is None or raw[key] == "":
             if inp.required:
                 raise ValueError(f"ورودی اجباری «{inp.name}» وارد نشده است.")
@@ -298,7 +319,7 @@ def validate_and_compute(tab, payload, cross_ctx=None):
     }
     if cross_ctx:
         env.update({k: v for k, v in cross_ctx.items() if isinstance(v, (int, float))})
-    outputs = _compute_outputs(tab, env)
+    outputs = _compute_outputs(tab, env, line_id=line_id)
     return cleaned, outputs
 
 
@@ -399,7 +420,7 @@ def validate_linked_records(tab, linked_records):
     return cleaned
 
 
-def _compute_outputs(tab, env):
+def _compute_outputs(tab, env, line_id=None):
     output_defs = list(tab.outputs.all())
     by_key = {o.key: o for o in output_defs}
 
@@ -417,6 +438,13 @@ def _compute_outputs(tab, env):
     results = {}
     for key in order:
         o = by_key[key]
+        cond_lines = (getattr(o, "conditions", None) or {}).get("lines")
+        if cond_lines and (line_id is None or line_id not in cond_lines):
+            # شرط خط تولید برقرار نیست -> خروجی صفر است
+            results[key] = 0.0
+            env[key] = 0.0
+            continue
+
         try:
             value = evaluate(o.formula, env)
         except FormulaError as e:
@@ -432,6 +460,6 @@ def _compute_outputs(tab, env):
                     hint = "، ".join(cross_needed)
                     msg += f" — برای «{hint}» یا رکورد خاص همان تب را انتخاب کنید یا بازه‌ای بگذارید که در تب مقصد رکورد داشته باشد (میانگین هم‌بازه فعلاً خالی است)."
             raise ValueError(f"خطا در محاسبه‌ی خروجی «{o.name}»: {msg}")
-        results[key] = round(float(value), 6)
+        results[key] = round(float(value), 2)
         env[key] = results[key]
     return results

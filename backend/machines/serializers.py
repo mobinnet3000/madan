@@ -330,7 +330,7 @@ class DeviceLogWriteSerializer(serializers.ModelSerializer):
 class FactoryTabInputSerializer(serializers.ModelSerializer):
     class Meta:
         model = FactoryTabInput
-        fields = ["id", "key", "name", "input_type", "options", "unit", "required", "order"]
+        fields = ["id", "key", "name", "input_type", "options", "unit", "required", "order", "conditions"]
 
     def validate(self, attrs):
         from .models import normalize_select_options
@@ -369,7 +369,7 @@ class FactoryTabInputSerializer(serializers.ModelSerializer):
 class FactoryTabOutputSerializer(serializers.ModelSerializer):
     class Meta:
         model = FactoryTabOutput
-        fields = ["id", "key", "name", "unit", "formula", "order"]
+        fields = ["id", "key", "name", "unit", "formula", "order", "conditions"]
 
 
 class FactoryTabSerializer(serializers.ModelSerializer):
@@ -380,21 +380,46 @@ class FactoryTabSerializer(serializers.ModelSerializer):
         model = FactoryTab
         fields = [
             "id", "factory", "key", "name", "description", "record_type",
+            "icon", "color", "line_mode", "contractor_mode", "hour_mode",
             "require_line", "contractor_required", "order", "is_active",
             "inputs", "outputs", "created_at", "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
 
     def create(self, validated_data):
+        if "line_mode" in validated_data:
+            validated_data["require_line"] = (validated_data["line_mode"] == "required")
+        elif "require_line" in validated_data:
+            validated_data["line_mode"] = "required" if validated_data["require_line"] else "optional"
+
+        if "contractor_mode" in validated_data:
+            validated_data["contractor_required"] = (validated_data["contractor_mode"] == "required")
+        elif "contractor_required" in validated_data:
+            validated_data["contractor_mode"] = "required" if validated_data["contractor_required"] else "optional"
+
+        if "hour_mode" not in validated_data:
+            validated_data["hour_mode"] = "required" if validated_data.get("record_type") == "daily" else "disabled"
+
         instance = FactoryTab.objects.create(**validated_data)
         _sync_tab_nested(instance, self.initial_data)
         return instance
 
     def update(self, instance, validated_data):
-        for f in ("key", "name", "description", "record_type", "require_line",
-                  "contractor_required", "order", "is_active"):
+        for f in ("key", "name", "description", "record_type", "icon", "color",
+                  "line_mode", "contractor_mode", "hour_mode",
+                  "require_line", "contractor_required", "order", "is_active"):
             if f in validated_data:
                 setattr(instance, f, validated_data[f])
+        if "line_mode" in validated_data:
+            instance.require_line = (validated_data["line_mode"] == "required")
+        elif "require_line" in validated_data:
+            instance.line_mode = "required" if validated_data["require_line"] else "optional"
+
+        if "contractor_mode" in validated_data:
+            instance.contractor_required = (validated_data["contractor_mode"] == "required")
+        elif "contractor_required" in validated_data:
+            instance.contractor_mode = "required" if validated_data["contractor_required"] else "optional"
+
         instance.save()
         _sync_tab_nested(instance, self.initial_data)
         return instance
@@ -444,6 +469,7 @@ def _sync_tab_inputs(instance, items):
             "unit": item.get("unit", ""),
             "required": item.get("required", True),
             "order": item.get("order", idx),
+            "conditions": item.get("conditions") if isinstance(item.get("conditions"), dict) else {},
         }
         if itype == "select":
             from .models import normalize_select_options
@@ -490,6 +516,7 @@ def _sync_tab_outputs(instance, items):
             "unit": item.get("unit", ""),
             "formula": formula,
             "order": item.get("order", idx),
+            "conditions": item.get("conditions") if isinstance(item.get("conditions"), dict) else {},
         }
         if key in existing:
             for f, v in defaults.items():
@@ -509,7 +536,8 @@ class FactoryTabBriefSerializer(serializers.ModelSerializer):
         model = FactoryTab
         fields = [
             "id", "key", "name", "description", "icon", "color",
-            "record_type", "require_line", "contractor_required", "order",
+            "record_type", "line_mode", "contractor_mode", "hour_mode",
+            "require_line", "contractor_required", "order",
             "is_active", "inputs", "outputs",
         ]
 

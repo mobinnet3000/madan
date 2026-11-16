@@ -155,14 +155,19 @@ export function parseHoursHM(s: string): number {
   return Number(t) || 0
 }
 
-export function formatNumber(n: number | null | undefined): string {
+export function round2(n: number | null | undefined): number {
+  if (n === null || n === undefined || isNaN(n)) return 0
+  return Math.round(((n as number) + Number.EPSILON) * 100) / 100
+}
+
+export function formatNumber(n: number | null | undefined, maxDecimals: number = 2): string {
   if (n === null || n === undefined || isNaN(n)) return '-'
-  return new Intl.NumberFormat('fa-IR').format(n)
+  return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: maxDecimals }).format(n)
 }
 
 export function formatPercent(n: number | null | undefined): string {
   if (n === null || n === undefined || isNaN(n)) return '-'
-  return `${formatNumber(Math.round(n * 10) / 10)}٪`
+  return `${formatNumber(round2(n), 2)}٪`
 }
 
 export function classNames(...classes: (string | false | null | undefined)[]): string {

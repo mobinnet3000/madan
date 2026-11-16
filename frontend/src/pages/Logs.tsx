@@ -1,18 +1,18 @@
-import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Sparkles, Clock, Activity, BarChart3 } from 'lucide-react'
+import { Fragment, useMemo, useState } from 'react'
+import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Sparkles, Clock, Activity, BarChart3 } from 'lucide-react'
 import DowntimeReportPanel from '../components/downtime/DowntimeReportPanel'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { hasPerm } from '../constants'
 import { addReportHistoryEntry } from '../features/reportHistory'
 import { createLog, updateLog, deleteLog } from '../api/logs'
-import type { DeviceLog, DeviceLogPayload } from '../types'
+import type { DeviceLog, DeviceLogPayload, Shift } from '../types'
 import { useToast } from '../components/ui/Toast'
 import { ErrorBanner, EmptyState, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
-import { formatDate, formatNumber, todayISO, shiftHours, formatHours, parseHoursHM } from '../utils'
+import { formatDate, formatDateWithWeekday, formatNumber, todayISO, shiftHours, formatHours, parseHoursHM, round2 } from '../utils'
 import { useReportState } from '../features/reports/useReportState'
 import { PRESETS } from '../features/reports/reportFilters'
 import { buildDowntimeReport } from '../templates/pdf/reports/downtimeReport'
@@ -48,7 +48,7 @@ function LogForm({ form, setForm, editing }: { form: FormState; setForm: (f: For
   const addRow = () => setForm({ ...form, rows: [...form.rows, { ...emptyRow }] })
   const removeRow = (idx: number) => { if (form.rows.length <= 1) return; setForm({ ...form, rows: form.rows.filter((_, i) => i !== idx) }) }
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-h-[360px] pb-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label className="label">خط تولید *</label>
@@ -138,13 +138,103 @@ export default function Logs() {
 
   const allDevices = useMemo(() => (selectedFactory?.lines ?? []).flatMap((l) => l.devices.map((d) => ({ ...d, lineName: l.name }))), [selectedFactory])
 
-  const stats = useMemo(() => {
-    const rows = report.sorted
-    const totalDown = rows.reduce((s, r) => s + (r.downtime_hours || 0), 0)
-    const totalRun = rows.reduce((s, r) => s + (r.runtime_hours || 0), 0)
-    const withDown = rows.filter((r) => r.downtime_hours > 0).length
-    return { total: rows.length, totalDown, totalRun, withDown, withoutDown: rows.length - withDown }
+  interface ShiftDayGroup {
+    key: string
+    date: string
+    dayOfWeek: string
+    line: DeviceLog['line']
+    shift: Shift
+    shiftHours: number
+    records: DeviceLog[]
+    totalDowntime: number
+    usefulRuntime: number
+    efficiency: number
+    causes: string[]
+    devices: string[]
+  }
+
+  const groupedLogs = useMemo(() => {
+    const groups: ShiftDayGroup[] = []
+    const map = new Map<string, ShiftDayGroup>()
+
+    for (const r of report.sorted) {
+      const k = `${r.date}_${r.line.id}_${r.shift.id}`
+      let g = map.get(k)
+      if (!g) {
+        const sHours = shiftHours(r.shift?.start_time, r.shift?.end_time) || 12
+        g = {
+          key: k,
+          date: r.date,
+          dayOfWeek: r.day_of_week || '',
+          line: r.line,
+          shift: r.shift,
+          shiftHours: sHours,
+          records: [],
+          totalDowntime: 0,
+          usefulRuntime: sHours,
+          efficiency: 100,
+          causes: [],
+          devices: [],
+        }
+        map.set(k, g)
+        groups.push(g)
+      }
+      g.records.push(r)
+      g.totalDowntime = round2(g.totalDowntime + (r.downtime_hours || 0))
+      if (r.failure_cause?.title && !g.causes.includes(r.failure_cause.title)) {
+        g.causes.push(r.failure_cause.title)
+      }
+      const devName = r.device ? (r.device.code ? `${r.device.code} - ${r.device.name}` : r.device.name) : ''
+      if (devName && !g.devices.includes(devName)) {
+        g.devices.push(devName)
+      }
+    }
+
+    for (const g of groups) {
+      g.usefulRuntime = Math.max(0, round2(g.shiftHours - g.totalDowntime))
+      g.efficiency = g.shiftHours > 0 ? round2((g.usefulRuntime / g.shiftHours) * 100) : 0
+    }
+
+    return groups
   }, [report.sorted])
+
+  const [groupPage, setGroupPage] = useState(1)
+  const groupPageSize = 25
+  const totalGroupPages = Math.max(1, Math.ceil(groupedLogs.length / groupPageSize))
+  const paginatedGroups = useMemo(() => {
+    const start = (groupPage - 1) * groupPageSize
+    return groupedLogs.slice(start, start + groupPageSize)
+  }, [groupedLogs, groupPage, groupPageSize])
+
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const toggleGroup = (k: string) => setExpandedGroups((prev) => ({ ...prev, [k]: prev[k] === false ? true : false }))
+  const allGroupsExpanded = useMemo(() => {
+    if (paginatedGroups.length === 0) return false
+    return paginatedGroups.every((g) => expandedGroups[g.key] !== false)
+  }, [paginatedGroups, expandedGroups])
+  const toggleAllGroups = () => {
+    const nextVal = !allGroupsExpanded
+    const next: Record<string, boolean> = {}
+    paginatedGroups.forEach((g) => { next[g.key] = nextVal })
+    setExpandedGroups(next)
+  }
+
+  const stats = useMemo(() => {
+    const totalDown = groupedLogs.reduce((s, g) => s + g.totalDowntime, 0)
+    const totalRun = groupedLogs.reduce((s, g) => s + g.usefulRuntime, 0)
+    const totalShiftCapacity = groupedLogs.reduce((s, g) => s + g.shiftHours, 0)
+    const overallEff = totalShiftCapacity > 0 ? round2((totalRun / totalShiftCapacity) * 100) : null
+    const withDown = report.sorted.filter((r) => r.downtime_hours > 0).length
+    return {
+      total: report.sorted.length,
+      groupCount: groupedLogs.length,
+      totalDown: round2(totalDown),
+      totalRun: round2(totalRun),
+      overallEff,
+      withDown,
+      withoutDown: report.sorted.length - withDown,
+    }
+  }, [groupedLogs, report.sorted])
 
   const openCreate = () => {
     setEditing(null)
@@ -159,22 +249,23 @@ export default function Logs() {
     })
     setModalOpen(true)
   }
-  const computeShift = (shiftId: number, down: number): number => {
-    const allShifts = selectedFactory ? [...(selectedFactory.shifts ?? []), ...selectedFactory.lines.flatMap(l => (l as any).shifts ?? [])] : []
-    const shift = allShifts.find((s) => s.id === shiftId)
-    return Math.max(0, shiftHours(shift?.start_time, shift?.end_time) - down)
-  }
   const submit = async () => {
     if (!form.line || !form.shift || !form.date) { notify('خط، شیفت و تاریخ الزامی هستند', 'error'); return }
     if (form.rows.length === 0) { notify('حداقل یک ردیف توقف وارد کنید', 'error'); return }
     const line = Number(form.line); const shift = Number(form.shift)
+    const allShifts = selectedFactory ? [...(selectedFactory.shifts ?? []), ...selectedFactory.lines.flatMap(l => (l as any).shifts ?? [])] : []
+    const shiftObj = allShifts.find((s) => s.id === shift)
+    const shiftLen = shiftHours(shiftObj?.start_time, shiftObj?.end_time) || 12
+    const totalFormDown = form.rows.reduce((sum, r) => sum + parseHoursHM(r.downtime_hours), 0)
+    const usefulRuntime = Math.max(0, round2(shiftLen - totalFormDown))
+
     const buildPayload = (row: RowState): DeviceLogPayload => {
       const down = parseHoursHM(row.downtime_hours)
       return {
         line, shift, date: form.date,
         device: row.device ? Number(row.device) : null,
         failure_cause: row.failure_cause ? Number(row.failure_cause) : null,
-        runtime_hours: computeShift(shift, down),
+        runtime_hours: usefulRuntime,
         downtime_hours: down,
         failure_description: row.failure_description,
         repair_description: row.repair_description,
@@ -211,7 +302,7 @@ export default function Logs() {
         const rows = report.sorted.map((l) => ({
           date: l.date, line: l.line.name, shift: l.shift.name,
           device: l.device?.name ?? '—', cause: l.failure_cause?.title ?? '—',
-          downtime_hours: l.downtime_hours, runtime_hours: l.runtime_hours, efficiency: l.efficiency ?? 0,
+          downtime_hours: l.downtime_hours, runtime_hours: l.runtime_hours, efficiency: l.efficiency != null ? round2(l.efficiency) : 0,
         }))
         const opts = buildDowntimeReport({
           title, factoryName: selectedFactory?.name ?? '', factoryAddress: selectedFactory?.address,
@@ -229,7 +320,7 @@ export default function Logs() {
           'علت توقف': l.failure_cause?.title || '—',
           'توقف': formatHours(l.downtime_hours),
           'کارکرد': formatHours(l.runtime_hours),
-          'راندمان': l.efficiency ?? 0,
+          'راندمان': l.efficiency != null ? round2(l.efficiency) : '—',
           'توضیحات': l.failure_description || '—',
         }))
         await exportData(rows, { fileName: baseName, title, factoryName: selectedFactory?.name ?? '', dateFrom: report.filters.date_from || undefined, dateTo: report.filters.date_to || undefined, format: fmt })
@@ -368,27 +459,235 @@ export default function Logs() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-50/70 px-4 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+              <span className="font-bold text-slate-800 dark:text-slate-100">
+                گزارش توقفات روزانه (به تفکیک شیفت)
+              </span>
+              <span className="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                {formatNumber(groupedLogs.length)} شیفت روزانه · {formatNumber(report.totalCount)} ردیف خرابی
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn-ghost !h-7 !px-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-slate-800"
+              onClick={toggleAllGroups}
+            >
+              {allGroupsExpanded ? 'بستن همه شیفت‌ها' : 'باز کردن همه شیفت‌ها'}
+            </button>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-slate-200 bg-slate-50/80 text-right text-xs font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400"><th className="whitespace-nowrap px-4 py-3">تاریخ</th><th className="whitespace-nowrap px-4 py-3">خط</th><th className="whitespace-nowrap px-4 py-3">شیفت</th><th className="px-4 py-3">دستگاه / علت</th><th className="whitespace-nowrap px-4 py-3">کارکرد</th><th className="whitespace-nowrap px-4 py-3">توقف</th><th className="whitespace-nowrap px-4 py-3 text-center">عملیات</th></tr></thead>
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/80 text-right text-xs font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3">تاریخ (روز)</th>
+                  <th className="whitespace-nowrap px-4 py-3">خط تولید</th>
+                  <th className="whitespace-nowrap px-4 py-3">شیفت</th>
+                  <th className="px-4 py-3">علل و دستگاه‌های خرابی</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center">کارکرد مفید</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center">مجموع توقف</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center">راندمان</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center">عملیات</th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {report.paginated.map((l) => (
-                  <tr key={l.id} className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800 dark:text-slate-200"><div>{formatDate(l.date)}</div><div className="text-[11px] font-normal text-slate-400 dark:text-slate-500">{l.day_of_week || ''}</div></td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">{l.line.name}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600 dark:text-slate-400">{l.shift.name}</td>
-                    <td className="px-4 py-3"><div className="font-medium text-slate-700 dark:text-slate-300">{l.device ? `${l.device.code ? l.device.code + ' - ' : ''}${l.device.name}` : '—'}</div>{l.failure_cause ? <span className="mt-1 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50">{l.failure_cause.title}</span> : <span className="text-xs text-slate-400">—</span>}</td>
-                    <td className="whitespace-nowrap px-4 py-3"><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400" dir="ltr">{formatHours(l.runtime_hours)}</span></td>
-                    <td className="whitespace-nowrap px-4 py-3"><span className={l.downtime_hours > 0 ? 'font-extrabold tabular-nums text-rose-600 dark:text-rose-400' : 'tabular-nums text-slate-300 dark:text-slate-600'} dir="ltr">{formatHours(l.downtime_hours)}</span></td>
-                    <td className="whitespace-nowrap px-4 py-3"><div className="flex items-center justify-center gap-1">{canEdit && <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white" onClick={() => openEdit(l)} title="ویرایش"><Pencil className="h-4 w-4" /></button>}{canDelete && <button className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40" onClick={() => setConfirmId(l.id)} title="حذف"><Trash2 className="h-4 w-4" /></button>}{!canEdit && !canDelete && <span className="text-xs text-slate-400">—</span>}</div></td>
-                  </tr>
-                ))}
+                {paginatedGroups.map((g) => {
+                  const isExpanded = expandedGroups[g.key] !== false
+                  const hasDowntime = g.totalDowntime > 0
+                  return (
+                    <Fragment key={g.key}>
+                      {/* ردیف اصلی روز/شیفت */}
+                      <tr
+                        className="group cursor-pointer bg-slate-50/90 font-medium transition hover:bg-brand-50/40 dark:bg-slate-800/80 dark:hover:bg-slate-800"
+                        onClick={() => toggleGroup(g.key)}
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-600 shadow-xs transition group-hover:bg-brand-100 group-hover:text-brand-700 dark:bg-slate-700 dark:text-slate-200">
+                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </span>
+                            <div>
+                              <div className="font-bold">{formatDate(g.date)}</div>
+                              <div className="text-[11px] font-normal text-slate-400 dark:text-slate-500">{g.dayOfWeek || ''}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300 font-medium">
+                          {g.line.name}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-600 dark:text-slate-400">
+                          <div>{g.shift.name}</div>
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500">
+                            طول شیفت: {formatHours(g.shiftHours)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${
+                              hasDowntime
+                                ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50'
+                                : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                            }`}>
+                              {hasDowntime ? `${formatNumber(g.records.length)} خرابی` : 'بدون توقف'}
+                            </span>
+                            {g.causes.map((c, i) => (
+                              <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                {c}
+                              </span>
+                            ))}
+                            {g.devices.length > 0 && (
+                              <span className="text-[11px] text-slate-400">
+                                ({g.devices.slice(0, 2).join('، ')}{g.devices.length > 2 ? '...' : ''})
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-center">
+                          <span className="font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400 text-base" dir="ltr">
+                            {formatHours(g.usefulRuntime)}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-center">
+                          <span className={hasDowntime ? 'font-extrabold tabular-nums text-rose-600 dark:text-rose-400 text-base' : 'tabular-nums text-slate-300 dark:text-slate-600'} dir="ltr">
+                            {formatHours(g.totalDowntime)}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-center">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black ${
+                            g.efficiency >= 85
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : g.efficiency >= 60
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                          }`}>
+                            {formatNumber(g.efficiency, 2)}٪
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-center">
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400"
+                            onClick={(e) => { e.stopPropagation(); toggleGroup(g.key) }}
+                          >
+                            {isExpanded ? 'بستن جزئیات' : 'مشاهده خرابیا'}
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* لیست خرابی‌های بازشونده این روز/شیفت */}
+                      {isExpanded && (
+                        <tr className="bg-slate-50/50 dark:bg-slate-900/50">
+                          <td colSpan={8} className="p-0">
+                            <div className="border-t border-b border-slate-200/80 bg-white/60 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                              <div className="mb-2.5 flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                                  <Layers className="h-3.5 w-3.5 text-brand-600" />
+                                  <span>لیست خرابی‌ها و توقف‌های ثبت‌شده ({formatNumber(g.records.length)} مورد)</span>
+                                </div>
+                                {canCreate && (
+                                  <button
+                                    type="button"
+                                    className="btn-ghost !h-7 !px-2 text-xs font-medium text-brand-600 dark:text-brand-400"
+                                    onClick={() => {
+                                      setEditing(null)
+                                      setForm({
+                                        line: String(g.line.id),
+                                        shift: String(g.shift.id),
+                                        date: g.date,
+                                        rows: [{ ...emptyRow }],
+                                      })
+                                      setModalOpen(true)
+                                    }}
+                                  >
+                                    <Plus className="h-3.5 w-3.5" /> افزودن خرابی به این شیفت
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-slate-200 bg-slate-50 text-right font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-800/80 dark:text-slate-400">
+                                      <th className="px-3 py-2 w-10 text-center">#</th>
+                                      <th className="px-3 py-2">دستگاه</th>
+                                      <th className="px-3 py-2">علت خرابی</th>
+                                      <th className="px-3 py-2">مدت توقف</th>
+                                      <th className="px-3 py-2">توضیحات خرابی</th>
+                                      <th className="px-3 py-2">اقدامات / تعمیرات</th>
+                                      <th className="px-3 py-2 text-center w-24">عملیات</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {g.records.map((r, rIdx) => (
+                                      <tr key={r.id} className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                                        <td className="px-3 py-2 text-center text-slate-400 font-mono">
+                                          {rIdx + 1}
+                                        </td>
+                                        <td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200">
+                                          {r.device ? `${r.device.code ? r.device.code + ' - ' : ''}${r.device.name}` : 'توقف کل خط'}
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          {r.failure_cause ? (
+                                            <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900/50">
+                                              {r.failure_cause.title}
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-400">—</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 font-bold text-rose-600 dark:text-rose-400 tabular-nums" dir="ltr">
+                                          {formatHours(r.downtime_hours)}
+                                        </td>
+                                        <td className="px-3 py-2 text-slate-600 dark:text-slate-300 max-w-xs truncate" title={r.failure_description || ''}>
+                                          {r.failure_description || '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-slate-600 dark:text-slate-300 max-w-xs truncate" title={r.repair_description || ''}>
+                                          {r.repair_description || '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                          <div className="flex items-center justify-center gap-1">
+                                            {canEdit && (
+                                              <button
+                                                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                                                onClick={() => openEdit(r)}
+                                                title="ویرایش"
+                                              >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                            {canDelete && (
+                                              <button
+                                                className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40"
+                                                onClick={() => setConfirmId(r.id)}
+                                                title="حذف"
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
           <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50/50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
-            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">نمایش {Math.min((report.page - 1) * report.pageSize + 1, report.totalCount)} تا {Math.min(report.page * report.pageSize, report.totalCount)} از {formatNumber(report.totalCount)} رکورد — مرتب: {report.filters.sortKey} ({report.filters.sortDir})</span>
-            <Pagination currentPage={report.page} totalPages={report.totalPages} onPageChange={report.setPage} />
+            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+              نمایش {Math.min((groupPage - 1) * groupPageSize + 1, groupedLogs.length)} تا {Math.min(groupPage * groupPageSize, groupedLogs.length)} از {formatNumber(groupedLogs.length)} شیفت روزانه ({formatNumber(report.totalCount)} رکورد خرابی)
+            </span>
+            <Pagination currentPage={groupPage} totalPages={totalGroupPages} onPageChange={setGroupPage} />
           </div>
         </div>
       )}

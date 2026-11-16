@@ -19,6 +19,7 @@ import {
   type FactoryTabColor,
   type FactoryTabFull,
   type FactoryTabIcon,
+  type TabFieldMode,
 } from '../../types'
 import { TAB_COLOR_BG, tabColorBg, tabIcon } from '../../utils/tabIcons'
 
@@ -26,13 +27,21 @@ type TabInput = {
   id?: number; key: string; name: string
   input_type: 'number' | 'text' | 'select'; options: string[]
   unit: string; required: boolean; order: number
+  conditions?: { lines?: number[] }
 }
-type TabOutput = { id?: number; key: string; name: string; unit: string; formula: string; order: number }
+type TabOutput = {
+  id?: number; key: string; name: string; unit: string; formula: string; order: number
+  conditions?: { lines?: number[] }
+}
 
 const emptyInput = (order: number): TabInput => ({
   key: '', name: '', input_type: 'number', options: [], unit: '', required: true, order,
+  conditions: {},
 })
-const emptyOutput = (order: number): TabOutput => ({ key: '', name: '', unit: '', formula: '', order })
+const emptyOutput = (order: number): TabOutput => ({
+  key: '', name: '', unit: '', formula: '', order,
+  conditions: {},
+})
 
 export function TabIconBadge({ icon, color, className = 'h-5 w-5' }: {
   icon?: string
@@ -44,6 +53,93 @@ export function TabIconBadge({ icon, color, className = 'h-5 w-5' }: {
     <span className={`inline-flex items-center justify-center rounded-xl p-2 ${tabColorBg(color)}`}>
       <Ico className={className} />
     </span>
+  )
+}
+
+function LineConditionPicker({
+  lines,
+  selectedLineIds,
+  onChange,
+  disabled,
+}: {
+  lines: { id: number; name: string }[]
+  selectedLineIds?: number[]
+  onChange: (lineIds: number[]) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const current = selectedLineIds ?? []
+  const hasCondition = current.length > 0
+
+  if (disabled || lines.length === 0) return null
+
+  const toggleLine = (id: number) => {
+    if (current.includes(id)) {
+      onChange(current.filter((x) => x !== id))
+    } else {
+      onChange([...current, id])
+    }
+  }
+
+  const selectedNames = lines.filter((l) => current.includes(l.id)).map((l) => l.name)
+
+  return (
+    <div className="mt-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((p) => !p)}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+            hasCondition
+              ? 'border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300'
+              : 'border-slate-200 bg-slate-50 text-ink-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+          }`}
+        >
+          <span>شرط خط تولید:</span>
+          <b>{hasCondition ? `فقط برای: ${selectedNames.join('، ')}` : 'همه خطوط (بدون شرط)'}</b>
+          <span className="text-[10px] opacity-60">{open ? '▲' : '▼'}</span>
+        </button>
+        {hasCondition && (
+          <button
+            type="button"
+            className="text-[10px] text-rose-600 hover:underline"
+            onClick={() => onChange([])}
+          >
+            حذف شرط (فعال برای همه خطوط)
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-2 rounded-xl border border-brand-200 bg-brand-50/50 p-2.5 dark:border-brand-900/50 dark:bg-brand-950/20">
+          <div className="mb-1.5 text-[11px] font-bold text-ink-700 dark:text-slate-200">
+            انتخاب خطوطی که این فیلد در آن‌ها نمایش داده می‌شود:
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {lines.map((l) => {
+              const checked = current.includes(l.id)
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => toggleLine(l.id)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                    checked
+                      ? 'bg-brand-600 text-white shadow-xs'
+                      : 'border border-slate-200 bg-white text-ink-700 hover:border-brand-200 hover:bg-brand-50/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
+                  }`}
+                >
+                  {checked ? '✓ ' : '+ '} {l.name}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[10px] text-ink-400 dark:text-slate-400">
+            💡 اگر خطوطی انتخاب شوند، این فیلد تنها در صورت انتخاب یکی از این خطوط نمایش داده شده و مقدار می‌گیرد؛ در غیر این صورت پنهان بوده و مقدار آن ۰ ذخیره خواهد شد.
+          </p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -64,8 +160,9 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
   const [icon, setIcon] = useState<FactoryTabIcon>('layers')
   const [color, setColor] = useState<FactoryTabColor>('slate')
   const [recordType, setRecordType] = useState<'range' | 'daily'>('range')
-  const [requireLine, setRequireLine] = useState(true)
-  const [contractorRequired, setContractorRequired] = useState(false)
+  const [lineMode, setLineMode] = useState<TabFieldMode>('required')
+  const [contractorMode, setContractorMode] = useState<TabFieldMode>('optional')
+  const [hourMode, setHourMode] = useState<TabFieldMode>('disabled')
   const [isActive, setIsActive] = useState(true)
   const [inputs, setInputs] = useState<TabInput[]>([emptyInput(0)])
   const [outputs, setOutputs] = useState<TabOutput[]>([emptyOutput(0)])
@@ -90,20 +187,23 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
         setIcon((found.icon as FactoryTabIcon) ?? 'layers')
         setColor((found.color as FactoryTabColor) ?? 'slate')
         setRecordType(found.record_type)
-        setRequireLine(found.require_line)
-        setContractorRequired(found.contractor_required)
+        setLineMode(found.line_mode ?? (found.require_line ? 'required' : 'optional'))
+        setContractorMode(found.contractor_mode ?? (found.contractor_required ? 'required' : 'optional'))
+        setHourMode(found.hour_mode ?? (found.record_type === 'daily' ? 'required' : 'disabled'))
         setIsActive(found.is_active)
         setInputs(found.inputs.length
           ? found.inputs.map((i, idx) => ({
             id: i.id, key: i.key, name: i.name, input_type: i.input_type,
             options: [...(i.options ?? [])], unit: i.unit, required: i.required,
             order: i.order ?? idx,
+            conditions: i.conditions ?? {},
           }))
           : [emptyInput(0)])
         setOutputs(found.outputs.length
           ? found.outputs.map((o, idx) => ({
             id: o.id, key: o.key, name: o.name, unit: o.unit,
             formula: o.formula ?? '', order: o.order ?? idx,
+            conditions: o.conditions ?? {},
           }))
           : [emptyOutput(0)])
         try {
@@ -153,8 +253,18 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
     if (!selectedFactory || !full) return
     if (!name.trim()) { notify('نام تب الزامی است', 'error'); return }
     if (!key.trim()) { notify('کلید تب الزامی است', 'error'); return }
-    const cleanInputs = inputs.filter((i) => i.key.trim() || i.name.trim())
-    const cleanOutputs = outputs.filter((o) => o.key.trim() || o.name.trim())
+    const cleanInputs = inputs
+      .filter((i) => i.key.trim() || i.name.trim())
+      .map((i) => ({
+        ...i,
+        conditions: (i.conditions?.lines?.length ?? 0) > 0 ? { lines: i.conditions!.lines } : {},
+      }))
+    const cleanOutputs = outputs
+      .filter((o) => o.key.trim() || o.name.trim())
+      .map((o) => ({
+        ...o,
+        conditions: (o.conditions?.lines?.length ?? 0) > 0 ? { lines: o.conditions!.lines } : {},
+      }))
     const seen = new Set<string>()
     for (const i of cleanInputs) {
       if (!i.key.trim()) { notify('همه ورودی‌ها باید کلید داشته باشند', 'error'); return }
@@ -177,7 +287,11 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
         factory: selectedFactory.id,
         key: key.trim(), name: name.trim(), description,
         icon, color, record_type: recordType,
-        require_line: requireLine, contractor_required: contractorRequired,
+        line_mode: lineMode,
+        contractor_mode: contractorMode,
+        hour_mode: hourMode,
+        require_line: lineMode === 'required',
+        contractor_required: contractorMode === 'required',
         order: full.order, is_active: isActive,
         inputs: cleanInputs, outputs: cleanOutputs,
       })
@@ -270,17 +384,49 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
               </select>
               <p className="mt-1 text-[11px] text-ink-400 dark:text-slate-500">«روزانه» هنگام ثبت رکورد ساعت هم می‌خواهد.</p>
             </div>
-            <div className="flex flex-col gap-2 pt-1">
-              <div className="flex flex-wrap items-center gap-4">
-                <label className="flex items-center gap-1.5 text-sm text-ink-600 dark:text-slate-300">
-                  <input type="checkbox" checked={requireLine} onChange={(e) => setRequireLine(e.target.checked)} /> خط تولید الزامی
-                </label>
-                <label className="flex items-center gap-1.5 text-sm text-ink-600 dark:text-slate-300">
-                  <input type="checkbox" checked={contractorRequired} onChange={(e) => setContractorRequired(e.target.checked)} /> پیمانکار الزامی
-                </label>
-                <label className="flex items-center gap-1.5 text-sm text-ink-600 dark:text-slate-300">
+            <div className="col-span-1 sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-900/40">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-bold text-ink-700 dark:text-slate-200">تنظیم فیلدهای پایه در فرم ثبت رکورد</span>
+                <label className="flex items-center gap-1.5 text-xs text-ink-600 dark:text-slate-300 font-semibold cursor-pointer">
                   <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> تب فعال
                 </label>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg bg-white p-2.5 shadow-xs dark:bg-slate-800">
+                  <label className="label mb-1 text-xs font-bold">خط تولید</label>
+                  <select className="input !h-9 text-xs" value={lineMode} onChange={(e) => setLineMode(e.target.value as TabFieldMode)}>
+                    <option value="required">الزامی (باید انتخاب شود)</option>
+                    <option value="optional">اختیاری (انتخاب دلخواه)</option>
+                    <option value="disabled">غیرفعال (حذف کامل از تب)</option>
+                  </select>
+                  <p className="mt-1 text-[10px] text-ink-400 dark:text-slate-400">
+                    {lineMode === 'disabled' ? 'در این تب خط تولید نمایش داده نمی‌شود.' : lineMode === 'required' ? 'انتخاب خط برای ثبت رکورد اجباری است.' : 'ثبت رکورد می‌تواند بدون خط باشد.'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-white p-2.5 shadow-xs dark:bg-slate-800">
+                  <label className="label mb-1 text-xs font-bold">پیمانکار</label>
+                  <select className="input !h-9 text-xs" value={contractorMode} onChange={(e) => setContractorMode(e.target.value as TabFieldMode)}>
+                    <option value="required">الزامی (باید انتخاب شود)</option>
+                    <option value="optional">اختیاری (انتخاب دلخواه)</option>
+                    <option value="disabled">غیرفعال (حذف کامل از تب)</option>
+                  </select>
+                  <p className="mt-1 text-[10px] text-ink-400 dark:text-slate-400">
+                    {contractorMode === 'disabled' ? 'در این تب پیمانکار نمایش داده نمی‌شود.' : contractorMode === 'required' ? 'انتخاب پیمانکار اجباری است.' : 'ثبت رکورد می‌تواند بدون پیمانکار باشد.'}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-white p-2.5 shadow-xs dark:bg-slate-800">
+                  <label className="label mb-1 text-xs font-bold">ساعت ثبت / ورود</label>
+                  <select className="input !h-9 text-xs" value={hourMode} onChange={(e) => setHourMode(e.target.value as TabFieldMode)}>
+                    <option value="required">الزامی (باید وارد شود)</option>
+                    <option value="optional">اختیاری (دلخواه)</option>
+                    <option value="disabled">غیرفعال (حذف کامل از تب)</option>
+                  </select>
+                  <p className="mt-1 text-[10px] text-ink-400 dark:text-slate-400">
+                    {hourMode === 'disabled' ? 'فیلد ساعت در فرم ثبت نمایش داده نمی‌شود.' : hourMode === 'required' ? 'ورود ساعت برای ثبت رکورد اجباری است.' : 'ورود ساعت اختیاری است.'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -365,6 +511,16 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
                     <p className="mt-1 text-[11px] text-ink-400 dark:text-slate-500">در فرم ثبت رکورد به‌صورت کشویی نمایش داده می‌شود؛ در فرمول عددی مجاز نیست.</p>
                   </div>
                 )}
+                <LineConditionPicker
+                  lines={selectedFactory?.lines ?? []}
+                  selectedLineIds={inp.conditions?.lines}
+                  onChange={(lineIds) =>
+                    setInput(idx, {
+                      conditions: lineIds.length ? { lines: lineIds } : {},
+                    })
+                  }
+                  disabled={lineMode === 'disabled'}
+                />
               </div>
             ))}
             {inputs.length === 0 && <div className="rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-400 dark:bg-slate-800/60">ورودی‌ای تعریف نشده است.</div>}
@@ -434,6 +590,16 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
                     {checks[idx].ok ? 'فرمول معتبر است' : checks[idx].errors.join(' · ')}
                   </div>
                 )}
+                <LineConditionPicker
+                  lines={selectedFactory?.lines ?? []}
+                  selectedLineIds={out.conditions?.lines}
+                  onChange={(lineIds) =>
+                    setOutput(idx, {
+                      conditions: lineIds.length ? { lines: lineIds } : {},
+                    })
+                  }
+                  disabled={lineMode === 'disabled'}
+                />
               </div>
             ))}
             {outputs.length === 0 && <div className="rounded-lg bg-ink-50 px-3 py-2 text-xs text-ink-400 dark:bg-slate-800/60">خروجی‌ای تعریف نشده است.</div>}

@@ -210,7 +210,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi icon={<Layers className="h-6 w-6 text-white" />} label="خطوط فرآوری" value={formatNumber(stats.lines)} sub={`${formatNumber(stats.devices)} دستگاه · ${formatNumber(stats.contractors)} پیمانکار`} accent="bg-slate-900 text-white dark:bg-white dark:text-slate-900" to="/lines" trend={`${stats.lines} خط`} trendUp />
         <Kpi icon={<ClipboardList className="h-6 w-6 text-white" />} label="توقفات ۳۰ روز" value={formatNumber(stats.logCount)} sub={`توقف ${formatHours(stats.downtime)} · کارکرد ${formatHours(stats.runtime)}`} accent="bg-rose-600 text-white" to="/logs" trend={stats.downtime > 0 ? formatHours(stats.downtime) : '—'} trendUp={false} />
-        <Kpi icon={<Gauge className="h-6 w-6 text-white" />} label="راندمان · دسترسی" value={stats.avgEff != null ? `${Math.round(stats.avgEff * 10) / 10}٪` : '—'} sub={stats.avail != null ? `دسترسی ${Math.round(stats.avail * 10) / 10}٪` : '—'} accent="bg-emerald-600 text-white" to="/reports" trend={health != null ? `${health}٪ سلامت` : undefined} trendUp={(health ?? 0) >= 70} />
+        <Kpi icon={<Gauge className="h-6 w-6 text-white" />} label="راندمان · دسترسی" value={stats.avgEff != null ? `${Math.round(stats.avgEff * 100) / 100}٪` : '—'} sub={stats.avail != null ? `دسترسی ${Math.round(stats.avail * 100) / 100}٪` : '—'} accent="bg-emerald-600 text-white" to="/reports" trend={health != null ? `${health}٪ سلامت` : undefined} trendUp={(health ?? 0) >= 70} />
         <Kpi icon={<TrendingUp className="h-6 w-6 text-white" />} label="تناژ ورودی → محصول" value={`${formatNumber(Math.round(stats.totalFeed))} → ${formatNumber(Math.round(stats.totalProduct))}`} sub={`باطله ${formatNumber(Math.round(Math.max(0, stats.totalFeed - stats.totalProduct)))} تن`} accent="bg-sky-600 text-white" to="/logs" />
       </div>
 
@@ -242,8 +242,21 @@ export default function Dashboard() {
                     {lastDate ? `آخرین ثبت: ${formatDate(lastDate)}` : 'بدون رکورد'}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-slate-400">
-                    {tab.require_line && <span className="chip !px-1.5 !py-0">خط الزامی</span>}
-                    {tab.contractor_required && <span className="chip !px-1.5 !py-0">پیمانکار الزامی</span>}
+                    {tab.line_mode === 'disabled' ? (
+                      <span className="chip !px-1.5 !py-0 opacity-75">بدون خط</span>
+                    ) : (tab.line_mode === 'required' || tab.require_line) ? (
+                      <span className="chip !px-1.5 !py-0">خط الزامی</span>
+                    ) : null}
+                    {tab.contractor_mode === 'disabled' ? (
+                      <span className="chip !px-1.5 !py-0 opacity-75">بدون پیمانکار</span>
+                    ) : (tab.contractor_mode === 'required' || tab.contractor_required) ? (
+                      <span className="chip !px-1.5 !py-0">پیمانکار الزامی</span>
+                    ) : null}
+                    {tab.hour_mode === 'disabled' ? (
+                      <span className="chip !px-1.5 !py-0 opacity-75">بدون ساعت</span>
+                    ) : tab.hour_mode === 'required' ? (
+                      <span className="chip !px-1.5 !py-0">ساعت الزامی</span>
+                    ) : null}
                     {count === 0 && <span className="chip !px-1.5 !py-0 text-amber-600">خالی</span>}
                   </div>
                 </Link>

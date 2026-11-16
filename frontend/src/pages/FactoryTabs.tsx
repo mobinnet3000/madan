@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, Activity, Settings2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Activity, Settings2 } from 'lucide-react'
 import TabReportPanel from '../components/factoryTabs/TabReportPanel'
 import TabSettingsPanel, { TabIconBadge } from '../components/factoryTabs/TabSettingsPanel'
 import ReportBuilderPanel from '../components/factoryTabs/ReportBuilderPanel'
@@ -23,7 +23,7 @@ import { EmptyState, ErrorBanner, TableSkeleton } from '../components/ui/States'
 import Modal from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import JalaliDateInput from '../components/ui/JalaliDateInput'
-import { formatDate, formatNumber, todayISO } from '../utils'
+import { formatDate, formatDateWithWeekday, formatNumber, round2, todayISO } from '../utils'
 import { tabOutputLabel } from '../utils/outputLabels'
 import { exportData } from '../utils/exports'
 import type { ExportFormat } from '../utils/exports'
@@ -49,6 +49,9 @@ export default function FactoryTabs() {
   )
   const activeTabId = selectedTab ? String(selectedTab.id) : ''
   const isDaily = selectedTab?.record_type === 'daily'
+  const lineMode = selectedTab?.line_mode ?? (selectedTab?.require_line ? 'required' : 'optional')
+  const contractorMode = selectedTab?.contractor_mode ?? (selectedTab?.contractor_required ? 'required' : 'optional')
+  const hourMode = selectedTab?.hour_mode ?? (isDaily ? 'required' : 'disabled')
 
   const [tab, setTab] = useState<'records' | 'report' | 'settings'>('records')
   const [items, setItems] = useState<FactoryTabRecord[]>([])
@@ -118,7 +121,11 @@ export default function FactoryTabs() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ ...emptyForm, tab: activeTabId, line: String(selectedFactory?.lines[0]?.id ?? '') })
+    setForm({
+      ...emptyForm,
+      tab: activeTabId,
+      line: lineMode !== 'disabled' ? String(selectedFactory?.lines[0]?.id ?? '') : '',
+    })
     setModalOpen(true)
   }
 
@@ -142,28 +149,45 @@ export default function FactoryTabs() {
     if (!selectedTab) { notify('تب یافت نشد', 'error'); return }
     if (!form.date_from || !form.date_to) { notify('بازه تاریخ الزامی است', 'error'); return }
     if (form.date_to < form.date_from) { notify('تاریخ پایان معتبر نیست', 'error'); return }
-    if (selectedTab.record_type === 'daily' && !form.hour) { notify('ساعت ثبت الزامی است', 'error'); return }
-    if (selectedTab.require_line && !form.line) { notify('خط تولید برای این تب الزامی است', 'error'); return }
+    if (hourMode === 'required' && !form.hour) { notify('ساعت ثبت الزامی است', 'error'); return }
+    if (lineMode === 'required' && !form.line) { notify('خط تولید برای این تب الزامی است', 'error'); return }
+    if (contractorMode === 'required' && !form.contractor) { notify('پیمانکار برای این تب الزامی است', 'error'); return }
+
+    const selectedLineId = lineMode !== 'disabled' && form.line ? Number(form.line) : null
     const inputs: Record<string, number | string> = {}
-    Object.entries(form.values).forEach(([k, raw]) => {
-      const v = (raw ?? '').trim()
-      if (v !== '') inputs[k] = isNaN(Number(v)) ? v : Number(v)
+    selectedTab.inputs.forEach((inp) => {
+      const condLines = inp.conditions?.lines
+      if (condLines && condLines.length > 0 && (!selectedLineId || !condLines.includes(selectedLineId))) {
+        // شرط خط تولید برقرار نیست -> مقدار صفر در دیتابیس
+        inputs[inp.key] = 0
+      } else {
+        const raw = form.values[inp.key]
+        const v = (raw ?? '').trim()
+        if (v !== '') inputs[inp.key] = isNaN(Number(v)) ? v : Number(v)
+      }
     })
+    Object.entries(form.values).forEach(([k, raw]) => {
+      if (!(k in inputs)) {
+        const v = (raw ?? '').trim()
+        if (v !== '') inputs[k] = isNaN(Number(v)) ? v : Number(v)
+      }
+    })
+
     const linked_records: Record<string, number> = {}
     Object.entries(form.linked_records ?? {}).forEach(([k, v]) => {
       if (v !== '' && v != null && Number.isFinite(Number(v))) linked_records[k] = Number(v)
     })
     const payload: FactoryTabRecordPayload = {
       tab: selectedTab.id,
-      line_id: form.line ? Number(form.line) : null,
-      contractor_id: form.contractor ? Number(form.contractor) : null,
+      line_id: lineMode !== 'disabled' && form.line ? Number(form.line) : null,
+      contractor_id: contractorMode !== 'disabled' && form.contractor ? Number(form.contractor) : null,
       date_from: form.date_from,
       date_to: form.date_to,
       inputs,
       linked_records: Object.keys(linked_records).length ? linked_records : undefined,
       note: form.note,
     }
-    if (selectedTab.record_type === 'daily') payload.hour = form.hour
+    if (hourMode !== 'disabled' && form.hour) payload.hour = form.hour
     setSaving(true)
     try {
       if (editing) { await updateFactoryTabRecord(editing.id, payload); notify('رکورد ویرایش شد') }
@@ -218,13 +242,13 @@ export default function FactoryTabs() {
       const rows: Record<string, string | number>[] = allRecords.map(r => {
         const row: Record<string, string | number> = {
           'تاریخ': isDaily ? formatDate(r.date_from) : `${formatDate(r.date_from)} تا ${formatDate(r.date_to)}`,
-          'خط': r.line?.name || '—',
-          'پیمانکار': r.contractor?.name || '—',
         }
-        if (isDaily) row['ساعت'] = (r.hour || '').slice(0, 5)
+        if (hourMode !== 'disabled') row['ساعت'] = (r.hour || '').slice(0, 5) || '—'
+        if (lineMode !== 'disabled') row['خط'] = r.line?.name || '—'
+        if (contractorMode !== 'disabled') row['پیمانکار'] = r.contractor?.name || '—'
         outputKeys.forEach(k => {
           const v = (r.outputs as Record<string, number>)[k]
-          row[tabOutputLabel(selectedTab, k)] = typeof v === 'number' ? Math.round(v * 10) / 10 : (v as string | number) ?? '—'
+          row[tabOutputLabel(selectedTab, k)] = typeof v === 'number' ? round2(v) : (v as string | number) ?? '—'
         })
         if (r.note) row['یادداشت'] = r.note.slice(0, 60)
         return row
@@ -266,6 +290,64 @@ export default function FactoryTabs() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const sorted = [...items].sort((a, b) => (b.date_from + (b.hour || '')).localeCompare(a.date_from + (a.hour || '')))
+
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({})
+
+  interface DayRecordGroup {
+    date: string
+    dateFormatted: string
+    records: FactoryTabRecord[]
+    outputSums: Record<string, number>
+    lineNames: string[]
+    contractorNames: string[]
+  }
+
+  const groupedByDay = useMemo(() => {
+    const groups: DayRecordGroup[] = []
+    const map = new Map<string, DayRecordGroup>()
+
+    for (const rec of sorted) {
+      const d = rec.date_from || 'unknown'
+      let g = map.get(d)
+      if (!g) {
+        g = {
+          date: d,
+          dateFormatted: isDaily ? formatDate(d) : `${formatDate(rec.date_from)} تا ${formatDate(rec.date_to)}`,
+          records: [],
+          outputSums: {},
+          lineNames: [],
+          contractorNames: [],
+        }
+        map.set(d, g)
+        groups.push(g)
+      }
+      g.records.push(rec)
+      if (rec.line?.name && !g.lineNames.includes(rec.line.name)) g.lineNames.push(rec.line.name)
+      if (rec.contractor?.name && !g.contractorNames.includes(rec.contractor.name)) g.contractorNames.push(rec.contractor.name)
+      for (const [k, v] of Object.entries(rec.outputs || {})) {
+        if (typeof v === 'number') {
+          g.outputSums[k] = round2((g.outputSums[k] || 0) + v)
+        }
+      }
+    }
+    return groups
+  }, [sorted, isDaily])
+
+  const toggleDate = (d: string) => {
+    setExpandedDates((prev) => ({ ...prev, [d]: prev[d] === false ? true : false }))
+  }
+
+  const allExpanded = useMemo(() => {
+    if (groupedByDay.length === 0) return false
+    return groupedByDay.every((g) => expandedDates[g.date] !== false)
+  }, [groupedByDay, expandedDates])
+
+  const toggleAllDates = () => {
+    const nextVal = !allExpanded
+    const next: Record<string, boolean> = {}
+    groupedByDay.forEach((g) => { next[g.date] = nextVal })
+    setExpandedDates(next)
+  }
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -344,20 +426,24 @@ export default function FactoryTabs() {
         <>
           <div className="card flex flex-wrap items-end gap-3 p-4">
             <div className="flex items-center gap-1.5 text-sm font-semibold text-ink-600 dark:text-slate-300"><Filter className="h-4 w-4" /> فیلترها</div>
-            <div className="min-w-[150px] flex-1">
-              <label className="label">خط</label>
-              <select className="input" value={filters.line ?? ''} onChange={(e) => setFilter('line', e.target.value)}>
-                <option value="">همه خطوط</option>
-                {selectedFactory?.lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </div>
-            <div className="min-w-[140px]">
-              <label className="label">پیمانکار</label>
-              <select className="input" value={filters.contractor ?? ''} onChange={(e) => setFilter('contractor', e.target.value)}>
-                <option value="">همه پیمانکاران</option>
-                {selectedFactory?.contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+            {lineMode !== 'disabled' && (
+              <div className="min-w-[150px] flex-1">
+                <label className="label">خط</label>
+                <select className="input" value={filters.line ?? ''} onChange={(e) => setFilter('line', e.target.value)}>
+                  <option value="">همه خطوط</option>
+                  {selectedFactory?.lines.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+            )}
+            {contractorMode !== 'disabled' && (
+              <div className="min-w-[140px]">
+                <label className="label">پیمانکار</label>
+                <select className="input" value={filters.contractor ?? ''} onChange={(e) => setFilter('contractor', e.target.value)}>
+                  <option value="">همه پیمانکاران</option>
+                  {selectedFactory?.contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            )}
             <div className="min-w-[130px]"><label className="label">از تاریخ</label><JalaliDateInput value={filters.date_from ?? ''} onChange={(iso) => setFilter('date_from', iso)} /></div>
             <div className="min-w-[130px]"><label className="label">تا تاریخ</label><JalaliDateInput value={filters.date_to ?? ''} onChange={(iso) => setFilter('date_to', iso)} /></div>
             <button className="btn-ghost" onClick={() => { setFilters({}); setPage(1) }}><X className="h-4 w-4" /> پاک کردن</button>
@@ -401,53 +487,180 @@ export default function FactoryTabs() {
                 />
               ) : (
                 <div className="card overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between border-b border-ink-100 bg-ink-50/50 px-4 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800/40">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                      <span className="font-bold text-ink-700 dark:text-slate-200">
+                        نمایش دسته‌بندی‌شده بر اساس روز
+                      </span>
+                      <span className="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {formatNumber(groupedByDay.length)} روز ثبت‌شده
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-ghost !h-7 !px-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-slate-800"
+                      onClick={toggleAllDates}
+                    >
+                      {allExpanded ? 'بستن همه روزها' : 'باز کردن همه روزها'}
+                    </button>
+                  </div>
+
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-ink-100 bg-ink-50/60 text-right text-xs text-ink-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
-                          <th className="px-4 py-3 font-semibold">{isDaily ? 'تاریخ' : 'بازه تاریخ'}</th>
-                          {isDaily && <th className="px-4 py-3 font-semibold">ساعت</th>}
-                          <th className="px-4 py-3 font-semibold">خط</th>
-                          <th className="px-4 py-3 font-semibold">پیمانکار</th>
-                          <th className="px-4 py-3 font-semibold">خروجی‌های محاسبه‌شده</th>
+                          <th className="px-4 py-3 font-semibold">{isDaily ? 'تاریخ (روز)' : 'بازه تاریخ'}</th>
+                          {hourMode !== 'disabled' && <th className="px-4 py-3 font-semibold">ساعت</th>}
+                          {lineMode !== 'disabled' && <th className="px-4 py-3 font-semibold">خط تولید</th>}
+                          {contractorMode !== 'disabled' && <th className="px-4 py-3 font-semibold">پیمانکار</th>}
+                          <th className="px-4 py-3 font-semibold">خروجی‌ها (خلاصه روز / رکورد)</th>
                           <th className="px-4 py-3 font-semibold text-center">عملیات</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-ink-100 dark:divide-slate-700">
-                        {sorted.map((p) => (
-                          <tr key={p.id} className="transition hover:bg-ink-50/50 dark:hover:bg-slate-800/50">
-                            <td className="px-4 py-3 font-medium text-ink-700 dark:text-slate-200">
-                              {isDaily ? formatDate(p.date_from) : `${formatDate(p.date_from)} تا ${formatDate(p.date_to)}`}
-                              {p.note && <div className="text-[11px] font-normal text-ink-400">{p.note}</div>}
-                            </td>
-                            {isDaily && <td className="px-4 py-3 dark:text-slate-300" dir="ltr">{(p.hour || '').slice(0, 5)}</td>}
-                            <td className="px-4 py-3 dark:text-slate-300">{p.line?.name ?? '—'}</td>
-                            <td className="px-4 py-3 text-ink-600 dark:text-slate-400">{p.contractor?.name ?? '—'}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex max-w-[380px] flex-wrap gap-1">
-                                {Object.entries(p.outputs || {}).map(([k, v]) => (
-                                  <span key={k} className="chip" title={k}>
-                                    {tabOutputLabel(selectedTab, k)}: <span className="font-semibold text-brand-600">{formatNumber(v)}</span>
+                        {groupedByDay.map((g) => {
+                          const isExpanded = expandedDates[g.date] !== false
+                          const hasMultiple = g.records.length > 1
+                          return (
+                            <Fragment key={g.date}>
+                              {/* ردیف خلاصه روز */}
+                              <tr
+                                className="group cursor-pointer bg-slate-50/90 font-medium transition hover:bg-brand-50/40 dark:bg-slate-800/80 dark:hover:bg-slate-800"
+                                onClick={() => toggleDate(g.date)}
+                              >
+                                <td className="px-4 py-3 text-ink-800 dark:text-slate-100">
+                                  <div className="flex items-center gap-2">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-ink-600 shadow-xs transition group-hover:bg-brand-100 group-hover:text-brand-700 dark:bg-slate-700 dark:text-slate-200">
+                                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                    </span>
+                                    <div>
+                                      <span className="font-bold">{formatDateWithWeekday(g.date)}</span>
+                                      <span className={`mr-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                        hasMultiple
+                                          ? 'bg-brand-100 text-brand-800 dark:bg-brand-950/60 dark:text-brand-300'
+                                          : 'bg-slate-200/70 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                                      }`}>
+                                        {formatNumber(g.records.length)} رکورد
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                                {hourMode !== 'disabled' && (
+                                  <td className="px-4 py-3 text-xs text-ink-500 dark:text-slate-400">
+                                    {hasMultiple
+                                      ? `${g.records.length} نوبت ثبت`
+                                      : (g.records[0]?.hour || '').slice(0, 5) || '—'}
+                                  </td>
+                                )}
+                                {lineMode !== 'disabled' && (
+                                  <td className="px-4 py-3 text-xs text-ink-600 dark:text-slate-300">
+                                    {g.lineNames.length ? g.lineNames.join('، ') : '—'}
+                                  </td>
+                                )}
+                                {contractorMode !== 'disabled' && (
+                                  <td className="px-4 py-3 text-xs text-ink-500 dark:text-slate-400">
+                                    {g.contractorNames.length ? g.contractorNames.join('، ') : '—'}
+                                  </td>
+                                )}
+                                <td className="px-4 py-3">
+                                  <div className="flex max-w-[420px] flex-wrap gap-1">
+                                    {Object.entries(g.outputSums).map(([k, sumVal]) => (
+                                      <span
+                                        key={k}
+                                        className="chip border border-brand-200 bg-white text-xs font-medium text-brand-900 shadow-xs dark:border-brand-800 dark:bg-slate-900 dark:text-brand-300"
+                                        title={`مجموع ${tabOutputLabel(selectedTab, k)}`}
+                                      >
+                                        <span className="text-ink-500 dark:text-slate-400">{hasMultiple ? 'مجموع ' : ''}{tabOutputLabel(selectedTab, k)}:</span>{' '}
+                                        <span className="font-bold text-brand-600 dark:text-brand-400">{formatNumber(sumVal, 2)}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className="text-xs font-semibold text-brand-600 hover:underline dark:text-brand-400">
+                                    {isExpanded ? 'بستن ردیف‌ها' : 'مشاهده ردیف‌ها'}
                                   </span>
-                                ))}
-                              </div>
-                              {p.linked_records_detail?.length ? (
-                                <div className="mt-1.5 flex flex-wrap gap-1 text-[11px] text-amber-700 dark:text-amber-300">
-                                  {p.linked_records_detail.map((d) => (
-                                    <span key={d.tab_key} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 dark:border-amber-800 dark:bg-amber-950/30">{d.tab_name}: {formatDate(d.date_from!)}#{d.record_id}</span>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center justify-center gap-1">
-                                {canEdit && <button className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-brand-600 dark:hover:bg-slate-800" onClick={() => openEdit(p)} title="ویرایش"><Pencil className="h-4 w-4" /></button>}
-                                {canDelete && <button className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50" onClick={() => setConfirmId(p.id)} title="حذف"><Trash2 className="h-4 w-4" /></button>}
-                                {!canEdit && !canDelete && <span className="text-xs text-slate-400">—</span>}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                </td>
+                              </tr>
+
+                              {/* ردیف‌های بازشونده فرزند این روز */}
+                              {isExpanded && g.records.map((p, idx) => (
+                                <tr
+                                  key={p.id}
+                                  className="border-b border-ink-100/60 bg-white/70 transition hover:bg-ink-50/50 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:bg-slate-800/40"
+                                >
+                                  <td className="pr-10 pl-4 py-2.5 text-xs text-ink-600 dark:text-slate-300">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[11px] text-ink-400 dark:text-slate-500">#{idx + 1}</span>
+                                      {p.note ? (
+                                        <span className="text-ink-600 italic dark:text-slate-300">{p.note}</span>
+                                      ) : (
+                                        <span className="text-ink-400 dark:text-slate-500">رکورد #{p.id}</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  {hourMode !== 'disabled' && (
+                                    <td className="px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300" dir="ltr">
+                                      {(p.hour || '').slice(0, 5) || '—'}
+                                    </td>
+                                  )}
+                                  {lineMode !== 'disabled' && (
+                                    <td className="px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300">
+                                      {p.line?.name ?? '—'}
+                                    </td>
+                                  )}
+                                  {contractorMode !== 'disabled' && (
+                                    <td className="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400">
+                                      {p.contractor?.name ?? '—'}
+                                    </td>
+                                  )}
+                                  <td className="px-4 py-2.5">
+                                    <div className="flex max-w-[380px] flex-wrap gap-1">
+                                      {Object.entries(p.outputs || {}).map(([k, v]) => (
+                                        <span key={k} className="chip text-[11px]" title={k}>
+                                          {tabOutputLabel(selectedTab, k)}: <span className="font-semibold text-brand-600 dark:text-brand-400">{formatNumber(v, 2)}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                    {p.linked_records_detail?.length ? (
+                                      <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+                                        {p.linked_records_detail.map((d) => (
+                                          <span key={d.tab_key} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 dark:border-amber-800 dark:bg-amber-950/30">
+                                            {d.tab_name}: {formatDate(d.date_from!)}#{d.record_id}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <div className="flex items-center justify-center gap-1">
+                                      {canEdit && (
+                                        <button
+                                          className="rounded-lg p-1.5 text-ink-400 hover:bg-ink-100 hover:text-brand-600 dark:hover:bg-slate-800"
+                                          onClick={() => openEdit(p)}
+                                          title="ویرایش این رکورد"
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      {canDelete && (
+                                        <button
+                                          className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
+                                          onClick={() => setConfirmId(p.id)}
+                                          title="حذف این رکورد"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      {!canEdit && !canDelete && <span className="text-xs text-slate-400">—</span>}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </Fragment>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
