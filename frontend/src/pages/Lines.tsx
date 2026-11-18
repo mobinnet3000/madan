@@ -24,12 +24,24 @@ import type { LineType, ProductionLine, Device } from '../types'
 type ViewMode = 'flow' | 'grid'
 
 function imgUrl(path: string | null): string | null {
-  if (!path) return null
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  if (path.startsWith('/media/')) return path
-  if (path.startsWith('media/')) return `/${path}`
-  if (path.startsWith('/')) return path
-  return `/media/${path}`
+  if (!path) return null;
+  
+  // اگر آدرس از قبل کامل است
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  
+  // مرتب‌سازی اسلش اول
+  let formattedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // اضافه کردن مسیر صحیح بک‌اند اگر وجود نداشت
+  if (!formattedPath.startsWith('/backend/media/')) {
+    // اصلاح /media/ به /backend/media/
+    formattedPath = formattedPath.replace(/^\/media\//, '/backend/media/');
+  }
+  
+  // اضافه کردن دامنه بک‌اند
+  return `https://mback.ba3tani.ir${formattedPath}`;
 }
 
 function DeviceThumb({ device, size = 64 }: { device: Device; size?: number }) {
