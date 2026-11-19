@@ -28,7 +28,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   const baseItems = navItems.filter((it) => !it.perm || hasPerm(perms, it.perm))
   const factoryTabs = (selectedFactory?.report_tabs ?? []).filter((t) => t.is_active)
   const canFactoryTabs = hasPerm(perms, 'factory-tabs.view')
-  // تب‌های کارخانه جدا کنار ۳ تب قدیم سابق — هر تب یک آیتم مستقل در سایدبار
+
   const items = (() => {
     if (!factoryTabs.length || !canFactoryTabs) return baseItems
     const reportsIdx = baseItems.findIndex((it) => it.to === '/reports')
@@ -44,38 +44,73 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   })()
 
   const content = (
-    <aside className="flex h-full w-64 flex-col border-l border-white/5" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)' }}>
-      <div className="flex items-center justify-between px-5 py-5">
+    <aside
+      className="flex h-full w-64 flex-col border-l border-[#080d12]/50 shadow-2xl"
+      style={{ background: 'linear-gradient(180deg, #0f1821 0%, #080d12 100%)' }}
+    >
+      {/* سرستون سایدبار با تم طلایی سازمانی */}
+      <div className="flex items-center justify-between px-5 py-5 border-b border-white/5">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', boxShadow: '0 8px 20px rgba(249,115,22,0.3)' }}>
-            <Mountain className="h-5 w-5 text-white" />
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl shadow-brand-glow text-[#0f1821]"
+            style={{
+              background: 'linear-gradient(135deg, #f5b452, #efa73f)',
+            }}
+          >
+            <Mountain className="h-5 w-5" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-bold text-white">خط فرآوری معدن</div>
-            <div className="text-[11px] text-slate-400">سیستم مدل‌سازی و پایش</div>
+            <div className="text-sm font-black text-white tracking-tight">خط فرآوری معدن</div>
+            <div className="text-[10px] font-medium text-[#efa73f]/90 mt-0.5">سیستم یکپارچه صنعتی</div>
           </div>
         </div>
-        <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:text-white lg:hidden"><X className="h-5 w-5" /></button>
+        <button
+          onClick={onClose}
+          className="rounded-lg p-1.5 text-slate-400 hover:text-white lg:hidden"
+          aria-label="بستن"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-2">
+      <nav className="flex-1 space-y-1 px-3 py-3 overflow-y-auto">
         {items.map((item) => {
           const Icon = item.icon
           return (
-            <NavLink key={item.to} to={item.to} end={item.end} onClick={onClose}
-              className={({ isActive }) => classNames(
-                'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200',
-                isActive ? 'text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white',
-              )}>
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={onClose}
+              className={({ isActive }) =>
+                classNames(
+                  'group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all duration-150',
+                  isActive
+                    ? 'text-[#efa73f]'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                )
+              }
+            >
               {({ isActive }) => (
                 <>
                   {isActive && (
-                    <motion.span layoutId="sidebar-active"
-                      className="absolute inset-0 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(234,88,12,0.15))', boxShadow: 'inset 0 1px 0 rgba(249,115,22,0.2)' }}
-                      transition={{ type: 'spring', stiffness: 350, damping: 30 }} />
+                    <motion.span
+                      layoutId="sidebar-active"
+                      className="absolute inset-0 rounded-xl"
+                      style={{
+                        background: 'linear-gradient(90deg, rgba(239, 167, 63, 0.18), rgba(239, 167, 63, 0.05))',
+                        borderRight: '3px solid #efa73f',
+                      }}
+                      transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                    />
                   )}
-                  <Icon className="relative z-10 h-[18px] w-[18px]" />
-                  <span className="relative z-10">{item.label}</span>
+                  <Icon
+                    className={classNames(
+                      'relative z-10 h-4 w-4 transition-transform group-hover:scale-105',
+                      isActive ? 'text-[#efa73f]' : 'text-slate-400 group-hover:text-slate-200'
+                    )}
+                  />
+                  <span className="relative z-10 tracking-tight">{item.label}</span>
                 </>
               )}
             </NavLink>
@@ -83,9 +118,15 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         })}
       </nav>
 
-      <div className="border-t border-white/5 px-5 py-4">
-        {user && <span className={classNames('badge', ROLE_BADGE[user.role])}>{ROLE_LABELS[user.role]}</span>}
-        <div className="mt-1 text-[11px] leading-relaxed text-slate-500">سامانه مدیریت معدن</div>
+      <div className="border-t border-white/5 px-5 py-4 bg-black/20">
+        {user && (
+          <span className={classNames('badge !px-2.5 !py-0.5 !text-[11px] font-bold', ROLE_BADGE[user.role])}>
+            {ROLE_LABELS[user.role]}
+          </span>
+        )}
+        <div className="mt-1.5 text-[10px] font-medium text-slate-500">
+          سامانه مانیتورینگ کارخانجات صنعتی
+        </div>
       </div>
     </aside>
   )
@@ -96,11 +137,22 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       <AnimatePresence>
         {open && (
           <div className="fixed inset-0 z-40 lg:hidden">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-            <motion.div initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="absolute right-0 top-0 h-full">{content}</motion.div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={onClose}
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              className="absolute right-0 top-0 h-full w-64 z-10"
+            >
+              {content}
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

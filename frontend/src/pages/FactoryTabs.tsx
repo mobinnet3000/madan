@@ -366,71 +366,131 @@ export default function FactoryTabs() {
 
   return (
     <div className="animate-fade-in space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex gap-3">
-            <TabIconBadge icon={selectedTab?.icon} color={selectedTab?.color} className="h-5 w-5" />
+      <div
+        className="relative overflow-hidden rounded-3xl p-5 sm:p-6 text-white shadow-card"
+        style={{
+          background: 'linear-gradient(135deg, #0f1821 0%, #1e293b 60%, #0f1821 100%)',
+          border: '1px solid rgba(239, 167, 63, 0.25)',
+        }}
+      >
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#efa73f]/15 blur-3xl" />
+        <div className="pointer-events-none absolute -left-20 -bottom-20 h-64 w-64 rounded-full bg-[#c92127]/15 blur-3xl" />
+
+        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex gap-4">
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-brand-glow text-[#0f1821]"
+              style={{ background: 'linear-gradient(135deg, #f5b452, #efa73f)' }}
+            >
+              <TabIconBadge icon={selectedTab?.icon} color={selectedTab?.color} className="h-6 w-6" />
+            </div>
             <div>
-              <h1 className="flex items-center gap-2 text-[17px] font-extrabold tracking-tight text-slate-900 dark:text-white">{selectedTab?.name ?? 'تب کارخانه'} <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline-flex">{selectedFactory?.name ?? '—'}</span></h1>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Activity className="h-3 w-3" />{formatNumber(totalCount)} رکورد</span>
-                {selectedTab && <span className="rounded-full border border-slate-200 px-2.5 py-1 font-mono text-[11px] text-slate-500 dark:border-slate-700 dark:text-slate-400">{selectedTab.key}</span>}
+              <h1 className="flex items-center gap-2 text-lg font-black tracking-tight text-white sm:text-xl">
+                {selectedTab?.name ?? 'تب کارخانه'}{' '}
+                <span className="hidden rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-bold text-[#efa73f] sm:inline-flex ring-1 ring-[#efa73f]/30">
+                  {selectedFactory?.name ?? '—'}
+                </span>
+              </h1>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-bold text-white ring-1 ring-white/15">
+                  <Activity className="h-3 w-3 text-[#efa73f]" />
+                  {formatNumber(totalCount)} رکورد
+                </span>
+                {selectedTab && (
+                  <span className="rounded-full bg-white/10 border border-white/10 px-2.5 py-0.5 font-mono text-[11px] text-slate-300">
+                    {selectedTab.key}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-bold text-white ring-1 ring-white/15">
+                  {isDaily ? 'ثبت روزانه' : 'ثبت بازه‌ای'}
+                </span>
               </div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 self-start">
             <div className="relative">
-              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-black disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100" onClick={() => setShowExportMenu(v => !v)} disabled={!canExport || exporting !== null || loading}>
-                {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent dark:border-slate-900 dark:border-t-transparent" /> : <Download className="h-4 w-4" />} خروجی <span className="hidden opacity-70 sm:inline">({totalCount})</span> <ChevronDown className={`h-4 w-4 opacity-60 transition ${showExportMenu ? 'rotate-180' : ''}`} />
+              <button
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-xs font-bold text-white ring-1 ring-white/20 backdrop-blur hover:bg-white/20 transition disabled:opacity-50"
+                onClick={() => setShowExportMenu(v => !v)}
+                disabled={!canExport || exporting !== null || loading}
+              >
+                {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Download className="h-4 w-4" />} خروجی <span className="hidden opacity-75 sm:inline">({totalCount})</span> <ChevronDown className={`h-3.5 w-3.5 opacity-70 transition ${showExportMenu ? 'rotate-180' : ''}`} />
               </button>
               {showExportMenu && (
-                <div className="absolute left-0 z-20 mt-2 w-60 overflow-hidden rounded-xl border bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                  <div className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400">خروجی حرفه‌ای — همین فیلتر</div>
-                  <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-rose-600" /> PDF صنعتی</button>
+                <div className="absolute left-0 z-20 mt-2 w-60 overflow-hidden rounded-2xl border border-[#e4ddd2] bg-white p-1.5 shadow-modal text-[#0f1821] dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                  <div className="px-3 py-2 text-[11px] font-bold text-slate-400">خروجی حرفه‌ای — همین فیلتر</div>
+                  <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileText className="h-4 w-4 text-[#c92127]" /> PDF صنعتی
+                  </button>
+                  <button onClick={() => handleExport('xlsx')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel (XLSX)
+                  </button>
+                  <button onClick={() => handleExport('csv')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileJson className="h-4 w-4 text-[#efa73f]" /> CSV
+                  </button>
+                  <button onClick={() => handleExport('docx')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileText className="h-4 w-4 text-sky-600" /> Word (DOCX)
+                  </button>
                   <div className="h-px bg-slate-100 dark:bg-slate-800" />
-                  <button onClick={() => handleExport('xlsx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel (XLSX)</button>
-                  <button onClick={() => handleExport('csv')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-amber-600" /> CSV</button>
-                  <button onClick={() => handleExport('docx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-blue-600" /> Word (DOCX)</button>
-                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
-                  <button onClick={() => handleExport('html')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><Globe className="h-4 w-4 text-sky-600" /> HTML</button>
-                  <button onClick={() => handleExport('json')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-violet-600" /> JSON</button>
+                  <button onClick={() => handleExport('html')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <Globe className="h-4 w-4 text-sky-600" /> HTML
+                  </button>
+                  <button onClick={() => handleExport('json')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileJson className="h-4 w-4 text-violet-600" /> JSON
+                  </button>
                 </div>
               )}
               {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
             </div>
             {tab === 'records' && isSuperAdmin && selectedTab && (
               <button
-                className="inline-flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm font-bold text-brand-700 shadow-xs hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300 dark:hover:bg-brand-900/50"
+                className="btn-secondary !h-9 !px-3.5 !text-xs font-bold shadow-sm"
                 onClick={() => setBulkModalOpen(true)}
               >
                 <TableProperties className="h-4 w-4" />
                 ورود گروهی رکوردها
               </button>
             )}
-            {tab === 'records' && canCreate && selectedTab && <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت رکورد جدید</button>}
+            {tab === 'records' && canCreate && selectedTab && (
+              <button className="btn-primary !h-9 !px-4 !text-xs font-bold shadow-brand-glow" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> ثبت رکورد جدید
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex gap-1 rounded-xl bg-ink-100/60 p-1 dark:bg-slate-800">
+      <div className="flex gap-1.5 rounded-2xl bg-[#ede7de]/70 p-1.5 dark:bg-slate-800">
         <button
           onClick={() => setTab('records')}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'records' ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400' : 'text-ink-500 dark:text-slate-400'}`}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+            tab === 'records'
+              ? 'bg-white text-[#0f1821] shadow-sm dark:bg-slate-700 dark:text-white'
+              : 'text-slate-600 hover:text-[#0f1821] dark:text-slate-400'
+          }`}
         >
-          <ListChecks className="h-4 w-4" /> ثبت / مدیریت رکوردها
+          <ListChecks className="h-4 w-4 text-[#efa73f]" /> ثبت و مدیریت رکوردها
         </button>
         <button
           onClick={() => setTab('report')}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'report' ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400' : 'text-ink-500 dark:text-slate-400'}`}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+            tab === 'report'
+              ? 'bg-white text-[#0f1821] shadow-sm dark:bg-slate-700 dark:text-white'
+              : 'text-slate-600 hover:text-[#0f1821] dark:text-slate-400'
+          }`}
         >
-          <BarChart3 className="h-4 w-4" /> گزارش و نمودار
+          <BarChart3 className="h-4 w-4 text-[#efa73f]" /> گزارش و نمودار تحلیلی
         </button>
         {hasPerm(user?.permissions, 'factory-tabs.manage') && (
           <button
             onClick={() => setTab('settings')}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'settings' ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400' : 'text-ink-500 dark:text-slate-400'}`}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+              tab === 'settings'
+                ? 'bg-white text-[#0f1821] shadow-sm dark:bg-slate-700 dark:text-white'
+                : 'text-slate-600 hover:text-[#0f1821] dark:text-slate-400'
+            }`}
           >
-            <Settings2 className="h-4 w-4" /> تنظیمات تب
+            <Settings2 className="h-4 w-4 text-[#efa73f]" /> تنظیمات تب و فرمول‌ها
           </button>
         )}
       </div>
