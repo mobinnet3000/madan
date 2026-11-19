@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Sparkles, Clock, Activity, BarChart3 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Sparkles, Clock, Activity, BarChart3, TableProperties } from 'lucide-react'
 import DowntimeReportPanel from '../components/downtime/DowntimeReportPanel'
+import BulkDowntimeModal from '../components/downtime/BulkDowntimeModal'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { hasPerm } from '../constants'
@@ -129,6 +130,7 @@ export default function Logs() {
   const report = useReportState({}, 30)
   const [tab, setTab] = useState<'list' | 'report'>('list')
   const [modalOpen, setModalOpen] = useState(false)
+  const [bulkModalOpen, setBulkModalOpen] = useState(false)
   const [editing, setEditing] = useState<DeviceLog | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
@@ -376,7 +378,21 @@ export default function Logs() {
               )}
               {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
             </div>
-            {canCreate && <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت توقف</button>}
+            {canCreate && (
+              <div className="flex items-center gap-2">
+                <button
+                  className="btn-secondary !h-[42px] !px-4 !text-sm font-bold shadow-sm"
+                  onClick={() => setBulkModalOpen(true)}
+                  title="ورود گروهی چندین توقف، بارگذاری اکسل یا مقادیر ثابت"
+                >
+                  <TableProperties className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                  <span>ثبت گروهی توقفات</span>
+                </button>
+                <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}>
+                  <Plus className="h-4 w-4" /> ثبت توقف
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -700,6 +716,12 @@ export default function Logs() {
       <Modal open={confirmId != null} onClose={() => setConfirmId(null)} title="حذف توقف" footer={<><button className="btn-ghost" onClick={() => setConfirmId(null)}>انصراف</button><button className="btn-danger" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> حذف قطعی</button></>}>
         <p className="text-sm text-ink-600 dark:text-slate-300">آیا از حذف این توقف خط تولید اطمینان دارید؟ این عمل قابل بازگشت نیست.</p>
       </Modal>
+
+      <BulkDowntimeModal
+        open={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={() => report.reload()}
+      />
     </div>
   )
 }
