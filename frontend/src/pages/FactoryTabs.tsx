@@ -1,11 +1,16 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Activity, Settings2, TableProperties } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Filter, Loader2, Layers, BarChart3, ListChecks, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Activity, Settings2, TableProperties, SlidersHorizontal, LayoutDashboard } from 'lucide-react'
 import TabReportPanel from '../components/factoryTabs/TabReportPanel'
 import TabSettingsPanel, { TabIconBadge } from '../components/factoryTabs/TabSettingsPanel'
 import ReportBuilderPanel from '../components/factoryTabs/ReportBuilderPanel'
 import { TabRecordForm, type TabFormState } from '../components/factoryTabs/TabRecordForm'
 import BulkRecordModal from '../components/factoryTabs/BulkRecordModal'
+import DailyAggregationsModal, {
+  type AggregationMode,
+  AGGREGATION_MODES,
+  getDefaultAggMode,
+} from '../components/factoryTabs/DailyAggregationsModal'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { hasPerm } from '../constants'
@@ -55,7 +60,7 @@ export default function FactoryTabs() {
   const contractorMode = selectedTab?.contractor_mode ?? (selectedTab?.contractor_required ? 'required' : 'optional')
   const hourMode = selectedTab?.hour_mode ?? (isDaily ? 'required' : 'disabled')
 
-  const [tab, setTab] = useState<'records' | 'report' | 'settings'>('records')
+  const [tab, setTab] = useState<'records' | 'report' | 'widgets' | 'settings'>('records')
   const [items, setItems] = useState<FactoryTabRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -77,9 +82,63 @@ export default function FactoryTabs() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [tabSchema, setTabSchema] = useState<FactoryTabSchema | null>(null)
   const [bulkModalOpen, setBulkModalOpen] = useState(false)
+  const [customAggModes, setCustomAggModes] = useState<Record<string, AggregationMode>>({})
+  const [aggModalOpen, setAggModalOpen] = useState(false)
   const isSuperAdmin = Boolean(
     user?.is_superuser || user?.role === 'admin' || hasPerm(user?.permissions, 'factory-tabs.manage')
   )
+  const canManage = isSuperAdmin
+
+  useEffect(() => {
+    if (!activeTabId) {
+      setCustomAggModes({})
+      return
+    }
+    try {
+      const raw = localStorage.getItem(`tab_aggregations_${activeTabId}`)
+      if (raw) {
+        setCustomAggModes(JSON.parse(raw))
+      } else {
+        setCustomAggModes({})
+      }
+    } catch {
+      setCustomAggModes({})
+    }
+  }, [activeTabId])
+
+  const setOutputAggMode = useCallback((outputKey: string, mode: AggregationMode) => {
+    setCustomAggModes((prev) => {
+      const next = { ...prev, [outputKey]: mode }
+      if (activeTabId) {
+        try {
+          localStorage.setItem(`tab_aggregations_${activeTabId}`, JSON.stringify(next))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      return next
+    })
+  }, [activeTabId])
+
+  const resetAggModes = useCallback(() => {
+    if (activeTabId) {
+      try {
+        localStorage.removeItem(`tab_aggregations_${activeTabId}`)
+      } catch {}
+    }
+    setCustomAggModes({})
+    notify('تنظیمات تجمیع به حالت پیش‌فرض هوشمند بازنشانی شد')
+  }, [activeTabId, notify])
+
+  const cycleAggMode = useCallback((outputKey: string, name: string) => {
+    const cycleList: AggregationMode[] = ['sum', 'avg', 'max', 'min', 'last']
+    const current = customAggModes[outputKey] || getDefaultAggMode(outputKey, name)
+    const idx = cycleList.indexOf(current)
+    const next = cycleList[(idx + 1) % cycleList.length]
+    setOutputAggMode(outputKey, next)
+    const nextInfo = AGGREGATION_MODES.find((m) => m.key === next)
+    notify(`نحوه محاسبه «${name}» به «${nextInfo?.label || next}» تغییر یافت`)
+  }, [customAggModes, setOutputAggMode, notify])
 
   useEffect(() => {
     if (activeTabId) {
@@ -308,11 +367,21 @@ export default function FactoryTabs() {
 
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({})
 
+  interface DayAggregatedOutput {
+    key: string
+    name: string
+    unit: string
+    mode: AggregationMode
+    modeLabel: string
+    value: number
+    count: number
+  }
+
   interface DayRecordGroup {
     date: string
     dateFormatted: string
     records: FactoryTabRecord[]
-    outputSums: Record<string, number>
+    aggregatedOutputs: DayAggregatedOutput[]
     lineNames: string[]
     contractorNames: string[]
   }
@@ -329,7 +398,7 @@ export default function FactoryTabs() {
           date: d,
           dateFormatted: isDaily ? formatDate(d) : `${formatDate(rec.date_from)} تا ${formatDate(rec.date_to)}`,
           records: [],
-          outputSums: {},
+          aggregatedOutputs: [],
           lineNames: [],
           contractorNames: [],
         }
@@ -339,14 +408,63 @@ export default function FactoryTabs() {
       g.records.push(rec)
       if (rec.line?.name && !g.lineNames.includes(rec.line.name)) g.lineNames.push(rec.line.name)
       if (rec.contractor?.name && !g.contractorNames.includes(rec.contractor.name)) g.contractorNames.push(rec.contractor.name)
-      for (const [k, v] of Object.entries(rec.outputs || {})) {
-        if (typeof v === 'number') {
-          g.outputSums[k] = round2((g.outputSums[k] || 0) + v)
-        }
-      }
     }
+
+    const outputDefs = selectedTab?.outputs ?? []
+    // Collect all output keys present in definitions or records
+    const allKeys = Array.from(new Set([
+      ...outputDefs.map((o) => o.key),
+      ...sorted.flatMap((r) => Object.keys(r.outputs || {})),
+    ]))
+
+    for (const g of groups) {
+      const aggList: DayAggregatedOutput[] = []
+      for (const k of allKeys) {
+        const def = outputDefs.find((o) => o.key === k)
+        const name = def?.name || tabOutputLabel(selectedTab, k)
+        const unit = def?.unit || ''
+        const mode = customAggModes[k] || getDefaultAggMode(k, name, unit)
+
+        if (mode === 'none') continue
+
+        const nums: number[] = []
+        for (const rec of g.records) {
+          const v = rec.outputs?.[k]
+          if (typeof v === 'number' && !isNaN(v)) {
+            nums.push(v)
+          }
+        }
+
+        if (nums.length === 0) continue
+
+        let val = 0
+        if (mode === 'sum') {
+          val = nums.reduce((acc, c) => acc + c, 0)
+        } else if (mode === 'avg') {
+          val = nums.reduce((acc, c) => acc + c, 0) / nums.length
+        } else if (mode === 'max') {
+          val = Math.max(...nums)
+        } else if (mode === 'min') {
+          val = Math.min(...nums)
+        } else if (mode === 'last') {
+          val = nums[nums.length - 1]
+        }
+
+        aggList.push({
+          key: k,
+          name,
+          unit,
+          mode,
+          modeLabel: AGGREGATION_MODES.find((m) => m.key === mode)?.shortLabel || 'مجموع',
+          value: round2(val),
+          count: nums.length,
+        })
+      }
+      g.aggregatedOutputs = aggList
+    }
+
     return groups
-  }, [sorted, isDaily])
+  }, [sorted, isDaily, selectedTab, customAggModes])
 
   const toggleDate = (d: string) => {
     setExpandedDates((prev) => ({ ...prev, [d]: prev[d] === false ? true : false }))
@@ -481,7 +599,19 @@ export default function FactoryTabs() {
         >
           <BarChart3 className="h-4 w-4 text-[#efa73f]" /> گزارش و نمودار تحلیلی
         </button>
-        {hasPerm(user?.permissions, 'factory-tabs.manage') && (
+        {canManage && (
+          <button
+            onClick={() => setTab('widgets')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+              tab === 'widgets'
+                ? 'bg-white text-[#0f1821] shadow-sm dark:bg-slate-700 dark:text-white'
+                : 'text-slate-600 hover:text-[#0f1821] dark:text-slate-400'
+            }`}
+          >
+            <LayoutDashboard className="h-4 w-4 text-[#efa73f]" /> طراحی گزارش و ویجت‌ها
+          </button>
+        )}
+        {canManage && (
           <button
             onClick={() => setTab('settings')}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
@@ -495,10 +625,25 @@ export default function FactoryTabs() {
         )}
       </div>
 
-      {tab === 'settings' && selectedTab ? (
-        <div className="space-y-5">
+      {tab === 'widgets' && selectedTab ? (
+        <ReportBuilderPanel tab={selectedTab} />
+      ) : tab === 'settings' && selectedTab ? (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-brand-200 bg-brand-50/60 p-3 text-xs text-brand-900 dark:border-brand-900/50 dark:bg-brand-950/20 dark:text-brand-200">
+            <div className="flex items-center gap-2">
+              <LayoutDashboard className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+              <span>قصد ایجاد یا ویرایش ویجت‌های تحلیلی، KPIها و نمودارهای این تب را دارید؟</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTab('widgets')}
+              className="btn-primary !h-7 !px-3 text-xs font-bold flex items-center gap-1"
+            >
+              <span>رفتن به طراحی گزارش و ویجت‌ها</span>
+              <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+            </button>
+          </div>
           <TabSettingsPanel tabId={selectedTab.id} onChanged={reload} />
-          <ReportBuilderPanel tab={selectedTab} />
         </div>
       ) : !selectedTab ? (
         <EmptyState
@@ -535,26 +680,60 @@ export default function FactoryTabs() {
 
           {tab === 'report' ? (
             <div className="space-y-3">
-              {reports.length > 1 && (
-                <div className="card flex flex-wrap items-center gap-2 p-3">
-                  <span className="text-xs font-bold text-ink-500 dark:text-slate-400">گزارش:</span>
-                  {reports.map((r) => (
-                    <button
-                      key={r.id}
-                      onClick={() => setReportId(String(r.id))}
-                      className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${reportId === String(r.id) ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/40 dark:text-brand-300' : 'bg-ink-50 text-ink-500 dark:bg-slate-800/60 dark:text-slate-400'}`}
-                    >
-                      {r.name}{r.is_default ? ' (پیش‌فرض)' : ''}
-                    </button>
-                  ))}
+              <div className="card flex flex-wrap items-center justify-between gap-2 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-ink-500 dark:text-slate-400">گزارش تب:</span>
+                  {reports.length === 0 ? (
+                    <span className="text-xs text-slate-400">هنوز گزارشی ایجاد نشده</span>
+                  ) : (
+                    reports.map((r) => (
+                      <button
+                        key={r.id}
+                        onClick={() => setReportId(String(r.id))}
+                        className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                          reportId === String(r.id)
+                            ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-300 dark:bg-brand-950/40 dark:text-brand-300'
+                            : 'bg-ink-50 text-ink-500 hover:bg-slate-100 dark:bg-slate-800/60 dark:text-slate-400'
+                        }`}
+                      >
+                        {r.name}{r.is_default ? ' (پیش‌فرض)' : ''}
+                      </button>
+                    ))
+                  )}
                 </div>
-              )}
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => setTab('widgets')}
+                    className="btn-secondary !h-8 !px-3 text-xs font-bold flex items-center gap-1.5 shadow-2xs"
+                    title="افزودن ویجت جدید یا ویرایش ویجت‌های این گزارش"
+                  >
+                    <Plus className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                    <span>افزودن و مدیریت ویجت‌ها</span>
+                  </button>
+                )}
+              </div>
               {loadingReport ? (
                 <TableSkeleton columns={6} />
               ) : !reportId ? (
-                <EmptyState icon={<BarChart3 className="h-10 w-10" />} title="گزارشی برای این تب تعریف نشده است" description="از بخش «تعریف تب و گزارش» یک گزارش با ویجت بسازید." />
+                <EmptyState
+                  icon={<BarChart3 className="h-10 w-10 text-brand-500" />}
+                  title="گزارشی برای این تب تعریف نشده است"
+                  description="برای این تب هنوز گزارشی با ویجت تعریف نشده است. از بخش «طراحی گزارش و ویجت‌ها» می‌توانید ویجت‌های تحلیلی را اضافه کنید."
+                  action={
+                    canManage ? (
+                      <button
+                        className="btn-primary mt-3 !h-9 !px-4 text-xs font-bold flex items-center gap-1.5 shadow-brand-glow"
+                        onClick={() => setTab('widgets')}
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>طراحی و ساخت ویجت‌های تب</span>
+                      </button>
+                    ) : undefined
+                  }
+                />
               ) : runData ? (
-                <TabReportPanel run={runData} tab={selectedTab} />
+                <TabReportPanel run={runData} tab={selectedTab} onManageWidgets={() => setTab('widgets')} />
               ) : null}
             </div>
           ) : (
@@ -571,7 +750,7 @@ export default function FactoryTabs() {
                 />
               ) : (
                 <div className="card overflow-hidden">
-                  <div className="flex flex-wrap items-center justify-between border-b border-ink-100 bg-ink-50/50 px-4 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800/40">
+                  <div className="flex flex-wrap items-center justify-between border-b border-ink-100 bg-ink-50/50 px-4 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800/40 gap-2">
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-brand-600 dark:text-brand-400" />
                       <span className="font-bold text-ink-700 dark:text-slate-200">
@@ -581,13 +760,24 @@ export default function FactoryTabs() {
                         {formatNumber(groupedByDay.length)} روز ثبت‌شده
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn-ghost !h-7 !px-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-slate-800"
-                      onClick={toggleAllDates}
-                    >
-                      {allExpanded ? 'بستن همه روزها' : 'باز کردن همه روزها'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary !h-7 !px-2.5 text-xs font-semibold flex items-center gap-1.5"
+                        onClick={() => setAggModalOpen(true)}
+                        title="تنظیم نحوه محاسبه مجموع، میانگین، بیشینه و کمینه خروجی‌ها در خلاصه روز"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                        <span>تنظیم تجمیع روزانه</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost !h-7 !px-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-slate-800"
+                        onClick={toggleAllDates}
+                      >
+                        {allExpanded ? 'بستن همه روزها' : 'باز کردن همه روزها'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -648,17 +838,40 @@ export default function FactoryTabs() {
                                   </td>
                                 )}
                                 <td className="px-4 py-3">
-                                  <div className="flex max-w-[420px] flex-wrap gap-1">
-                                    {Object.entries(g.outputSums).map(([k, sumVal]) => (
-                                      <span
-                                        key={k}
-                                        className="chip border border-brand-200 bg-white text-xs font-medium text-brand-900 shadow-xs dark:border-brand-800 dark:bg-slate-900 dark:text-brand-300"
-                                        title={`مجموع ${tabOutputLabel(selectedTab, k)}`}
-                                      >
-                                        <span className="text-ink-500 dark:text-slate-400">{hasMultiple ? 'مجموع ' : ''}{tabOutputLabel(selectedTab, k)}:</span>{' '}
-                                        <span className="font-bold text-brand-600 dark:text-brand-400">{formatNumber(sumVal, 2)}</span>
-                                      </span>
-                                    ))}
+                                  <div className="flex max-w-[460px] flex-wrap gap-1.5">
+                                    {g.aggregatedOutputs.length === 0 ? (
+                                      <span className="text-xs text-slate-400">—</span>
+                                    ) : (
+                                      g.aggregatedOutputs.map((item) => (
+                                        <button
+                                          key={item.key}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            cycleAggMode(item.key, item.name)
+                                          }}
+                                          className="group/chip inline-flex items-center gap-1 rounded-xl border border-brand-200 bg-white px-2 py-1 text-xs font-medium text-brand-900 shadow-2xs transition hover:border-brand-500 hover:bg-brand-50/70 hover:shadow-xs dark:border-brand-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:border-brand-600 dark:hover:bg-slate-800 cursor-pointer"
+                                          title={`حالت محاسبه: ${item.modeLabel} (${item.name}) — برای تغییر سریع حالت کلیک کنید`}
+                                        >
+                                          <span className="text-ink-500 dark:text-slate-400">
+                                            {hasMultiple && (
+                                              <span className="font-bold text-brand-700 dark:text-brand-300">
+                                                {item.modeLabel}{' '}
+                                              </span>
+                                            )}
+                                            {item.name}:
+                                          </span>
+                                          <span className="font-bold text-brand-600 dark:text-brand-400">
+                                            {formatNumber(item.value, 2)}
+                                          </span>
+                                          {item.unit && (
+                                            <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                                              {item.unit}
+                                            </span>
+                                          )}
+                                        </button>
+                                      ))
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 text-center">
@@ -777,6 +990,18 @@ export default function FactoryTabs() {
           tab={selectedTab}
           schema={tabSchema}
           onSuccess={load}
+        />
+      )}
+
+      {selectedTab && (
+        <DailyAggregationsModal
+          open={aggModalOpen}
+          onClose={() => setAggModalOpen(false)}
+          tab={selectedTab}
+          extraOutputKeys={Array.from(new Set(sorted.flatMap((r) => Object.keys(r.outputs || {}))))}
+          customAggModes={customAggModes}
+          onSetMode={setOutputAggMode}
+          onReset={resetAggModes}
         />
       )}
     </div>

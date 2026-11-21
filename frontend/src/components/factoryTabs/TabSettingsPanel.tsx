@@ -147,7 +147,9 @@ export default function TabSettingsPanel({ tabId, onChanged }: { tabId: number; 
   const { selectedFactory, reload } = useFactory()
   const { user } = useAuth()
   const { notify } = useToast()
-  const canEdit = hasPerm(user?.permissions, 'factory-tabs.manage')
+  const canEdit = Boolean(
+    user?.is_superuser || user?.role === 'admin' || hasPerm(user?.permissions, 'factory-tabs.manage')
+  )
 
   const [full, setFull] = useState<FactoryTabFull | null>(null)
   const [loading, setLoading] = useState(true)

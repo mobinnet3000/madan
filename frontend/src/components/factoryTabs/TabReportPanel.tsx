@@ -3,7 +3,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
   LineChart, Line, PieChart, Pie, Cell,
 } from 'recharts'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Plus, LayoutDashboard } from 'lucide-react'
 import { formatNumber } from '../../utils'
 import type {
   FactoryTabBrief,
@@ -22,21 +22,61 @@ const cellVal = (v: unknown): string => {
   return String(v)
 }
 
-export default function TabReportPanel({ run, tab }: { run: FactoryTabReportRun; tab: FactoryTabBrief | null }) {
+export default function TabReportPanel({
+  run,
+  tab,
+  onManageWidgets,
+}: {
+  run: FactoryTabReportRun
+  tab: FactoryTabBrief | null
+  onManageWidgets?: () => void
+}) {
   const metrics = useMemo(() => run.metrics, [run])
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-500 dark:text-slate-400">
-        <span className="rounded-full bg-slate-900 px-2.5 py-1 font-bold text-white dark:bg-white dark:text-slate-900">{formatNumber(run.record_count)} رکورد</span>
-        {metrics.map((m) => (
-          <span key={m.key} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-            {m.label}: <span className="font-bold text-brand-600">{m.value == null ? '—' : formatNumber(m.value)}{m.unit ? ` ${m.unit}` : ''}</span>
-          </span>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-500 dark:text-slate-400">
+          <span className="rounded-full bg-slate-900 px-2.5 py-1 font-bold text-white dark:bg-white dark:text-slate-900">{formatNumber(run.record_count)} رکورد</span>
+          {metrics.map((m) => (
+            <span key={m.key} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {m.label}: <span className="font-bold text-brand-600">{m.value == null ? '—' : formatNumber(m.value)}{m.unit ? ` ${m.unit}` : ''}</span>
+            </span>
+          ))}
+        </div>
+        {onManageWidgets && (
+          <button
+            type="button"
+            onClick={onManageWidgets}
+            className="btn-secondary !h-8 !px-3 text-xs font-bold flex items-center gap-1.5 shadow-2xs"
+            title="ویرایش، افزودن یا مرتب‌سازی ویجت‌های این گزارش"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+            <span>ویرایش و تنظیم ویجت‌ها ({run.widgets.length})</span>
+          </button>
+        )}
       </div>
+
       {run.widgets.length === 0 && (
-        <div className="card p-6 text-center text-sm text-ink-500 dark:text-slate-400">
-          برای این گزارش ویجتی تعریف نشده است. از بخش «تعریف تب و گزارش» ویجت اضافه کنید.
+        <div className="card p-8 text-center space-y-3 dark:border-slate-800">
+          <LayoutDashboard className="mx-auto h-10 w-10 text-slate-400" />
+          <p className="font-semibold text-ink-700 dark:text-slate-200">
+            برای این گزارش هنوز ویجتی (شاخص KPI، نمودار یا جدول) تعریف نشده است.
+          </p>
+          <p className="text-xs text-ink-400 dark:text-slate-400">
+            با افزودن ویجت، خلاصه عملکرد، روندها و جداول آماری به صورت خودکار در این صفحه نمایش داده می‌شوند.
+          </p>
+          {onManageWidgets && (
+            <div className="pt-2">
+              <button
+                type="button"
+                className="btn-primary !h-9 !px-4 text-xs font-bold inline-flex items-center gap-1.5 shadow-brand-glow"
+                onClick={onManageWidgets}
+              >
+                <Plus className="h-4 w-4" />
+                <span>افزودن و طراحی ویجت‌ها</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
       {run.widgets.map((w) => (
