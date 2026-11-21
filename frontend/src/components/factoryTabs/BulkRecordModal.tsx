@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
   Plus,
   Trash2,
@@ -16,9 +16,10 @@ import {
   Calendar,
   X,
   FileSpreadsheet,
-  Check,
-  ChevronDown,
+  Download,
+  Upload,
   Info,
+  Check,
 } from 'lucide-react'
 import Modal from '../ui/Modal'
 import { useToast } from '../ui/Toast'
@@ -34,7 +35,10 @@ import {
   parseJalaliSlash,
   formatJalaliSlash,
   normalizePersianDigits,
-  toJalali,
+  gregorianToJalali,
+  jalaliToGregorian,
+  jalaliDaysInMonth,
+  PERSIAN_MONTHS,
 } from '../../utils'
 import { computeRowOutputs } from '../../utils/formulaEvaluator'
 
@@ -61,10 +65,56 @@ interface BulkRow {
 let nextId = 1
 const genId = () => `row_${Date.now()}_${nextId++}`
 
+/**
+ * تبدیل هر نوع فرمت تاریخ ورودی از اکسل به تاریخ استاندارد شمسی با اسلش (1403/08/30)
+ */
+function parseExcelDate(val: unknown): string | null {
+  if (val === null || val === undefined || val === '') return null
+
+  // در صورتی که اکسل عدد سریالی ذخیره کرده باشد (Serial Date Number)
+  if (typeof val === 'number') {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30))
+    const jsDate = new Date(excelEpoch.getTime() + val * 86400000)
+    if (!isNaN(jsDate.getTime())) {
+      const gy = jsDate.getUTCFullYear()
+      const gm = jsDate.getUTCMonth() + 1
+      const gd = jsDate.getUTCDate()
+      const [jy, jm, jd] = gregorianToJalali(gy, gm, gd)
+      return formatJalaliSlash(jy, jm, jd)
+    }
+  }
+
+  const str = normalizePersianDigits(String(val)).trim()
+
+  // بررسی تطابق با شمسی (اسلش یا خط‌تیره)
+  const p = parseJalaliSlash(str)
+  if (p) {
+    return formatJalaliSlash(p[0], p[1], p[2])
+  }
+
+  // بررسی میلادی ISO یا با اسلش
+  const m = str.match(/^(\d{2,4})[-/.](\d{1,2})[-/.](\d{1,2})$/)
+  if (m) {
+    let y = Number(m[1])
+    const mth = Number(m[2])
+    const d = Number(m[3])
+    if (y < 100) y = 1400 + y
+    if (y > 1900 && y < 2100) {
+      const [jy, jm, jd] = gregorianToJalali(y, mth, d)
+      return formatJalaliSlash(jy, jm, jd)
+    } else if (y >= 1300 && y <= 1500) {
+      return formatJalaliSlash(y, mth, d)
+    }
+  }
+
+  return null
+}
+
 export default function BulkRecordModal({ open, onClose, tab, schema: propSchema, onSuccess }: Props) {
   const { notify } = useToast()
   const { selectedFactory } = useFactory()
   const [loadedSchema, setLoadedSchema] = useState<FactoryTabSchema | null>(propSchema)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (propSchema) {
@@ -80,6 +130,10 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
   const lineMode = tab.line_mode || (tab.require_line ? 'required' : 'optional')
   const contractorMode = tab.contractor_mode || (tab.contractor_required ? 'required' : 'optional')
   const hourMode = tab.hour_mode || (isDaily ? 'optional' : 'disabled')
+
+  const linesList = schema?.lines?.length ? schema.lines : (selectedFactory?.lines ?? [])
+  const contractorsList = schema?.contractor?.options?.length ? schema.contractor.options : (selectedFactory?.contractors ?? [])
+  const outputsList = (tab.outputs && tab.outputs.length > 0) ? tab.outputs : (schema?.outputs ?? [])
 
   const createEmptyRow = useCallback(
     (defaultDate = todayJalali(), defaultLine = '', defaultContractor = ''): BulkRow => {
@@ -107,7 +161,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
     createEmptyRow(),
   ])
 
-  // همگام‌سازی کلیدهای ورودی در صورت بارگذاری ناهمگام اسکیما
+  // همگام‌سازی کلیدهای ورودی در صورت بارگذاری اسکیما
   useEffect(() => {
     if (!schema?.inputs?.length) return
     setRows((prev) =>
@@ -134,9 +188,18 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
   const [fillContractor, setFillContractor] = useState('')
   const [fillHour, setFillHour] = useState('')
 
-  // وضعیت مودال چسباندن از اکسل
-  const [pasteModalOpen, setPasteModalOpen] = useState(false)
+  // وضعیت مودال اکسل
+  const [excelModalOpen, setExcelModalOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
+
+  // وضعیت باز شدن تقویم برای یک ردیف خاص
+  const [rowCalendarTarget, setRowCalendarTarget] = useState<{
+    rowIdx: number
+    field: 'date_from' | 'date_to'
+    jy: number
+    jm: number
+    jd: number
+  } | null>(null)
 
   // افزودن ردیف‌های جدید
   const addRows = (count: number) => {
@@ -237,7 +300,239 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
     notify('ساعت برای تمام ردیف‌ها اعمال شد')
   }
 
-  // پردازش و تبدیل داده‌های اکسل
+  // ۱. دانلود قالب اکسل پیش‌فرض (Download Sample Template)
+  const handleDownloadTemplate = async () => {
+    try {
+      const XLSX = await import('xlsx')
+      const headers: string[] = ['تاریخ شمسی (مثال: 1403/08/30)']
+
+      if (!isDaily) {
+        headers.push('تا تاریخ شمسی')
+      }
+      if (hourMode !== 'disabled') {
+        headers.push('ساعت (مثال: 08:30)')
+      }
+      if (lineMode !== 'disabled') {
+        headers.push('خط تولید')
+      }
+      if (contractorMode !== 'disabled') {
+        headers.push('پیمانکار')
+      }
+
+      const inputDefs = schema?.inputs ?? []
+      inputDefs.forEach((inp) => {
+        headers.push(inp.unit ? `${inp.name} (${inp.unit})` : inp.name)
+      })
+
+      // ساخت ۳ ردیف نمونه با تاریخ شمسی واقعی
+      const sampleRows: (string | number)[][] = [
+        headers,
+        [
+          todayJalali(),
+          ...(!isDaily ? [todayJalali()] : []),
+          ...(hourMode !== 'disabled' ? ['08:00'] : []),
+          ...(lineMode !== 'disabled' ? [linesList[0]?.name || 'خط ۱'] : []),
+          ...(contractorMode !== 'disabled' ? [contractorsList[0]?.name || 'پیمانکار ۱'] : []),
+          ...inputDefs.map((inp, i) => (inp.type === 'number' ? 100 + i * 20 : inp.options?.[0] || 'نمونه')),
+        ],
+        [
+          '1403/08/30',
+          ...(!isDaily ? ['1403/08/30'] : []),
+          ...(hourMode !== 'disabled' ? ['14:30'] : []),
+          ...(lineMode !== 'disabled' ? [linesList[0]?.name || 'خط ۱'] : []),
+          ...(contractorMode !== 'disabled' ? [contractorsList[0]?.name || 'پیمانکار ۱'] : []),
+          ...inputDefs.map((inp, i) => (inp.type === 'number' ? 150 + i * 15 : inp.options?.[0] || 'نمونه')),
+        ],
+        [
+          '1403/08/29',
+          ...(!isDaily ? ['1403/08/29'] : []),
+          ...(hourMode !== 'disabled' ? ['20:00'] : []),
+          ...(lineMode !== 'disabled' ? [linesList[1]?.name || linesList[0]?.name || 'خط ۱'] : []),
+          ...(contractorMode !== 'disabled' ? [contractorsList[0]?.name || 'پیمانکار ۱'] : []),
+          ...inputDefs.map((inp, i) => (inp.type === 'number' ? 200 + i * 25 : inp.options?.[0] || 'نمونه')),
+        ],
+      ]
+
+      const ws = XLSX.utils.aoa_to_sheet(sampleRows)
+      ws['!cols'] = headers.map(() => ({ wch: 24 }))
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'ورود داده‌ها')
+      XLSX.writeFile(wb, `قالب_ورود_گروهی_${tab.name}.xlsx`)
+      notify('قالب اکسل پیش‌فرض با موفقیت دانلود شد')
+    } catch (e: any) {
+      notify(`خطا در ایجاد قالب اکسل: ${e.message}`, 'error')
+    }
+  }
+
+  // ۲. پردازش آرایه‌ی دوبعدی سطرهای اکسل و اعمال به جدول
+  const processExcelRows = (dataRows: (string | number)[][], headerRow?: string[]) => {
+    if (!dataRows || dataRows.length === 0) {
+      notify('سطر داده‌ای برای پردازش یافت نشد', 'error')
+      return
+    }
+
+    const inputDefs = schema?.inputs ?? []
+    const parsedRows: BulkRow[] = []
+
+    // نقشه‌برداری ستون‌ها در صورت وجود سرستون
+    let colDateIdx = 0
+    let colDateToIdx = isDaily ? -1 : 1
+    let colHourIdx = hourMode !== 'disabled' ? (isDaily ? 1 : 2) : -1
+    let colLineIdx = lineMode !== 'disabled' ? (hourMode !== 'disabled' ? (isDaily ? 2 : 3) : isDaily ? 1 : 2) : -1
+    let colContractorIdx = contractorMode !== 'disabled' ? (colLineIdx >= 0 ? colLineIdx + 1 : 2) : -1
+
+    if (headerRow && headerRow.length > 0) {
+      headerRow.forEach((h, idx) => {
+        const text = String(h).trim().toLowerCase()
+        if (text.includes('تا تاریخ') || text.includes('date_to') || text.includes('end')) {
+          colDateToIdx = idx
+        } else if (text.includes('تاریخ') || text.includes('date')) {
+          colDateIdx = idx
+        } else if (text.includes('ساعت') || text.includes('hour') || text.includes('time')) {
+          colHourIdx = idx
+        } else if (text.includes('خط') || text.includes('line')) {
+          colLineIdx = idx
+        } else if (text.includes('پیمانکار') || text.includes('contractor')) {
+          colContractorIdx = idx
+        }
+      })
+    }
+
+    dataRows.forEach((rowCells) => {
+      if (rowCells.every((c) => String(c).trim() === '')) return
+
+      const r = createEmptyRow()
+
+      // استخراج تاریخ شروع
+      const rawDate = rowCells[colDateIdx]
+      const parsedDate = parseExcelDate(rawDate)
+      if (parsedDate) {
+        r.date_from = parsedDate
+        r.date_to = parsedDate
+      }
+
+      // استخراج تا تاریخ
+      if (!isDaily && colDateToIdx >= 0 && rowCells[colDateToIdx]) {
+        const parsedDateTo = parseExcelDate(rowCells[colDateToIdx])
+        if (parsedDateTo) {
+          r.date_to = parsedDateTo
+        }
+      }
+
+      // استخراج ساعت
+      if (hourMode !== 'disabled' && colHourIdx >= 0 && rowCells[colHourIdx] !== undefined) {
+        const rawH = normalizePersianDigits(String(rowCells[colHourIdx])).trim()
+        if (/^\d{1,2}:\d{2}$/.test(rawH)) {
+          r.hour = rawH.length === 4 ? `0${rawH}` : rawH
+        } else if (/^\d{1,2}$/.test(rawH)) {
+          const numH = Number(rawH)
+          if (numH >= 0 && numH <= 23) {
+            r.hour = `${numH < 10 ? '0' : ''}${numH}:00`
+          }
+        }
+      }
+
+      // استخراج خط تولید
+      if (lineMode !== 'disabled' && colLineIdx >= 0 && rowCells[colLineIdx] !== undefined) {
+        const cellLine = String(rowCells[colLineIdx]).trim()
+        const matchedLine = linesList.find(
+          (l) => l.name.trim() === cellLine || String(l.id) === cellLine || cellLine.includes(l.name),
+        )
+        if (matchedLine) {
+          r.line = String(matchedLine.id)
+        }
+      }
+
+      // استخراج پیمانکار
+      if (contractorMode !== 'disabled' && colContractorIdx >= 0 && rowCells[colContractorIdx] !== undefined) {
+        const cellContractor = String(rowCells[colContractorIdx]).trim()
+        const matchedContractor = contractorsList.find(
+          (c) => c.name.trim() === cellContractor || String(c.id) === cellContractor || cellContractor.includes(c.name),
+        )
+        if (matchedContractor) {
+          r.contractor = String(matchedContractor.id)
+        }
+      }
+
+      // استخراج فیلدهای ورودی
+      let inputColStart = Math.max(colDateIdx, colDateToIdx, colHourIdx, colLineIdx, colContractorIdx) + 1
+      inputDefs.forEach((inp, inpIdx) => {
+        let cellVal: any = undefined
+
+        // جستجو بر اساس سرستون
+        if (headerRow && headerRow.length > 0) {
+          const headerIdx = headerRow.findIndex(
+            (h) => h.includes(inp.name) || inp.name.includes(h) || h.toLowerCase().includes(inp.key.toLowerCase()),
+          )
+          if (headerIdx >= 0) {
+            cellVal = rowCells[headerIdx]
+          }
+        }
+
+        // اگر از روی سرستون پیدا نشد، از روی ترتیب ستون‌ها
+        if (cellVal === undefined && rowCells[inputColStart + inpIdx] !== undefined) {
+          cellVal = rowCells[inputColStart + inpIdx]
+        }
+
+        if (cellVal !== undefined && cellVal !== null && cellVal !== '') {
+          const rawStr = normalizePersianDigits(String(cellVal)).trim()
+          r.inputs[inp.key] = inp.type === 'number' ? (isNaN(Number(rawStr)) ? rawStr : Number(rawStr)) : rawStr
+        }
+      })
+
+      parsedRows.push(r)
+    })
+
+    if (parsedRows.length > 0) {
+      setRows(parsedRows)
+      setExcelModalOpen(false)
+      setPasteText('')
+      notify(`${parsedRows.length} ردیف با موفقیت وارد و تاریخ‌ها به فرمت شمسی اسلش‌دار تطبیق داده شدند`)
+    } else {
+      notify('هیچ ردیف معتبری شناسایی نشد', 'error')
+    }
+  }
+
+  // ۳. بارگذاری فایل اکسل (.xlsx / .xls / .csv)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const XLSX = await import('xlsx')
+      const buffer = await file.arrayBuffer()
+      const wb = XLSX.read(buffer, { type: 'array' })
+      const firstSheetName = wb.SheetNames[0]
+      if (!firstSheetName) {
+        notify('شیت قابل خواندنی در فایل اکسل یافت نشد', 'error')
+        return
+      }
+      const sheet = wb.Sheets[firstSheetName]
+      const rawData: (string | number)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+      if (!rawData || rawData.length === 0) {
+        notify('فایل اکسل خالی است', 'error')
+        return
+      }
+
+      let headerRowIdx = 0
+      while (headerRowIdx < rawData.length && rawData[headerRowIdx].every((cell) => !String(cell).trim())) {
+        headerRowIdx++
+      }
+
+      const headers = rawData[headerRowIdx].map((h) => String(h || '').trim())
+      const dataRows = rawData.slice(headerRowIdx + 1).filter((r) => r.some((c) => String(c).trim() !== ''))
+
+      processExcelRows(dataRows, headers)
+    } catch (err: any) {
+      notify(`خطا در خواندن فایل اکسل: ${err.message}`, 'error')
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  // ۴. پردازش متن کپی‌شده از اکسل (Paste Text)
   const handlePasteSubmit = () => {
     if (!pasteText.trim()) return
     const lines = pasteText
@@ -248,61 +543,20 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
 
     if (lines.length === 0) return
 
-    const inputDefs = schema?.inputs ?? []
-    const parsedRows: BulkRow[] = []
+    const rowsArray = lines.map((line) => (line.includes('\t') ? line.split('\t') : line.split(',')))
 
-    lines.forEach((line) => {
-      const cols = line.includes('\t') ? line.split('\t') : line.split(',')
-      const r = createEmptyRow()
-      let cIdx = 0
+    // بررسی آیا سطر اول عنوان ستون‌ها است
+    const firstRowText = rowsArray[0].join(' ')
+    const hasHeader =
+      firstRowText.includes('تاریخ') ||
+      firstRowText.includes('date') ||
+      firstRowText.includes('خط') ||
+      firstRowText.includes('پیمانکار')
 
-      // ۱. بررسی تاریخ شمسی
-      if (cols[cIdx]) {
-        const raw = normalizePersianDigits(cols[cIdx]).trim()
-        const parts = parseJalaliSlash(raw)
-        if (parts) {
-          const dStr = formatJalaliSlash(parts[0], parts[1], parts[2])
-          r.date_from = dStr
-          r.date_to = dStr
-          cIdx++
-        } else if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-          const j = toJalali(raw)
-          if (j) {
-            const dStr = formatJalaliSlash(j[0], j[1], j[2])
-            r.date_from = dStr
-            r.date_to = dStr
-            cIdx++
-          }
-        }
-      }
+    const headers = hasHeader ? rowsArray[0].map(String) : undefined
+    const dataRows = hasHeader ? rowsArray.slice(1) : rowsArray
 
-      // ۲. بررسی ساعت
-      if (hourMode !== 'disabled' && cols[cIdx]) {
-        const h = normalizePersianDigits(cols[cIdx]).trim()
-        if (/^\d{1,2}:\d{2}$/.test(h)) {
-          r.hour = h.length === 4 ? `0${h}` : h
-          cIdx++
-        }
-      }
-
-      // ۳. پر کردن ورودی‌ها به ترتیب
-      inputDefs.forEach((inp) => {
-        if (cols[cIdx] !== undefined) {
-          const rawVal = normalizePersianDigits(cols[cIdx]).trim()
-          r.inputs[inp.key] = inp.type === 'number' ? (isNaN(Number(rawVal)) ? rawVal : Number(rawVal)) : rawVal
-          cIdx++
-        }
-      })
-
-      parsedRows.push(r)
-    })
-
-    if (parsedRows.length > 0) {
-      setRows(parsedRows)
-      setPasteModalOpen(false)
-      setPasteText('')
-      notify(`${parsedRows.length} ردیف با موفقیت از اکسل وارد و به تاریخ شمسی اسلش‌دار تبدیل شد`)
-    }
+    processExcelRows(dataRows, headers)
   }
 
   // بررسی شرط خط تولید برای فیلد
@@ -321,7 +575,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
     }
     const isoFrom = jalaliSlashToIso(row.date_from)
     if (!isoFrom) {
-      return `ردیف ${index + 1}: تاریخ وارد شده «${row.date_from}» نامعتبر است. لطفاً تاریخ شمسی با اسلش وارد کنید (مثال: 1403/08/30)`
+      return `ردیف ${index + 1}: تاریخ شمسی وارد شده «${row.date_from}» نامعتبر است. فرمت معتبر: سال/ماه/روز (مثال: 1403/08/30)`
     }
 
     if (!isDaily && row.date_to) {
@@ -392,7 +646,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
         }
       }
 
-      // تبدیل تاریخ شمسی اسلش‌دار کاربر به میلادی استاندارد برای فیلد دیتابیس جنگو
+      // تبدیل تاریخ شمسی اسلش‌دار کاربر به میلادی استاندارد YYYY-MM-DD برای دیتابیس جنگو
       const isoFrom = jalaliSlashToIso(row.date_from)!
       const isoTo = isDaily ? isoFrom : (jalaliSlashToIso(row.date_to) || isoFrom)
 
@@ -427,7 +681,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
     setSubmitting(false)
 
     if (failCount === 0) {
-      notify(`تمام ${successCount} رکورد با موفقیت در سیستم ثبت شدند`)
+      notify(`تمام ${successCount} رکورد با موفقیت در دیتابیس ثبت شدند`)
       onSuccess()
       onClose()
     } else {
@@ -436,9 +690,33 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
     }
   }
 
-  const linesList = schema?.lines?.length ? schema.lines : (selectedFactory?.lines ?? [])
-  const contractorsList = schema?.contractor?.options?.length ? schema.contractor.options : (selectedFactory?.contractors ?? [])
-  const outputsList = (tab.outputs && tab.outputs.length > 0) ? tab.outputs : (schema?.outputs ?? [])
+  // انتخاب تاریخ از تقویم شناور ردیف
+  const pickCalendarDate = (jy: number, jm: number, jd: number) => {
+    if (!rowCalendarTarget) return
+    const formatted = formatJalaliSlash(jy, jm, jd)
+    const { rowIdx, field } = rowCalendarTarget
+    if (field === 'date_from') {
+      updateRow(rowIdx, {
+        date_from: formatted,
+        date_to: isDaily ? formatted : rows[rowIdx]?.date_to,
+      })
+    } else {
+      updateRow(rowIdx, { date_to: formatted })
+    }
+    setRowCalendarTarget(null)
+  }
+
+  const openRowCalendar = (rowIdx: number, field: 'date_from' | 'date_to') => {
+    const curVal = rows[rowIdx]?.[field] || todayJalali()
+    const p = parseJalaliSlash(curVal) || [1403, 8, 30]
+    setRowCalendarTarget({
+      rowIdx,
+      field,
+      jy: p[0],
+      jm: p[1],
+      jd: p[2],
+    })
+  }
 
   return (
     <>
@@ -491,12 +769,12 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
           {/* نوار ابزار تنظیمات سریع همگانی و ابزارهای اکسل */}
           <div className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 dark:border-slate-800 dark:bg-slate-900/60 lg:grid-cols-12 lg:items-center">
             {/* بخش تنظیم سریع فیلدهای مشترک */}
-            <div className="flex flex-wrap items-center gap-2.5 lg:col-span-8">
+            <div className="flex flex-wrap items-center gap-2.5 lg:col-span-7">
               <span className="text-xs font-extrabold text-slate-700 dark:text-slate-300">تنظیم همگانی:</span>
 
               {/* تاریخ شمسی مشترک */}
               <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-xs dark:border-slate-700 dark:bg-slate-800">
-                <span className="px-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">تاریخ شمسی:</span>
+                <span className="px-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">تاریخ:</span>
                 <input
                   type="text"
                   dir="ltr"
@@ -528,7 +806,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                 <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-xs dark:border-slate-700 dark:bg-slate-800">
                   <span className="px-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">خط:</span>
                   <select
-                    className="input !h-8 !w-32 !px-1.5 !py-0 text-xs font-medium"
+                    className="input !h-8 !w-28 !px-1.5 !py-0 text-xs font-medium"
                     value={fillLine}
                     onChange={(e) => setFillLine(e.target.value)}
                   >
@@ -555,11 +833,11 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                 <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-xs dark:border-slate-700 dark:bg-slate-800">
                   <span className="px-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">پیمانکار:</span>
                   <select
-                    className="input !h-8 !w-32 !px-1.5 !py-0 text-xs font-medium"
+                    className="input !h-8 !w-28 !px-1.5 !py-0 text-xs font-medium"
                     value={fillContractor}
                     onChange={(e) => setFillContractor(e.target.value)}
                   >
-                    <option value="">انتخاب پیمانکار...</option>
+                    <option value="">انتخاب...</option>
                     {contractorsList.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -583,7 +861,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                   <span className="px-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">ساعت:</span>
                   <input
                     type="time"
-                    className="input !h-8 !w-24 !px-1 !py-0 text-center font-mono text-xs font-bold"
+                    className="input !h-8 !w-20 !px-1 !py-0 text-center font-mono text-xs font-bold"
                     value={fillHour}
                     onChange={(e) => setFillHour(e.target.value)}
                   />
@@ -599,21 +877,56 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
               )}
             </div>
 
-            {/* بخش کلیدهای کنترل ردیف و اکسل */}
-            <div className="flex flex-wrap items-center justify-end gap-1.5 lg:col-span-4">
+            {/* بخش امکانات اکسل و کنترل ردیف‌ها */}
+            <div className="flex flex-wrap items-center justify-end gap-1.5 lg:col-span-5">
+              {/* کلید دانلود قالب اکسل پیش‌فرض */}
               <button
                 type="button"
-                onClick={() => setPasteModalOpen(true)}
-                className="btn-secondary !h-8.5 !px-3 text-xs font-bold text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-                title="چسباندن متن کپی‌شده از اکسل با تاریخ شمسی"
+                onClick={handleDownloadTemplate}
+                className="btn-ghost !h-8.5 !px-2.5 text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+                title="دانلود قالب اکسل نمونه با فرمت صحیح تاریخ شمسی اسلش‌دار و سرستون‌ها"
               >
-                <ClipboardPaste className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <span>چسباندن از اکسل</span>
+                <Download className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>قالب اکسل پیش‌فرض</span>
               </button>
+
+              {/* ورودی مخفی فایل اکسل */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+
+              {/* کلید آپلود مستقیم فایل اکسل */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-ghost !h-8.5 !px-2.5 text-xs font-bold border border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/50"
+                title="بارگذاری مستقیم فایل اکسل (.xlsx / .xls)"
+              >
+                <Upload className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                <span>بارگذاری فایل اکسل</span>
+              </button>
+
+              {/* کلید باز کردن مودال پیست از اکسل */}
+              <button
+                type="button"
+                onClick={() => setExcelModalOpen(true)}
+                className="btn-secondary !h-8.5 !px-2.5 text-xs font-bold text-brand-700 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-slate-800"
+                title="چسباندن متن کپی‌شده از سلول‌های اکسل"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                <span>پیست از اکسل</span>
+              </button>
+
+              <div className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
+
               <button
                 type="button"
                 onClick={() => addRows(1)}
-                className="btn-ghost !h-8.5 !px-2.5 text-xs font-bold border border-slate-200 bg-white hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+                className="btn-ghost !h-8.5 !px-2 text-xs font-bold border border-slate-200 bg-white hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
                 title="افزودن ۱ ردیف جدید"
               >
                 <Plus className="h-3.5 w-3.5" /> ۱+
@@ -621,18 +934,10 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
               <button
                 type="button"
                 onClick={() => addRows(5)}
-                className="btn-ghost !h-8.5 !px-2.5 text-xs font-bold border border-slate-200 bg-white hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+                className="btn-ghost !h-8.5 !px-2 text-xs font-bold border border-slate-200 bg-white hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
                 title="افزودن ۵ ردیف جدید"
               >
                 <Plus className="h-3.5 w-3.5" /> ۵+
-              </button>
-              <button
-                type="button"
-                onClick={() => addRows(10)}
-                className="btn-ghost !h-8.5 !px-2.5 text-xs font-bold border border-slate-200 bg-white hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-                title="افزودن ۱۰ ردیف جدید"
-              >
-                <Plus className="h-3.5 w-3.5" /> ۱۰+
               </button>
               <button
                 type="button"
@@ -640,16 +945,16 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                 className="btn-ghost !h-8.5 !px-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                 title="پاک‌سازی همه ردیف‌ها و شروع مجدد"
               >
-                <RotateCcw className="h-4 w-4" />
+                <RotateCcw className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
 
-          {/* راهنمای سریع فرمت تاریخ */}
+          {/* راهنمای تاریخ شمسی با اسلش */}
           <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/60">
             <Info className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <span>
-              <strong>راهنمای تاریخ شمسی:</strong> تاریخ‌ها را دقیقاً به صورت شمسی و با علامت اسلش (<strong>/</strong>) وارد کنید (مثال: <code className="font-mono font-bold bg-white/70 dark:bg-black/30 px-1 rounded">1403/08/30</code>). سیستم به طور خودکار آن را شناسایی کرده، مقادیر خروجی را به صورت زنده محاسبه نموده و دقیقاً بدون هیچ خطایی در پایگاه‌داده ذخیره خواهد کرد.
+              <strong>ورود تاریخ شمسی با اسلش (/):</strong> تاریخ‌ها را به شکل شمسی با علامت اسلش وارد کنید (مثال: <code className="font-mono font-bold bg-white/70 dark:bg-black/30 px-1 rounded">1403/08/30</code>). سیستم به طور خودکار تاریخ‌های واردشده از اکسل، پیست یا تایپ دستی را با اسلش تطبیق داده و خروجی‌ها را محاسبه می‌کند.
             </span>
           </div>
 
@@ -662,7 +967,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                   <th className="w-12 px-2 py-3 text-center font-extrabold text-slate-600 dark:text-slate-300">#</th>
 
                   {/* ستون تاریخ شمسی */}
-                  <th className="min-w-[145px] px-3 py-3 font-extrabold text-slate-700 dark:text-slate-200">
+                  <th className="min-w-[155px] px-3 py-3 font-extrabold text-slate-700 dark:text-slate-200">
                     <div className="flex items-center gap-1.5">
                       <Calendar className="h-4 w-4 text-brand-600 dark:text-brand-400" />
                       <span>تاریخ شمسی (با /) *</span>
@@ -671,7 +976,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
 
                   {/* تا تاریخ */}
                   {!isDaily && (
-                    <th className="min-w-[145px] px-3 py-3 font-extrabold text-slate-700 dark:text-slate-200">
+                    <th className="min-w-[155px] px-3 py-3 font-extrabold text-slate-700 dark:text-slate-200">
                       <span>تا تاریخ شمسی</span>
                     </th>
                   )}
@@ -706,7 +1011,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                     </th>
                   )}
 
-                  {/* ستون‌های ورودی‌های تعریف‌شده (با رنگ آبی مشخص) */}
+                  {/* ستون‌های ورودی‌های تعریف‌شده (آبی) */}
                   {(schema?.inputs ?? []).map((inp) => (
                     <th
                       key={inp.key}
@@ -724,7 +1029,7 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                     </th>
                   ))}
 
-                  {/* ستون‌های خروجی‌های محاسبه‌شده زنده (با رنگ سبز زمردی مشخص) */}
+                  {/* ستون‌های خروجی‌های محاسبه‌شده زنده (سبز زمردی) */}
                   {outputsList.map((out) => (
                     <th
                       key={out.key}
@@ -788,14 +1093,14 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                         </div>
                       </td>
 
-                      {/* تاریخ شمسی */}
+                      {/* تاریخ شمسی با اسلش */}
                       <td className="px-2 py-2">
-                        <div className="relative">
+                        <div className="flex items-center gap-1">
                           <input
                             type="text"
                             dir="ltr"
                             placeholder="1403/08/30"
-                            className={`w-full h-9 rounded-lg border px-2.5 text-center font-mono text-xs font-bold transition focus:ring-2 ${
+                            className={`w-full h-9 rounded-lg border px-2 text-center font-mono text-xs font-bold transition focus:ring-2 ${
                               !isDateValid
                                 ? 'border-rose-300 bg-rose-50/40 text-rose-800 focus:border-rose-500 focus:ring-rose-200 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-300'
                                 : 'border-slate-300 bg-white text-slate-800 focus:border-brand-500 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
@@ -808,24 +1113,58 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
                                 date_to: isDaily ? val : row.date_to,
                               })
                             }}
+                            onBlur={() => {
+                              const p = parseJalaliSlash(row.date_from)
+                              if (p) {
+                                const formatted = formatJalaliSlash(p[0], p[1], p[2])
+                                updateRow(rIdx, {
+                                  date_from: formatted,
+                                  date_to: isDaily ? formatted : row.date_to,
+                                })
+                              }
+                            }}
                           />
+                          <button
+                            type="button"
+                            onClick={() => openRowCalendar(rIdx, 'date_from')}
+                            className="btn-ghost !h-9 !w-8 !min-w-[32px] !p-0 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400"
+                            title="انتخاب روز از تقویم"
+                          >
+                            <Calendar className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </td>
 
                       {/* تا تاریخ شمسی (برای تب‌های بازه‌ای) */}
                       {!isDaily && (
                         <td className="px-2 py-2">
-                          <input
-                            type="text"
-                            dir="ltr"
-                            placeholder="1403/08/30"
-                            className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-center font-mono text-xs font-bold text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                            value={row.date_to}
-                            onChange={(e) => {
-                              const val = normalizePersianDigits(e.target.value)
-                              updateRow(rIdx, { date_to: val })
-                            }}
-                          />
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              dir="ltr"
+                              placeholder="1403/08/30"
+                              className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2 text-center font-mono text-xs font-bold text-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                              value={row.date_to}
+                              onChange={(e) => {
+                                const val = normalizePersianDigits(e.target.value)
+                                updateRow(rIdx, { date_to: val })
+                              }}
+                              onBlur={() => {
+                                const p = parseJalaliSlash(row.date_to)
+                                if (p) {
+                                  updateRow(rIdx, { date_to: formatJalaliSlash(p[0], p[1], p[2]) })
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => openRowCalendar(rIdx, 'date_to')}
+                              className="btn-ghost !h-9 !w-8 !min-w-[32px] !p-0 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400"
+                              title="انتخاب روز از تقویم"
+                            >
+                              <Calendar className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       )}
 
@@ -969,12 +1308,117 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
         </div>
       </Modal>
 
-      {/* مودال چسباندن از اکسل */}
+      {/* مودال تقویم شناور برای انتخاب تاریخ یک ردیف */}
+      {rowCalendarTarget && (
+        <Modal
+          open={true}
+          onClose={() => setRowCalendarTarget(null)}
+          title="انتخاب تاریخ شمسی"
+          subtitle={`ردیف ${rowCalendarTarget.rowIdx + 1} — فرمت ذخیره: سال/ماه/روز`}
+          size="md"
+        >
+          <div className="space-y-3 p-1">
+            <div className="flex items-center justify-between border-b pb-2">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                {PERSIAN_MONTHS[rowCalendarTarget.jm - 1]} {rowCalendarTarget.jy}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="btn-ghost !h-7 !px-2 text-xs"
+                  onClick={() => {
+                    let nextM = rowCalendarTarget.jm - 1
+                    let nextY = rowCalendarTarget.jy
+                    if (nextM < 1) {
+                      nextM = 12
+                      nextY--
+                    }
+                    setRowCalendarTarget((prev) => (prev ? { ...prev, jy: nextY, jm: nextM } : null))
+                  }}
+                >
+                  ماه قبل
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost !h-7 !px-2 text-xs"
+                  onClick={() => {
+                    let nextM = rowCalendarTarget.jm + 1
+                    let nextY = rowCalendarTarget.jy
+                    if (nextM > 12) {
+                      nextM = 1
+                      nextY++
+                    }
+                    setRowCalendarTarget((prev) => (prev ? { ...prev, jy: nextY, jm: nextM } : null))
+                  }}
+                >
+                  ماه بعد
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1 text-center font-mono text-xs">
+              {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((w) => (
+                <div key={w} className="py-1 font-bold text-slate-400">
+                  {w}
+                </div>
+              ))}
+              {(() => {
+                const [gy, gm, gd] = jalaliToGregorian(rowCalendarTarget.jy, rowCalendarTarget.jm, 1)
+                const dow = new Date(Date.UTC(gy, gm - 1, gd)).getUTCDay()
+                const offset = dow === 6 ? 0 : dow + 1
+                const daysInMonth = jalaliDaysInMonth(rowCalendarTarget.jy, rowCalendarTarget.jm)
+                const cells = []
+                for (let i = 0; i < offset; i++) cells.push(<div key={`empty-${i}`} />)
+                for (let d = 1; d <= daysInMonth; d++) {
+                  const isSel = d === rowCalendarTarget.jd
+                  cells.push(
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => pickCalendarDate(rowCalendarTarget.jy, rowCalendarTarget.jm, d)}
+                      className={`h-8 rounded-lg font-bold transition ${
+                        isSel
+                          ? 'bg-brand-600 text-white'
+                          : 'hover:bg-slate-100 text-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {d}
+                    </button>,
+                  )
+                }
+                return cells
+              })()}
+            </div>
+
+            <div className="flex items-center justify-between border-t pt-2 text-xs">
+              <button
+                type="button"
+                className="btn-ghost !h-7 !px-2 text-brand-600 font-bold"
+                onClick={() => {
+                  const p = parseJalaliSlash(todayJalali()) || [1403, 8, 30]
+                  pickCalendarDate(p[0], p[1], p[2])
+                }}
+              >
+                امروز
+              </button>
+              <button
+                type="button"
+                className="btn-ghost !h-7 !px-2 text-slate-500"
+                onClick={() => setRowCalendarTarget(null)}
+              >
+                بستن
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* مودال چسباندن و بارگذاری اکسل */}
       <Modal
-        open={pasteModalOpen}
-        onClose={() => setPasteModalOpen(false)}
-        title="چسباندن داده‌ها از اکسل (Paste from Excel)"
-        subtitle="متن کپی‌شده از سلول‌های اکسل را اینجا پیست کنید (ستون اول: تاریخ شمسی مانند 1403/08/30)"
+        open={excelModalOpen}
+        onClose={() => setExcelModalOpen(false)}
+        title="چسباندن داده‌ها از اکسل یا بارگذاری فایل"
+        subtitle="متن کپی‌شده از سلول‌های اکسل را اینجا پیست کنید یا فایل اکسل خود را انتخاب نمایید"
         size="lg"
         footer={
           <div className="flex w-full items-center justify-between">
@@ -982,30 +1426,40 @@ export default function BulkRecordModal({ open, onClose, tab, schema: propSchema
               {pasteText.trim().split(/\r?\n/).filter(Boolean).length} خط آماده پردازش
             </span>
             <div className="flex items-center gap-2">
-              <button className="btn-ghost" onClick={() => setPasteModalOpen(false)}>
+              <button className="btn-ghost" onClick={() => setExcelModalOpen(false)}>
                 انصراف
               </button>
               <button className="btn-primary" onClick={handlePasteSubmit} disabled={!pasteText.trim()}>
-                درون‌ریزی و اعمال به جدول
+                درون‌ریزی متن به جدول
               </button>
             </div>
           </div>
         }
       >
-        <div className="space-y-3">
-          <div className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-            <strong>ترتیب مورد انتظار ستون‌های اکسل:</strong>
-            <p className="mt-1 font-mono text-[11px] dir-ltr text-left">
-              [تاریخ شمسی مانند 1403/08/30] {hourMode !== 'disabled' ? '· [ساعت]' : ''} · [ورودی ۱] · [ورودی ۲] ...
-            </p>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800/60">
+            <div>
+              <span className="font-bold">پیشنهاد:</span> از دکمه «دانلود قالب اکسل پیش‌فرض» استفاده کنید تا سرستون‌ها و فرمت تاریخ شمسی با اسلش دقیقاً منطبق باشد.
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="btn-secondary !h-7.5 !px-2.5 text-xs font-bold border-emerald-400 bg-white text-emerald-800 hover:bg-emerald-100"
+            >
+              <Download className="h-3.5 w-3.5" /> دانلود قالب اکسل نمونه
+            </button>
           </div>
-          <textarea
-            className="input h-52 w-full font-mono text-xs leading-relaxed"
-            dir="ltr"
-            placeholder={'1403/08/30\t150\t24.5\n1403/08/30\t180\t28.0'}
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-          />
+
+          <div>
+            <label className="label mb-1">چسباندن متن سلول‌های اکسل (Ctrl+V):</label>
+            <textarea
+              className="input h-48 w-full font-mono text-xs leading-relaxed"
+              dir="ltr"
+              placeholder={'1403/08/30\t08:00\t150\t24.5\n1403/08/30\t14:00\t180\t28.0'}
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+            />
+          </div>
         </div>
       </Modal>
     </>

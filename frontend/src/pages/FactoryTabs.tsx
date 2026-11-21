@@ -676,12 +676,13 @@ export default function FactoryTabs() {
                                 >
                                   <td className="pr-10 pl-4 py-2.5 text-xs text-ink-600 dark:text-slate-300">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-[11px] text-ink-400 dark:text-slate-500">#{idx + 1}</span>
+                                      <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">#{idx + 1}</span>
+                                      <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200" dir="ltr">
+                                        {isDaily ? formatDate(p.date_from) : `${formatDate(p.date_from)} تا ${formatDate(p.date_to)}`}
+                                      </span>
                                       {p.note ? (
-                                        <span className="text-ink-600 italic dark:text-slate-300">{p.note}</span>
-                                      ) : (
-                                        <span className="text-ink-400 dark:text-slate-500">رکورد #{p.id}</span>
-                                      )}
+                                        <span className="text-ink-600 italic text-[11px] dark:text-slate-400">({p.note})</span>
+                                      ) : null}
                                     </div>
                                   </td>
                                   {hourMode !== 'disabled' && (
