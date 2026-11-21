@@ -87,6 +87,48 @@ export function jalaliToIso(jy: number, jm: number, jd: number): string {
   return `${gy}-${pad(gm)}-${pad(gd)}`
 }
 
+export function normalizePersianDigits(s: string): string {
+  if (!s) return ''
+  return s
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+}
+
+export function parseJalaliSlash(str: string): [number, number, number] | null {
+  if (!str) return null
+  const cleaned = normalizePersianDigits(str).trim().replace(/[.\-_]/g, '/')
+  const parts = cleaned.split('/').filter(Boolean).map((p) => parseInt(p, 10))
+  if (parts.length !== 3) return null
+  let [jy, jm, jd] = parts
+  if (isNaN(jy) || isNaN(jm) || isNaN(jd)) return null
+  if (jy < 100) jy = 1400 + jy
+  if (jy < 1300 || jy > 1500) return null
+  if (jm < 1 || jm > 12) return null
+  if (jd < 1 || jd > 31) return null
+  if (jm > 6 && jd > 30) return null
+  if (jm === 12 && jd > (isJalaliLeap(jy) ? 30 : 29)) return null
+  return [jy, jm, jd]
+}
+
+export function jalaliSlashToIso(jalaliStr: string): string | null {
+  if (!jalaliStr) return null
+  const trimmed = normalizePersianDigits(jalaliStr).trim()
+  if (/^(19|20)\d{2}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed
+  }
+  const parts = parseJalaliSlash(trimmed)
+  if (!parts) return null
+  return jalaliToIso(parts[0], parts[1], parts[2])
+}
+
+export function formatJalaliSlash(jy: number, jm: number, jd: number): string {
+  return `${jy}/${pad(jm)}/${pad(jd)}`
+}
+
+export function todayJalali(): string {
+  return formatDate(todayISO())
+}
+
 export function weekdayFa(iso: string): string {
   const { y, m, d } = parseISO(iso)
   if (!y || !m || !d) return ''
