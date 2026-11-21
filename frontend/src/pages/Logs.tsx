@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Sparkles, Clock, Activity, BarChart3 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Filter, X, ClipboardList, Layers, Search, ArrowUpDown, Download, FileText, FileSpreadsheet, FileJson, Globe, ChevronDown, ChevronUp, Calendar, Sparkles, Clock, Activity, BarChart3, TableProperties } from 'lucide-react'
 import DowntimeReportPanel from '../components/downtime/DowntimeReportPanel'
+import BulkDowntimeModal from '../components/downtime/BulkDowntimeModal'
 import { useFactory } from '../store/FactoryContext'
 import { useAuth } from '../store/AuthContext'
 import { hasPerm } from '../constants'
@@ -129,6 +130,7 @@ export default function Logs() {
   const report = useReportState({}, 30)
   const [tab, setTab] = useState<'list' | 'report'>('list')
   const [modalOpen, setModalOpen] = useState(false)
+  const [bulkModalOpen, setBulkModalOpen] = useState(false)
   const [editing, setEditing] = useState<DeviceLog | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
@@ -344,49 +346,113 @@ export default function Logs() {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex gap-3">
-            <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 sm:flex"><Layers className="h-5 w-5" /></div>
+      <div
+        className="relative overflow-hidden rounded-3xl p-5 sm:p-6 text-white shadow-card"
+        style={{
+          background: 'linear-gradient(135deg, #0f1821 0%, #1e293b 60%, #0f1821 100%)',
+          border: '1px solid rgba(201, 33, 39, 0.3)',
+        }}
+      >
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#c92127]/20 blur-3xl" />
+        <div className="pointer-events-none absolute -left-20 -bottom-20 h-64 w-64 rounded-full bg-[#efa73f]/15 blur-3xl" />
+
+        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex gap-4">
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-accent-glow text-white"
+              style={{ background: 'linear-gradient(135deg, #d82b31, #c92127)' }}
+            >
+              <Clock className="h-6 w-6" />
+            </div>
             <div>
-              <h1 className="flex items-center gap-2 text-[17px] font-extrabold tracking-tight text-slate-900 dark:text-white">توقفات خط تولید <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline-flex">{selectedFactory?.name ?? '—'}</span></h1>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><Activity className="h-3 w-3" />{formatNumber(stats.total)} رکورد</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300" dir="ltr"><Clock className="h-3 w-3" />{formatHours(stats.totalDown)}</span>
+              <h1 className="flex items-center gap-2 text-lg font-black tracking-tight text-white sm:text-xl">
+                توقفات و راندمان خطوط تولید
+                <span className="hidden rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-bold text-[#efa73f] sm:inline-flex ring-1 ring-[#efa73f]/30">
+                  {selectedFactory?.name ?? '—'}
+                </span>
+              </h1>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-bold text-white ring-1 ring-white/15">
+                  <Activity className="h-3 w-3 text-[#efa73f]" />
+                  {formatNumber(stats.total)} رویداد توقف
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/20 px-2.5 py-0.5 text-xs font-bold text-rose-300 ring-1 ring-rose-500/30" dir="ltr">
+                  <Clock className="h-3 w-3" />
+                  {formatHours(stats.totalDown)}
+                </span>
               </div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 self-start">
             <div className="relative">
-              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-black disabled:opacity-50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100" onClick={() => setShowExportMenu((v) => !v)} disabled={!canExport || exporting !== null || report.loading}>
-                {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent dark:border-slate-900 dark:border-t-transparent" /> : <Download className="h-4 w-4" />} خروجی <span className="hidden opacity-70 sm:inline">({stats.total})</span> <ChevronDown className={`h-4 w-4 opacity-60 transition ${showExportMenu ? 'rotate-180' : ''}`} />
+              <button
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-xs font-bold text-white ring-1 ring-white/20 backdrop-blur hover:bg-white/20 transition disabled:opacity-50"
+                onClick={() => setShowExportMenu((v) => !v)}
+                disabled={!canExport || exporting !== null || report.loading}
+              >
+                {exporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Download className="h-4 w-4" />}
+                <span>خروجی</span>
+                <span className="hidden opacity-75 sm:inline">({stats.total})</span>
+                <ChevronDown className={`h-3.5 w-3.5 opacity-70 transition ${showExportMenu ? 'rotate-180' : ''}`} />
               </button>
               {showExportMenu && (
-                <div className="absolute left-0 z-20 mt-2 w-60 overflow-hidden rounded-xl border bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                  <div className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400">خروجی حرفه‌ای — همین دیتاست</div>
-                  <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-rose-600" /> PDF صنعتی <span className="mr-auto text-xs text-slate-400">هدر/فوتر هر صفحه</span></button>
-                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
-                  <button onClick={() => handleExport('xlsx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel (XLSX)</button>
-                  <button onClick={() => handleExport('csv')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-amber-600" /> CSV</button>
-                  <button onClick={() => handleExport('docx')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileText className="h-4 w-4 text-blue-600" /> Word (DOCX)</button>
-                  <div className="h-px bg-slate-100 dark:bg-slate-800" />
-                  <button onClick={() => handleExport('html')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><Globe className="h-4 w-4 text-sky-600" /> HTML</button>
-                  <button onClick={() => handleExport('json')} className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><FileJson className="h-4 w-4 text-violet-600" /> JSON</button>
+                <div className="absolute left-0 z-20 mt-2 w-60 overflow-hidden rounded-2xl border border-[#e4ddd2] bg-white p-1.5 shadow-modal text-[#0f1821] dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                  <div className="px-3 py-2 text-[11px] font-bold text-slate-400">خروجی حرفه‌ای — همین دیتاست</div>
+                  <button onClick={() => handleExport('pdf')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileText className="h-4 w-4 text-[#c92127]" /> PDF صنعتی
+                  </button>
+                  <button onClick={() => handleExport('xlsx')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel (XLSX)
+                  </button>
+                  <button onClick={() => handleExport('csv')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileJson className="h-4 w-4 text-[#efa73f]" /> CSV
+                  </button>
+                  <button onClick={() => handleExport('docx')} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <FileText className="h-4 w-4 text-sky-600" /> Word (DOCX)
+                  </button>
                 </div>
               )}
               {showExportMenu && <button className="fixed inset-0 z-10" aria-hidden onClick={() => setShowExportMenu(false)} tabIndex={-1} />}
             </div>
-            {canCreate && <button className="btn-primary !h-[42px] !px-5 !text-sm shadow-sm" onClick={openCreate}><Plus className="h-4 w-4" /> ثبت توقف</button>}
+            {canCreate && (
+              <div className="flex items-center gap-2">
+                <button
+                  className="btn-secondary !h-9 !px-3.5 !text-xs font-bold shadow-sm"
+                  onClick={() => setBulkModalOpen(true)}
+                  title="ورود گروهی چندین توقف، بارگذاری اکسل یا مقادیر ثابت"
+                >
+                  <TableProperties className="h-4 w-4" />
+                  <span>ثبت گروهی توقفات</span>
+                </button>
+                <button className="btn-primary !h-9 !px-4 !text-xs font-bold shadow-brand-glow" onClick={openCreate}>
+                  <Plus className="h-4 w-4" /> ثبت توقف جدید
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex gap-1 rounded-xl bg-slate-200/60 p-1 dark:bg-slate-800">
-        <button onClick={() => setTab('list')} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'list' ? 'bg-white text-slate-900 shadow dark:bg-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-          <ClipboardList className="h-4 w-4" /> لیست توقفات
+      <div className="flex gap-1.5 rounded-2xl bg-[#ede7de]/70 p-1.5 dark:bg-slate-800">
+        <button
+          onClick={() => setTab('list')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+            tab === 'list'
+              ? 'bg-white text-[#0f1821] shadow-sm dark:bg-slate-700 dark:text-white'
+              : 'text-slate-600 hover:text-[#0f1821] dark:text-slate-400'
+          }`}
+        >
+          <ClipboardList className="h-4 w-4 text-[#c92127]" /> لیست رخدادهای توقف
         </button>
-        <button onClick={() => setTab('report')} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${tab === 'report' ? 'bg-white text-slate-900 shadow dark:bg-slate-700 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-          <BarChart3 className="h-4 w-4" /> گزارش و نمودار
+        <button
+          onClick={() => setTab('report')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+            tab === 'report'
+              ? 'bg-white text-[#0f1821] shadow-sm dark:bg-slate-700 dark:text-white'
+              : 'text-slate-600 hover:text-[#0f1821] dark:text-slate-400'
+          }`}
+        >
+          <BarChart3 className="h-4 w-4 text-[#efa73f]" /> گزارش‌ها و نمودارهای تحلیلی
         </button>
       </div>
 
@@ -700,6 +766,12 @@ export default function Logs() {
       <Modal open={confirmId != null} onClose={() => setConfirmId(null)} title="حذف توقف" footer={<><button className="btn-ghost" onClick={() => setConfirmId(null)}>انصراف</button><button className="btn-danger" onClick={confirmDelete}><Trash2 className="h-4 w-4" /> حذف قطعی</button></>}>
         <p className="text-sm text-ink-600 dark:text-slate-300">آیا از حذف این توقف خط تولید اطمینان دارید؟ این عمل قابل بازگشت نیست.</p>
       </Modal>
+
+      <BulkDowntimeModal
+        open={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={() => report.reload()}
+      />
     </div>
   )
 }

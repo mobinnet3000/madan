@@ -8,10 +8,10 @@ export const ROLE_LABELS: Record<Role, string> = {
 }
 
 export const ROLE_BADGE: Record<Role, string> = {
-  admin: 'bg-rose-100 text-rose-700',
-  manager: 'bg-sky-100 text-sky-700',
-  operator: 'bg-emerald-100 text-emerald-700',
-  viewer: 'bg-slate-100 text-slate-600',
+  admin: 'bg-[#faf0df] text-[#935a1a]',
+  manager: 'bg-sky-50 text-sky-800',
+  operator: 'bg-emerald-50 text-emerald-800',
+  viewer: 'bg-[#ede7de] text-[#0f1821]',
 }
 
 export function hasPerm(permissions: string[] | undefined, code: string): boolean {
@@ -30,25 +30,25 @@ export const LINE_TYPE_STYLE: Record<
   { badge: string; gradient: string; ring: string; dot: string }
 > = {
   crushing: {
-    badge: 'bg-orange-100 text-orange-700',
-    gradient: 'from-orange-500 to-amber-500',
-    ring: 'ring-orange-200',
-    dot: 'bg-orange-500',
+    badge: 'bg-[#faf0df] text-[#935a1a]',
+    gradient: 'from-[#f5b452] to-[#efa73f]',
+    ring: 'ring-[#f0cc8b]',
+    dot: 'bg-[#efa73f]',
   },
   processing: {
-    badge: 'bg-violet-100 text-violet-700',
+    badge: 'bg-violet-50 text-violet-700',
     gradient: 'from-violet-500 to-fuchsia-500',
     ring: 'ring-violet-200',
     dot: 'bg-violet-500',
   },
   conveying: {
-    badge: 'bg-slate-100 text-slate-700',
-    gradient: 'from-slate-500 to-slate-600',
-    ring: 'ring-slate-200',
-    dot: 'bg-slate-500',
+    badge: 'bg-[#ede7de] text-[#0f1821]',
+    gradient: 'from-slate-600 to-slate-700',
+    ring: 'ring-slate-300',
+    dot: 'bg-slate-600',
   },
   other: {
-    badge: 'bg-teal-100 text-teal-700',
+    badge: 'bg-teal-50 text-teal-700',
     gradient: 'from-teal-500 to-cyan-500',
     ring: 'ring-teal-200',
     dot: 'bg-teal-500',
